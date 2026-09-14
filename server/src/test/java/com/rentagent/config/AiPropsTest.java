@@ -1,0 +1,76 @@
+package com.rentagent.config;
+
+import com.rentagent.agent.LlmGateway;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+/** LLM 网关多后端解析优先级测试：active 指定 → 第一个有 Key 的命名后端 → 快捷单后端 → null（降级） */
+class AiPropsTest {
+
+    private AiProps.Backend backend(String protocol, String key, String model) {
+        AiProps.Backend b = new AiProps.Backend();
+        b.setProtocol(protocol);
+        b.setApiKey(key);
+        b.setModel(model);
+        return b;
+    }
+
+    @Test
+    void 无任何配置时返回null降级规则引擎() {
+        assertNull(new AiProps().activeBackend());
+    }
+
+    @Test
+    void 快捷单后端生效并补默认协议() {
+        AiProps p = new AiProps();
+        p.setApiKey("k1");
+        p.setModel("glm-4-flash");
+        AiProps.Backend b = p.activeBackend();
+        assertEquals("openai-chat-completions", b.getProtocol());
+        assertEquals("glm-4-flash", b.getModel());
+    }
+
+    @Test
+    void 指定active的命名后端优先() {
+        AiProps p = new AiProps();
+        p.setApiKey("flat-key");
+        p.getBackends().put("glm", backend("openai-chat-completions", "glm-key", "glm-4"));
+        p.getBackends().put("claude", backend("anthropic-messages", "claude-key", "claude-sonnet-4-5"));
+        p.setActive("claude");
+        AiProps.Backend b = p.activeBackend();
+        assertEquals("anthropic-messages", b.getProtocol());
+        assertEquals("claude-sonnet-4-5", b.getModel());
+    }
+
+    @Test
+    void active缺Key时不静默换厂商而是回落快捷配置() {
+        AiProps p = new AiProps();
+        p.setApiKey("flat-key");
+        p.setProtocol("openai-chat-completions");
+        p.setModel("glm-4-flash");
+        p.getBackends().put("claude", backend("anthropic-messages", "", "claude-sonnet-4-5"));
+        p.setActive("claude");
+        assertEquals("glm-4-flash", p.activeBackend().getModel());
+    }
+
+    @Test
+    void 未指定active时取第一个有Key的命名后端() {
+        AiProps p = new AiProps();
+        p.getBackends().put("empty", backend("openai-chat-completions", "", "m0"));
+        p.getBackends().put("glm", backend("openai-chat-completions", "k", "glm-4"));
+        assertEquals("glm-4", p.activeBackend().getModel());
+    }
+
+    @Test
+    void 协议名归一化兼容旧别名() {
+        assertEquals("openai-chat-completions", LlmGateway.normalizeProtocol("openai"));
+        assertEquals("openai-chat-completions", LlmGateway.normalizeProtocol("chat-completions"));
+        assertEquals("openai-chat-completions", LlmGateway.normalizeProtocol("OpenAI-Chat-Completions"));
+        assertEquals("anthropic-messages", LlmGateway.normalizeProtocol("anthropic"));
+        assertEquals("anthropic-messages", LlmGateway.normalizeProtocol("claude"));
+        assertEquals("openai-responses", LlmGateway.normalizeProtocol("openai-responses"));
+        assertEquals("openai-chat-completions", LlmGateway.normalizeProtocol(null));
+    }
+}
