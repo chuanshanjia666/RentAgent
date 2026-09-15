@@ -249,7 +249,10 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
         if (requests.isEmpty()) {
             return new AiMessage(text.toString());
         }
-        return new AiMessage(text.length() == 0 ? null : text.toString(), requests);
+        // 纯工具调用响应无文本：必须用 List 构造器（两参构造器会校验 text 非空）
+        return text.length() == 0
+                ? new AiMessage(requests)
+                : new AiMessage(text.toString(), requests);
     }
 
     private HttpRequest request(ObjectNode body) throws java.io.IOException {

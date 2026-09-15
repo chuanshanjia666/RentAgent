@@ -81,11 +81,7 @@
             <artifactId>langchain4j-open-ai</artifactId>
             <version>${langchain4j.version}</version>
         </dependency>
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-anthropic</artifactId>
-            <version>${langchain4j.version}</version>
-        </dependency>
+        <!-- anthropic-messages 协议由自研 AnthropicMessagesChatModel 适配（兼容 GLM 思维链块），不依赖 langchain4j-anthropic -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>

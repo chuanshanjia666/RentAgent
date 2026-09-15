@@ -6,3 +6,4 @@ uploads/
 .idea/
 *.iml
 .DS_Store
+server/run-dev.sh

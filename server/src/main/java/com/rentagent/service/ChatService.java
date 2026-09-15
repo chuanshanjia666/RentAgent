@@ -124,7 +124,7 @@ public class ChatService {
 
             @Override
             public void onError(Throwable t) {
-                log.warn("AI 引擎异常: {}", t.getMessage());
+                log.warn("AI 引擎异常", t);
                 String fallback = "智能助手暂时繁忙，请稍后再试；押金/退租等紧急问题可转人工客服。";
                 try {
                     emitter.send(SseEmitter.event().name("delta").data(

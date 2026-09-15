@@ -4,8 +4,6 @@ import com.rentagent.config.AiProps;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.anthropic.AnthropicChatModel;
-import dev.langchain4j.model.anthropic.AnthropicStreamingChatModel;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
@@ -91,23 +89,11 @@ public class LlmGateway {
         Duration timeout = Duration.ofSeconds(b.getTimeoutSeconds());
         switch (normalizeProtocol(b.getProtocol())) {
             case "anthropic-messages" -> {
-                String base = orDefault(b.getBaseUrl(), "https://api.anthropic.com");
-                chatModel = AnthropicChatModel.builder()
-                        .apiKey(b.getApiKey())
-                        .baseUrl(base)
-                        .modelName(b.getModel())
-                        .temperature(b.getTemperature())
-                        .maxTokens(b.getMaxTokens())
-                        .timeout(timeout)
-                        .build();
-                streamingModel = AnthropicStreamingChatModel.builder()
-                        .apiKey(b.getApiKey())
-                        .baseUrl(base)
-                        .modelName(b.getModel())
-                        .temperature(b.getTemperature())
-                        .maxTokens(b.getMaxTokens())
-                        .timeout(timeout)
-                        .build();
+                AnthropicMessagesChatModel model = new AnthropicMessagesChatModel(
+                        b.getBaseUrl(), b.getApiKey(), b.getModel(),
+                        b.getTemperature(), b.getMaxTokens(), timeout);
+                chatModel = model;
+                streamingModel = model;
             }
             case "openai-responses" -> {
                 OpenAiResponsesChatModel model = new OpenAiResponsesChatModel(

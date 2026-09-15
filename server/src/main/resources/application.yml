@@ -52,15 +52,15 @@ rentagent:
 
 ai:
   # ── LLM 网关：三协议后端适配（与主流平台接口对应）─────────────────
-  #   anthropic-messages       Anthropic Messages 原生协议（Claude 官方/兼容中转）
+  #   anthropic-messages       Anthropic Messages 原生协议（默认快捷通道：智谱 GLM 兼容端点）
   #   openai-chat-completions  OpenAI Chat Completions（GLM/DeepSeek/通义 等兼容此协议）
   #   openai-responses         OpenAI Responses API 新接口（内置适配器）
   # 生效顺序：AI_BACKEND 指定的命名后端 → backends 中第一个有 Key 的 → 快捷单后端 → 都没有则降级规则引擎
   active: ${AI_BACKEND:}
-  protocol: ${AI_PROTOCOL:openai-chat-completions}
-  base-url: ${AI_BASE_URL:https://open.bigmodel.cn/api/paas/v4}
+  protocol: ${AI_PROTOCOL:anthropic-messages}
+  base-url: ${AI_BASE_URL:https://open.bigmodel.cn/api/anthropic}
   api-key: ${AI_API_KEY:}
-  model: ${AI_MODEL:glm-4-flash}
+  model: ${AI_MODEL:glm-5.3-flash}
   temperature: 0.7
   max-tokens: 2048
   timeout-seconds: 60
