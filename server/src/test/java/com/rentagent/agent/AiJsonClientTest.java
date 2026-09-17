@@ -188,4 +188,63 @@ class AiJsonClientTest {
         assertNull(vo.high());
         assertNull(vo.basis());
     }
+
+    // ── 结构化输出（response_format=json_schema）────────────────────────
+
+    @Mock
+    private JsonSchemaChatModel jsonSchemaModel;
+
+    /** 结构化路径生效：直接取回 JSON，不再走提示词调用；Schema 按目标类型生成 */
+    @Test
+    @DisplayName("UT-AIJSON-11 端点支持 json_schema 时以强约束输出且不触发提示词调用")
+    void 结构化输出优先() {
+        when(llmGateway.jsonSchema()).thenReturn(java.util.Optional.of(jsonSchemaModel));
+        when(jsonSchemaModel.generateJson(anyList(), org.mockito.ArgumentMatchers.eq("Pricing"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(true)))
+                .thenReturn("{\"low\":2100,\"high\":2500,\"basis\":\"结构化约束返回\"}");
+
+        Pricing vo = client.call(AiPrompts.PRICING, "payload", Pricing.class);
+
+        assertEquals(new BigDecimal("2100"), vo.low());
+        assertEquals("结构化约束返回", vo.basis());
+        verify(chatModel, never()).generate(anyList());
+    }
+
+    /** 端点为 4xx（不支持该参数）时退回提示词路径，并记住失败不再逐次尝试 */
+    @Test
+    @DisplayName("UT-AIJSON-12 端点 4xx 拒绝 json_schema 后退回提示词路径且只尝试一次")
+    void 端点拒绝后降级() {
+        when(llmGateway.jsonSchema()).thenReturn(java.util.Optional.of(jsonSchemaModel));
+        when(jsonSchemaModel.generateJson(anyList(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenThrow(new LlmHttpException(400, "Chat Completions HTTP 400: unsupported response_format"));
+        modelSays("{\"low\":2000,\"high\":2400,\"basis\":\"提示词路径\"}");
+
+        Pricing first = client.call(AiPrompts.PRICING, "payload", Pricing.class);
+        Pricing second = client.call(AiPrompts.PRICING, "payload", Pricing.class);
+
+        assertEquals("提示词路径", first.basis());
+        assertEquals("提示词路径", second.basis());
+        verify(jsonSchemaModel, times(1)).generateJson(anyList(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    /** 超时/5xx 属偶发故障：本次退回提示词路径，但下次仍会尝试结构化输出 */
+    @Test
+    @DisplayName("UT-AIJSON-13 结构化调用偶发失败不清除能力，下次仍走结构化路径")
+    void 偶发失败不降级() {
+        when(llmGateway.jsonSchema()).thenReturn(java.util.Optional.of(jsonSchemaModel));
+        when(jsonSchemaModel.generateJson(anyList(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenThrow(new IllegalStateException("connect timed out"))
+                .thenReturn("{\"low\":2000,\"high\":2400,\"basis\":\"第二次结构化成功\"}");
+        modelSays("{\"low\":2000,\"high\":2400,\"basis\":\"提示词路径\"}");
+
+        client.call(AiPrompts.PRICING, "payload", Pricing.class);
+        Pricing second = client.call(AiPrompts.PRICING, "payload", Pricing.class);
+
+        assertEquals("第二次结构化成功", second.basis());
+        verify(jsonSchemaModel, times(2)).generateJson(anyList(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
 }

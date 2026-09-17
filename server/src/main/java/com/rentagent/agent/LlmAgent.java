@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Set;
+
 /**
  * 智能体（唯一实现）：LangChain4j AiServices 编排（角色设定 + 会话记忆 + Function Calling 工具）。
  * 模型客户端由 LLM 网关按配置提供（三种协议可切换）；网关不可用时上层直接报错（4001），无本地兜底。
@@ -44,10 +46,14 @@ public class LlmAgent implements AgentEngine {
     private final HousingToolProvider housingToolProvider;
     private volatile Assistant assistant;
 
-    /** 找房回答过短（未走工具）时的重试强化指令 */
-    private static final String RETRY_HINT =
+    /** 兜底重试的强化指令：按场景指向该场景必需的工具（找房 → searchHouses，客服/合同 → searchKnowledge） */
+    private static final String SEARCH_RETRY_HINT =
             "\n（重要：请立即调用 searchHouses 工具查询真实在租房源，并在本次回复中直接列出符合条件的房源与价格，"
             + "不要只回复“正在查询”这类过程说明，必须给出结果。）";
+
+    private static final String KNOWLEDGE_RETRY_HINT =
+            "\n（重要：请立即调用 searchKnowledge 工具查询平台规则与政策，并在回答末尾以“（来源：xxx）”注明出处，"
+            + "不要只回复“正在查询”这类过程说明。）";
 
     @Override
     public boolean available() {
@@ -67,8 +73,9 @@ public class LlmAgent implements AgentEngine {
     }
 
     /**
-     * 单轮对话（流式）；若流式通道没带上工具调用（见 {@link #shouldFallbackToSync}），
-     * 带强化指令改用非流式重跑一次——这是对传输通道/模型输出质量的兜底，
+     * 单轮对话（流式）。工具调用与正文由适配器一并还原（见 {@link OpenAiChatCompletionsModel}），
+     * 正常情况下本轮即可完成"调工具 → 出结论"。仅当本轮**一个工具都没执行**、回答又不像结论时，
+     * 才追加强化指令用非流式重跑一次——这是对传输异常/模型输出质量的最后一道网，
      * 重跑拿到的仍是模型真实回答与真实工具结果，不生成任何本地虚构答案。
      */
     private void run(long sessionId, int scene, String userMessage, Callback callback) {
@@ -89,37 +96,45 @@ public class LlmAgent implements AgentEngine {
                     }
                     // NFR-05：知识库来源取自 searchKnowledge 工具的返回体（非 null 即说明本轮真的调用了工具）
                     String citations = housingToolProvider.takeKnowledgeCitations(sessionId);
-                    if (shouldFallbackToSync(scene, effective, citations)) {
-                        log.warn("流式回答疑似未带上工具调用（{} 字，工具={}），改用非流式兜底重跑一次",
-                                effective.trim().length(), citations == null ? "未调用" : "已调用");
+                    Set<String> tools = housingToolProvider.takeRoundTools(sessionId);
+                    if (shouldFallbackToSync(scene, effective, citations, tools)) {
+                        log.warn("本轮未执行任何工具且回答疑似过程语（{} 字），改用非流式兜底重跑一次",
+                                effective.trim().length());
                         callback.onToken(effective.isBlank() ? "" : "\n\n");
-                        syncRun(sessionId, scene, userMessage + RETRY_HINT, callback);
+                        syncRun(sessionId, scene, userMessage + retryHint(scene), callback);
                         return;
                     }
                     callback.onComplete(effective, citations, effective.contains("转接人工客服"));
                 })
-                .onError(callback::onError)
+                .onError(error -> {
+                    // 本轮中断时清掉会话标记，避免残留污染下一轮的工具链判定
+                    housingToolProvider.takeKnowledgeCitations(sessionId);
+                    housingToolProvider.takeRoundTools(sessionId);
+                    callback.onError(error);
+                })
                 .start();
     }
 
     /**
-     * 是否需要非流式兜底重跑：
-     * 找房场景（scene=1）必须调 searchHouses 并列出房源，回答过短即视为只回了过程语；
-     * 客服/合同场景（scene=2/3）必须调 searchKnowledge 并给出来源，没有引用即视为工具调用丢失。
-     * <p>
-     * 依赖背景：部分聚合网关的**流式**响应会在模型叙述句之后被截断、丢掉 tool_calls（实测现象是
-     * 用户只看到"我先为您查询…"这类过程语），而非流式调用稳定可靠，故此处以非流式重跑兜底。
+     * 是否需要非流式兜底重跑：**本轮执行过工具就绝不重跑**——工具已给出真实结果，
+     * 回答偏短（如"暂无符合条件的房源"）是模型的真实结论而非过程语。
+     * 只有在"一个工具都没执行"时，才按场景判断回答是否像半截的过程语：
+     * 找房场景（scene=1）没调 searchHouses 且回答过短；客服/合同场景（scene=2/3）没调 searchKnowledge 因而没有来源。
      */
-    private boolean shouldFallbackToSync(int scene, String text, String citations) {
-        if (scene == 1) {
-            return tooShortForSearch(text);
+    private boolean shouldFallbackToSync(int scene, String text, String citations, Set<String> toolsThisRound) {
+        if (!toolsThisRound.isEmpty()) {
+            return false;
         }
-        return citations == null;
+        return scene == 1 ? tooShortForSearch(text) : citations == null;
     }
 
     /** 找房场景的正常答复会列出房源与价格，过短即视为只回复了过程语 */
     private boolean tooShortForSearch(String text) {
         return text == null || text.replaceAll("\\s", "").length() < 40;
+    }
+
+    private String retryHint(int scene) {
+        return scene == 1 ? SEARCH_RETRY_HINT : KNOWLEDGE_RETRY_HINT;
     }
 
     /**

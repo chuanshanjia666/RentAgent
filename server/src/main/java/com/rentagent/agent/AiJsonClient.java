@@ -17,6 +17,12 @@ import java.util.List;
 /**
  * 结构化模型调用（FR-08/14/15/16 的统一入口）：提示词 → 模型 → JSON → 目标类型。
  * <p>
+ * 输出结构有两道保障，按可用性择优：
+ * <ol>
+ *   <li>首选 {@code response_format=json_schema}（见 {@link JsonSchemaChatModel}）：Schema 由目标类型生成，
+ *       服务端在解码阶段强制约束，结构不合规的返回不会出现；仅 openai-chat-completions 协议提供该能力；</li>
+ *   <li>回退到提示词声明字段 + 解析容错（剥代码块围栏、截取 JSON 主体），首次解析失败再追加格式强化说明重试一次。</li>
+ * </ol>
  * 设计口径（2026-09-17 用户拍板"移除所有模拟数据、用真实 API，没有真实模型就直接报错"）：
  * 本系统**不提供任何本地规则兜底或模拟实现**。模型未配置、调用失败、返回不是合法 JSON、
  * 或结构不符合约定时，一律抛出 {@link ErrorCode#AI_UNAVAILABLE}（4001）并附带可读原因，
@@ -32,6 +38,9 @@ public class AiJsonClient {
 
     /** 模型返回 JSON 时常见的代码块包裹/前后缀说明，解析前先剥离 */
     private static final String RETRY_HINT = "\n\n（注意：上一次的返回不是合法 JSON。本次请只输出 JSON 本身，不要任何说明文字或 Markdown 代码块。）";
+
+    /** 端点明确拒绝 json_schema 参数后不再逐次尝试（进程内记忆，避免每次分析都白跑一次请求） */
+    private volatile boolean jsonSchemaRejected;
 
     /**
      * 调用模型并解析为指定类型。
@@ -49,8 +58,17 @@ public class AiJsonClient {
      * 调用模型并解析为泛型类型（如 {@code List<InterpItem>}）。
      */
     public <T> T call(String systemPrompt, String payload, JavaType type) {
-        String raw = generate(systemPrompt, payload, false);
-        T parsed = parse(raw, type);
+        String raw = generateStructured(systemPrompt, payload, type);
+        T parsed = raw == null ? null : parse(raw, type);
+        if (parsed != null) {
+            return parsed;
+        }
+        if (raw != null) {
+            log.warn("结构化输出解析为 {} 失败，退回提示词约束重试；原始返回前 200 字：{}",
+                    type.getTypeName(), abbreviate(raw));
+        }
+        raw = generate(systemPrompt, payload, false);
+        parsed = parse(raw, type);
         if (parsed != null) {
             return parsed;
         }
@@ -64,6 +82,39 @@ public class AiJsonClient {
                     "模型返回内容不是约定的 JSON 结构，请稍后重试或更换模型");
         }
         return parsed;
+    }
+
+    /**
+     * 首选路径：以 response_format=json_schema 强约束输出。不可用（协议不支持 / 端点拒绝 / 调用失败）返回 null，
+     * 由上层退回提示词约束路径——两条路径拿到的都是模型真实输出，只是约束方式不同。
+     */
+    private String generateStructured(String systemPrompt, String payload, JavaType type) {
+        if (jsonSchemaRejected || !llmGateway.available()) {
+            return null;
+        }
+        JsonSchemaChatModel model = llmGateway.jsonSchema().orElse(null);
+        if (model == null) {
+            return null;
+        }
+        try {
+            return model.generateJson(
+                    List.of(SystemMessage.from(systemPrompt), UserMessage.from(payload)),
+                    JsonSchemas.name(type), JsonSchemas.strict(type), true);
+        } catch (Exception e) {
+            if (schemaRejectedByEndpoint(e)) {
+                jsonSchemaRejected = true;
+                log.warn("端点未接受 response_format=json_schema（{}），后续结构化分析改用提示词约束", e.getMessage());
+            } else {
+                log.warn("结构化输出调用失败，本次改用提示词约束：{}", e.getMessage());
+            }
+            return null;
+        }
+    }
+
+    /** 4xx（429 限流除外）说明端点不接受该参数或该 Schema，属配置性问题；其余（超时/5xx）只影响本次 */
+    private boolean schemaRejectedByEndpoint(Exception e) {
+        return e instanceof LlmHttpException http
+                && http.status() >= 400 && http.status() < 500 && http.status() != 429;
     }
 
     /** 一次模型调用；未配置模型时明确报错，不做任何本地兜底 */

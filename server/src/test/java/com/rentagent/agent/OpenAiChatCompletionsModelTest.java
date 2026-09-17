@@ -1,0 +1,267 @@
+package com.rentagent.agent;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.model.StreamingResponseHandler;
+import dev.langchain4j.model.output.Response;
+import dev.langchain4j.model.output.TokenUsage;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * OpenAI Chat Completions 适配器的请求映射与流式解析测试（无需真实端点）。
+ * 重点回归：**同一轮里正文与工具调用并存**时两者都必须保留——langchain4j 0.35 的流式组装器
+ * 会在正文非空时丢弃 tool_calls（BUG-02 根因），本适配器必须同时给出文本与工具请求。
+ */
+class OpenAiChatCompletionsModelTest {
+
+    private final OpenAiChatCompletionsModel model = new OpenAiChatCompletionsModel(
+            "https://api.example.com/v1", "test-key", "demo-model", 0.7, null,
+            java.time.Duration.ofSeconds(30), Map.of("User-Agent", "curl/8.5.0"));
+
+    // ── 请求映射 ───────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("UT-OPENAI-01 系统/用户消息映射为 role 字符串内容")
+    void 基础消息映射() {
+        var body = model.requestBody(List.of(
+                dev.langchain4j.data.message.SystemMessage.from("你是租房助手"),
+                dev.langchain4j.data.message.UserMessage.from("帮我找房")), List.of(), false, null);
+
+        assertEquals("demo-model", body.path("model").asText());
+        assertEquals(false, body.path("stream").asBoolean());
+        assertEquals("system", body.path("messages").get(0).path("role").asText());
+        assertEquals("你是租房助手", body.path("messages").get(0).path("content").asText());
+        assertEquals("user", body.path("messages").get(1).path("role").asText());
+        // max_tokens 不下发（推理型模型会把思维链算进补全长度）
+        assertTrue(body.path("max_tokens").isMissingNode());
+    }
+
+    @Test
+    @DisplayName("UT-OPENAI-02 工具以 tools[].function 结构传递，参数为 JSON Schema")
+    void 工具映射() {
+        var spec = dev.langchain4j.agent.tool.ToolSpecification.builder()
+                .name("searchHouses")
+                .description("检索房源")
+                .parameters(dev.langchain4j.agent.tool.ToolParameters.builder()
+                        .type("object")
+                        .properties(Map.of("maxRent", Map.of("type", "integer", "description", "租金上限")))
+                        .required(List.of("maxRent"))
+                        .build())
+                .build();
+
+        var body = model.requestBody(List.of(dev.langchain4j.data.message.UserMessage.from("找房")),
+                List.of(spec), true, null);
+
+        JsonNode tool = body.path("tools").get(0);
+        assertEquals("function", tool.path("type").asText());
+        assertEquals("searchHouses", tool.path("function").path("name").asText());
+        assertEquals("object", tool.path("function").path("parameters").path("type").asText());
+        assertTrue(tool.path("function").path("parameters").path("properties").has("maxRent"));
+        assertEquals("maxRent", tool.path("function").path("parameters").path("required").get(0).asText());
+    }
+
+    @Test
+    @DisplayName("UT-OPENAI-03 多轮工具消息回填为 assistant.tool_calls 与 role=tool")
+    void 多轮工具消息回填() {
+        ToolExecutionRequest call = ToolExecutionRequest.builder()
+                .id("call_1").name("searchHouses").arguments("{\"maxRent\":2500}").build();
+        var body = model.requestBody(List.of(
+                dev.langchain4j.data.message.UserMessage.from("找房"),
+                AiMessage.from("我来帮您查询", List.of(call)),
+                dev.langchain4j.data.message.ToolExecutionResultMessage.from(call, "[{\"id\":1}]")
+        ), List.of(), false, null);
+
+        JsonNode assistant = body.path("messages").get(1);
+        assertEquals("assistant", assistant.path("role").asText());
+        assertEquals("我来帮您查询", assistant.path("content").asText());
+        assertEquals("searchHouses", assistant.path("tool_calls").get(0).path("function").path("name").asText());
+
+        JsonNode toolResult = body.path("messages").get(2);
+        assertEquals("tool", toolResult.path("role").asText());
+        assertEquals("call_1", toolResult.path("tool_call_id").asText());
+        assertEquals("[{\"id\":1}]", toolResult.path("content").asText());
+    }
+
+    @Test
+    @DisplayName("UT-OPENAI-04 response_format 组装为 json_schema 结构")
+    void 结构化输出请求体() {
+        JsonNode schema = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()
+                .put("type", "object");
+        var body = model.requestBody(List.of(dev.langchain4j.data.message.UserMessage.from("分析")),
+                List.of(), false, model.responseFormat("pricingai", schema, true));
+
+        JsonNode rf = body.path("response_format");
+        assertEquals("json_schema", rf.path("type").asText());
+        assertEquals("pricingai", rf.path("json_schema").path("name").asText());
+        assertEquals(true, rf.path("json_schema").path("strict").asBoolean());
+        assertEquals("object", rf.path("json_schema").path("schema").path("type").asText());
+    }
+
+    @Test
+    @DisplayName("UT-OPENAI-05 同步响应同时解析正文与 tool_calls（content 为 null 时不报错）")
+    void 同步响应解析() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        AiMessage withText = model.parseMessage(mapper.readTree(
+                "{\"role\":\"assistant\",\"content\":\"我来帮您查询\","
+                + "\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\","
+                + "\"function\":{\"name\":\"searchHouses\",\"arguments\":\"{\\\"maxRent\\\":3000}\"}}]}"));
+        assertEquals("我来帮您查询", withText.text());
+        assertEquals(1, withText.toolExecutionRequests().size());
+        assertEquals("{\"maxRent\":3000}", withText.toolExecutionRequests().get(0).arguments());
+
+        AiMessage textNull = model.parseMessage(mapper.readTree(
+                "{\"role\":\"assistant\",\"content\":null,"
+                + "\"tool_calls\":[{\"id\":\"call_2\",\"function\":{\"name\":\"searchKnowledge\",\"arguments\":\"{}\"}}]}"));
+        assertNull(textNull.text());
+        assertEquals("searchKnowledge", textNull.toolExecutionRequests().get(0).name());
+
+        AiMessage plain = model.parseMessage(mapper.readTree("{\"role\":\"assistant\",\"content\":\"您好\"}"));
+        assertEquals("您好", plain.text());
+        assertNull(plain.toolExecutionRequests());
+    }
+
+    // ── 流式解析 ───────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("UT-OPENAI-06 回归：同一轮正文与工具调用并存时两者都保留（BUG-02 根因）")
+    void 正文与工具调用同轮并存() {
+        StreamCapture capture = stream(String.join("\n",
+                chunk("{\"role\":\"assistant\"}"),
+                chunk("{\"content\":\"我来帮您查询朝阳区的房源。\"}"),
+                chunk("{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\","
+                        + "\"function\":{\"name\":\"searchHouses\",\"arguments\":\"\"}}]}"),
+                chunk("{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"district\\\":\"}}]}"),
+                chunk("{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"朝阳区\\\"}\"}}]}"),
+                chunk("{}", "tool_calls"),
+                "data: [DONE]"));
+
+        assertEquals("我来帮您查询朝阳区的房源。", capture.text.toString());
+        assertEquals(1, capture.requests.size(), "工具调用不能被丢弃");
+        assertEquals("searchHouses", capture.requests.get(0).name());
+        assertEquals("{\"district\":\"朝阳区\"}", capture.requests.get(0).arguments());
+        assertEquals("call_1", capture.requests.get(0).id());
+        assertEquals("我来帮您查询朝阳区的房源。", capture.streamed.toString());
+    }
+
+    @Test
+    @DisplayName("UT-OPENAI-07 纯工具调用轮（无正文）仍组成完整工具请求")
+    void 纯工具调用轮() {
+        StreamCapture capture = stream(String.join("\n",
+                chunk("{\"tool_calls\":[{\"index\":0,\"id\":\"call_9\",\"type\":\"function\","
+                        + "\"function\":{\"name\":\"searchKnowledge\",\"arguments\":\"{}\"}}]}"),
+                chunk("{}", "tool_calls"),
+                "data: [DONE]"));
+
+        assertNull(capture.message.text());
+        assertEquals("searchKnowledge", capture.requests.get(0).name());
+    }
+
+    @Test
+    @DisplayName("UT-OPENAI-08 多个工具调用按 index 分别累积，顺序稳定")
+    void 并发多工具调用() {
+        StreamCapture capture = stream(String.join("\n",
+                chunk("{\"tool_calls\":[{\"index\":0,\"id\":\"c0\",\"function\":{\"name\":\"searchHouses\",\"arguments\":\"{\"}},"
+                        + "{\"index\":1,\"id\":\"c1\",\"function\":{\"name\":\"searchKnowledge\",\"arguments\":\"{\"}}]}"),
+                chunk("{\"tool_calls\":[{\"index\":1,\"function\":{\"arguments\":\"\\\"q\\\":1}\"}}]}"),
+                chunk("{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"d\\\":1}\"}}]}"),
+                "data: [DONE]"));
+
+        assertEquals(2, capture.requests.size());
+        assertEquals("searchHouses", capture.requests.get(0).name());
+        assertEquals("{\"d\":1}", capture.requests.get(0).arguments());
+        assertEquals("searchKnowledge", capture.requests.get(1).name());
+        assertEquals("{\"q\":1}", capture.requests.get(1).arguments());
+    }
+
+    @Test
+    @DisplayName("UT-OPENAI-09 流式返回 token 用量（末片携带 usage）")
+    void 流式用量解析() {
+        StreamCapture capture = stream(String.join("\n",
+                chunk("{\"content\":\"您好\"}"),
+                "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],"
+                        + "\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}",
+                "data: [DONE]"));
+
+        assertEquals(15, capture.usage[0].totalTokenCount());
+        assertEquals("您好", capture.text.toString());
+    }
+
+    @Test
+    @DisplayName("UT-OPENAI-10 空返回（思维链耗尽等）不抛异常，给出可读提示")
+    void 空返回兜底文案() {
+        StreamCapture capture = stream(String.join("\n",
+                chunk("{\"reasoning\":\"思考中\"}"),
+                chunk("{}", "length"),
+                "data: [DONE]"));
+
+        assertTrue(capture.message.text().contains("请换个说法"), capture.message.text());
+        assertTrue(capture.requests.isEmpty());
+    }
+
+    // ── 测试脚手架 ─────────────────────────────────────────────────────
+
+    /** 一行 SSE 分片：delta 为片段 JSON，finish_reason 可选 */
+    private static String chunk(String deltaJson) {
+        return chunk(deltaJson, null);
+    }
+
+    private static String chunk(String deltaJson, String finishReason) {
+        return "data: {\"choices\":[{\"index\":0,\"delta\":" + deltaJson + ",\"finish_reason\":"
+                + (finishReason == null ? "null" : "\"" + finishReason + "\"") + "}]}";
+    }
+
+    private static class StreamCapture {
+        final StringBuilder streamed = new StringBuilder();
+        final StringBuilder text = new StringBuilder();
+        final Map<Integer, OpenAiChatCompletionsModel.ToolCallBuffer> buffers = new LinkedHashMap<>();
+        final TokenUsage[] usage = {null};
+        final String[] finishReason = {null};
+        final List<ToolExecutionRequest> requests = new ArrayList<>();
+        AiMessage message;
+
+        String text() {
+            return text.toString();
+        }
+    }
+
+    /** 逐行喂 SSE 文本，返回聚合结果（与生产链路共用同一个 consumeSseLine + assemble） */
+    private StreamCapture stream(String sse) {
+        StreamCapture capture = new StreamCapture();
+        List<String> forwarded = new ArrayList<>();
+        StreamingResponseHandler<AiMessage> handler = new StreamingResponseHandler<>() {
+            @Override
+            public void onNext(String token) {
+                forwarded.add(token);
+            }
+
+            @Override
+            public void onComplete(Response<AiMessage> response) {
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                throw new IllegalStateException("解析失败", error);
+            }
+        };
+        for (String line : sse.split("\n")) {
+            model.consumeSseLine(line, capture.text, capture.buffers, capture.usage, capture.finishReason, handler);
+        }
+        capture.streamed.append(String.join("", forwarded));
+        capture.message = model.assemble(capture.text, capture.buffers, capture.finishReason);
+        if (capture.message.toolExecutionRequests() != null) {
+            capture.requests.addAll(capture.message.toolExecutionRequests());
+        }
+        return capture;
+    }
+}

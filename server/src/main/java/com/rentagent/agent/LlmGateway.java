@@ -3,14 +3,13 @@ package com.rentagent.agent;
 import com.rentagent.config.AiProps;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import dev.langchain4j.model.openai.OpenAiChatModel;
-import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * LLM 网关（风险 R1 应对）：多后端（协议）适配层。
@@ -20,6 +19,8 @@ import java.util.Map;
  *   <li>openai-chat-completions —— OpenAI Chat Completions 协议（最通用，厂商端点与聚合网关多兼容）；</li>
  *   <li>openai-responses —— OpenAI Responses API 新接口（本网关内置适配器实现）。</li>
  * </ul>
+ * 三种协议均由本模块自研适配器实现（不依赖 langchain4j 的厂商模型类）：
+ * 统一支持 Function Calling、多轮工具消息回填与流式"正文 + 工具调用"同轮出现的情形。
  * 兼容旧别名：openai → openai-chat-completions，anthropic → anthropic-messages。
  * <p>
  * 未配置有效模型时 available()=false，且**没有任何本地兜底**：AI 对话与四项 AI 分析能力
@@ -52,6 +53,15 @@ public class LlmGateway {
     public StreamingChatLanguageModel streaming() {
         backend();
         return streamingModel;
+    }
+
+    /**
+     * 结构化输出能力（response_format=json_schema）：仅 openai-chat-completions 协议提供，
+     * 其它协议返回空，调用方退回提示词约束 + 解析容错。
+     */
+    public Optional<JsonSchemaChatModel> jsonSchema() {
+        backend();
+        return chatModel instanceof JsonSchemaChatModel model ? Optional.of(model) : Optional.empty();
     }
 
     /** 当前生效后端描述，如 "openai-chat-completions:deepseek/deepseek-v4.1-flash"；未启用为 "none" */
@@ -100,22 +110,12 @@ public class LlmGateway {
                 if (b.getUserAgent() != null && !b.getUserAgent().isBlank()) {
                     headers.put("User-Agent", b.getUserAgent());
                 }
-                chatModel = OpenAiChatModel.builder()
-                        .apiKey(b.getApiKey())
-                        .baseUrl(base)
-                        .modelName(b.getModel())
-                        .temperature(b.getTemperature())
-                        .timeout(timeout)
-                        .customHeaders(headers)
-                        .build();
-                streamingModel = OpenAiStreamingChatModel.builder()
-                        .apiKey(b.getApiKey())
-                        .baseUrl(base)
-                        .modelName(b.getModel())
-                        .temperature(b.getTemperature())
-                        .timeout(timeout)
-                        .customHeaders(headers)
-                        .build();
+                // 不下发 max_tokens：推理型模型把思维链算进补全长度，写死上限会截断长回答（如多条款合同解读）
+                OpenAiChatCompletionsModel model = new OpenAiChatCompletionsModel(
+                        base, b.getApiKey(), b.getModel(),
+                        b.getTemperature(), null, timeout, headers);
+                chatModel = model;
+                streamingModel = model;
             }
         }
     }

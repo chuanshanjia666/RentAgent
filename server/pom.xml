@@ -70,18 +70,20 @@
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
-        <!-- AI 智能体层：LangChain4j + OpenAI 兼容协议（GLM-4） -->
+        <!-- AI 智能体层：LangChain4j 编排（AiServices 会话与工具链）+ 本模块自研的三种协议适配器 -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j</artifactId>
             <version>${langchain4j.version}</version>
         </dependency>
+        <!-- 三种协议（openai-chat-completions / anthropic-messages / openai-responses）均由自研适配器实现，
+             故不依赖 langchain4j-open-ai / langchain4j-anthropic：厂商模型类无法满足"流式正文与工具调用同轮并存"、
+             以及兼容 thinking 思维链块等本系统的硬性要求 -->
+        <!-- 四项 AI 分析的结构化输出：由目标类型生成 JSON Schema，走 response_format=json_schema 强约束 -->
         <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-open-ai</artifactId>
-            <version>${langchain4j.version}</version>
+            <groupId>com.fasterxml.jackson.module</groupId>
+            <artifactId>jackson-module-jsonSchema</artifactId>
         </dependency>
-        <!-- anthropic-messages 协议由自研 AnthropicMessagesChatModel 适配（兼容 GLM 思维链块），不依赖 langchain4j-anthropic -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>

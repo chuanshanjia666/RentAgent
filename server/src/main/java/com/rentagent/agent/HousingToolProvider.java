@@ -20,6 +20,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -50,6 +51,13 @@ public class HousingToolProvider implements ToolProvider {
      */
     private final Map<Long, String> knowledgeCitations = new ConcurrentHashMap<>();
 
+    /**
+     * 会话本轮已执行的工具名（sessionId → 工具名集合）。
+     * {@link LlmAgent} 据此判断"本轮是否真的走通了工具链"：工具已执行而回答偏短（如检索结果为空）
+     * 是模型的真实结论，不得再触发兜底重跑。
+     */
+    private final Map<Long, Set<String>> roundTools = new ConcurrentHashMap<>();
+
     @Override
     public ToolProviderResult provideTools(ToolProviderRequest request) {
         Map<ToolSpecification, ToolExecutor> tools = new LinkedHashMap<>();
@@ -65,6 +73,9 @@ public class HousingToolProvider implements ToolProvider {
     private String executeTraced(ToolExecutor delegate, ToolExecutionRequest req, Object memoryId) {
         long start = System.currentTimeMillis();
         long sessionId = sessionOf(memoryId);
+        if (sessionId > 0) {
+            roundTools.computeIfAbsent(sessionId, k -> ConcurrentHashMap.newKeySet()).add(req.name());
+        }
         try {
             String result = delegate.execute(req, memoryId);
             if (sessionId > 0 && "searchKnowledge".equals(req.name()) && result != null) {
@@ -81,6 +92,12 @@ public class HousingToolProvider implements ToolProvider {
     /** 取走本会话最近一次知识库引用（读取即清除，不在内存里长期驻留） */
     public String takeKnowledgeCitations(long sessionId) {
         return knowledgeCitations.remove(sessionId);
+    }
+
+    /** 取走本轮已执行的工具名（读取即清除，与知识库引用同生命周期）；未执行任何工具返回空集合 */
+    public Set<String> takeRoundTools(long sessionId) {
+        Set<String> tools = roundTools.remove(sessionId);
+        return tools == null ? Set.of() : tools;
     }
 
     private List<Method> methods() {

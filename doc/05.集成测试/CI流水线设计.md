@@ -1,11 +1,15 @@
 # RentAgent CI 流水线设计
 
 > 项目名称：RentAgent —— 基于 AI 智能体的房屋租赁系统
-> 文档版本：v1.0
+> 文档版本：v1.1
 > 编制日期：2026-09-17
 > 编制：项目组测试担当（陈玄晔）
 > 关联文档：《单元测试用例设计》、《测试用例设计》（集成层）、`.github/workflows/ci.yml`、`scripts/ci-smoke.sh`
 > 适用阶段：五、集成测试（持续集成）
+> 变更记录（v1.1，2026-09-17）：CI 日志出现 Node.js 20 运行时弃用告警（`actions/checkout@v4`、`actions/setup-java@v4`、
+> `actions/upload-artifact@v4` 以 Node 20 编译，已被强制改跑 Node 24）。四个官方 Action 统一升到**已切换 Node 24 运行时的大版本**：
+> `checkout` v4→v5、`setup-java` v4→v5、`setup-node` v4→v5、`upload-artifact` v4→v6（其 v5 仍默认 Node 20，必须跨到 v6）。
+> 仅运行时与 Action 版本变化，作业结构、步骤顺序与输入参数均未改动；项目自身的 Node 版本仍为 20（§2.2）。
 
 ---
 
@@ -40,10 +44,10 @@
 
 | 步骤 | 动作 |
 | ---- | ---- |
-| 检出代码 | `actions/checkout@v4` |
-| 环境 | `actions/setup-java@v4`（temurin 17，`cache: maven`） |
+| 检出代码 | `actions/checkout@v5` |
+| 环境 | `actions/setup-java@v5`（temurin 17，`cache: maven`） |
 | 执行 | `mvn -B -ntp test`（工作目录 `server/`） |
-| 归档 | `actions/upload-artifact@v4` 上传 `server/target/surefire-reports/`（`if: always()`，失败可下载报告定位） |
+| 归档 | `actions/upload-artifact@v6` 上传 `server/target/surefire-reports/`（`if: always()`，失败可下载报告定位） |
 
 不启任何服务容器：本层用例全部为 Mockito 打桩，不连库、不连缓存、不连网络。
 
@@ -51,8 +55,8 @@
 
 | 步骤 | 动作 |
 | ---- | ---- |
-| 检出代码 | `actions/checkout@v4` |
-| 环境 | `actions/setup-node@v4`（Node 20，`cache: npm`，`cache-dependency-path: frontend/package-lock.json`） |
+| 检出代码 | `actions/checkout@v5` |
+| 环境 | `actions/setup-node@v5`（Node 20，`cache: npm`，`cache-dependency-path: frontend/package-lock.json`；v5 起新增"检测到 `packageManager` 字段即自动缓存"，本项目 `package.json` 未声明该字段且此处已显式指定 `cache: npm`，故缓存行为与 v4 一致） |
 | 依赖 | `npm ci --no-audit --no-fund`（严格按 lockfile，保证可复现） |
 | 单测 | `npm test`（vitest run） |
 | 构建 | `npm run build:web`（类型检查 + 生产构建，Web 版与桌面端共用同一份 `dist`） |
@@ -192,6 +196,7 @@ push / PR / 手动
 | 5 | 真实模型通道回归 | 用 GitHub Secrets 注入演示用 Key，增加一个**非阻塞**（`continue-on-error`）的对话质量作业 |
 | 6 | 依赖漏洞扫描 | 加 `dependency-review-action`（PR）与 `npm audit`/OWASP 依赖检查 |
 | 7 | 冒烟脚本的模型无关性 | 若演示通道从规则引擎切到真实模型，需为 `IT-7-08`、`IT-9-*` 增加按 `engine` 分支断言的适配 |
+| 8 | CI 的 Node 运行时升级（20 → 24 LTS） | 项目自身 `node-version` 仍为 `20`，该版本已于 2026-04 进入 EOL（本次仅升级了 Action 自身的运行时，未动它）；`frontend/package.json` 未声明 `engines`，本地开发机实测为 Node 26。升级前建议本地跑一遍 `npm ci → npm test → npm run build:web` 复核 vite/vitest/jsdom 兼容性，并同步 §2.2 与 §2.4 拓扑图中的 Node 版本 |
 
 ---
 
@@ -212,3 +217,4 @@ push / PR / 手动
 | 无模型反向门禁 | 另起无凭据实例实测：AI 对话/定价/识别填充/合同解读/引擎探针 **6/6 全部 4001**，零兜底 |
 | 建表步骤加固 | 本机复现了"ping 成功但建表失败"的窗口，作业已改为重试 + 表数校验（≥18）+ 不吞错误输出 |
 | 未在本机执行的步骤 | `actions/setup-*`、服务容器创建、Artifacts 上传等 GitHub 托管步骤（需托管 runner；已通过 `act` 结构校验与等价命令本地验证） |
+| Action 运行时升级（v1.1） | 逐一核对各 Action 各版本的 `action.yml` → `runs.using`：`checkout` v5/v6/v7、`setup-java` v5/v6、`setup-node` v5/v6/v7 均为 `node24`；`upload-artifact` 需 **v6** 起才是 `node24`（v5 仍为 `node20`，故未停在 v5）。升级后复核：`act -l -W .github/workflows/ci.yml` 三作业均可解析；`actionlint` 对 `ci.yml` 零 error（仅 2 条既有 `SC2012` info，与本次无关），并已验证 actionlint 会校验 Action 输入名（对刻意注入的错误输入名可报错），故"零 error"不是空结论 |

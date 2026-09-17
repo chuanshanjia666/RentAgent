@@ -29,10 +29,10 @@ jobs:
       run:
         working-directory: server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: 安装 JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -43,7 +43,7 @@ jobs:
 
       - name: 归档测试报告
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: backend-surefire-reports
           path: server/target/surefire-reports/
@@ -60,10 +60,10 @@ jobs:
       # 桌面端打包不在 CI 范围，跳过 Electron 二进制下载以缩短流水线
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: 安装 Node 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: npm
@@ -79,7 +79,7 @@ jobs:
         run: npm run build:web
 
       - name: 归档 Web 构建产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-dist
           path: frontend/dist/
@@ -134,10 +134,10 @@ jobs:
       # 注：UPLOAD_DIR 依赖 runner 上下文，只能写在步骤级 env（job 级 env 不提供 runner 上下文）
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: 安装 JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -212,7 +212,7 @@ jobs:
 
       - name: 失败时归档后端日志
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: backend-runtime-log
           path: |
