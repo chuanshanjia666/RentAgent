@@ -96,7 +96,7 @@ def fig_system():
     d2 [label="Redis 7\\n验证码 / 限流 / 热度", fillcolor="#e7f2e7", color="#5c9c5c", width=1.9];
     d3 [label="Redis Stack\\n向量索引（RAG 升级位）", fillcolor="#e7f2e7", color="#5c9c5c", width=1.9];
     d4 [label="文件存储\\n房源图片本地卷", fillcolor="#e7f2e7", color="#5c9c5c", width=1.9];
-    ex [label="大模型服务（HTTPS 出网）\\n任意兼容模型（DeepSeek / Claude / GPT / GLM …）\\n三协议适配 · 模型无关 · 超时降级 · 无 Key 降级规则引擎",
+    ex [label="大模型服务（HTTPS 出网）\\n任意兼容模型（DeepSeek / Claude / GPT / GLM …）\\n三协议适配 · 模型无关 · 未配置/调用失败即报错",
         fillcolor="#f7e7e7", color="#c07070", width=3.1];
     {{rank=same; d1; d2; d3; d4; ex;}}
   }}
@@ -542,7 +542,7 @@ CLASS_FIGS = {
         "+ interpret(long, long): InterpVO",
         "+ assistFill(AiFillReq, long): AiFillVO",
         "- 结果与输入快照写入 ai_analysis"], "#eaf6ea", "#5c9c5c"),
-     ("AgentEngine", "接口（可插拔）", ["（实现类：LlmAgent / MockAgent）"], [
+     ("AgentEngine", "接口（可插拔）", ["（唯一实现：LlmAgent）"], [
         "+ available(): boolean",
         "+ describe(): String",
         "+ stream(long sessionId, long userId, int scene,",
@@ -551,20 +551,27 @@ CLASS_FIGS = {
         "- memory(Redis 窗口 + 摘要)"], [
         "+ stream(...): void",
         "- LangChain4j AiServices 编排（ReAct）",
-        "- 按 scene 路由角色设定与工具集"], "#f3e2f7", "#9b6fb0"),
-     ("MockAgent", "AgentEngine 实现（降级）", ["- housingTools: HousingTools"], [
-        "+ stream(...): void",
-        "- 无有效 Key 时的规则引擎兜底",
-        "- 意图解析后仍调用真实房源检索工具"], "#f3e2f7", "#9b6fb0"),
+        "- 按 scene 路由角色设定与工具集",
+        "- 流式丢失 tool_calls 时改非流式重跑一次"], "#f3e2f7", "#9b6fb0"),
+     ("AiJsonClient", "结构化模型调用", ["- llmGateway: LlmGateway",
+        "- objectMapper: ObjectMapper"], [
+        "+ call(String prompt, String payload, Class&lt;T&gt;): T",
+        "+ call(String prompt, String payload, JavaType): T",
+        "- 提取 JSON（剥代码块围栏 / 截取主体）",
+        "- 解析失败追加格式强化重试一次，仍不合规报 4001"],
+        "#f3e2f7", "#9b6fb0"),
+     ("AiPrompts", "提示词库", ["（定价 / 检测 / 解读 / 识别填充）"], [
+        "+ PRICING / FAKE_DETECT /",
+        "+ CONTRACT_INTERPRET / ASSIST_FILL",
+        "- 统一要求“只输出 JSON”并声明字段与取值约束"], "#f3e2f7", "#9b6fb0"),
      ("LlmGateway", "模型网关", ["- props: AiProps",
         "- backends: openai-chat-completions / anthropic-messages / openai-responses"], [
         "+ available(): boolean",
         "+ chat(): ChatLanguageModel",
         "+ streaming(): StreamingChatLanguageModel",
-        "+ describe(): String",
-        "+ chatOnce(String, String): String",
+        "+ describe(): String  // &lt;协议&gt;:&lt;模型&gt;，未配置为 none",
         "+ static normalizeProtocol(String): String",
-        "- 超时 60s · 异常返回 null 由调用方降级"], "#f7f0e6", "#b08a5c"),
+        "- 超时 60s · 未配置模型时上层直接报 4001"], "#f7f0e6", "#b08a5c"),
      ("AnthropicMessagesChatModel", "自研适配器", ["- baseUrl / apiKey / model"], [
         "+ generate(...): Response&lt;AiMessage&gt;",
         "+ generate(...tools...): Response&lt;AiMessage&gt;",
@@ -578,8 +585,9 @@ CLASS_FIGS = {
         "- 解析 output_text.delta 与 function_call"], "#f7e7e7", "#c07070"),
      ("HousingToolProvider", "工具提供器（留痕）", ["- housingTools / toolTraceService"], [
         "+ provideTools(ToolProviderRequest): ToolProviderResult",
+        "+ takeKnowledgeCitations(long sessionId): String",
         "- 把每个 @Tool 执行包装为“计时 → 执行 → 留痕 → 返回”",
-        "- 会话号取自 ToolExecutor.execute(…, memoryId)"], "#eaf6ea", "#5c9c5c"),
+        "- 缓存 searchKnowledge 返回体作为来源引用（NFR-05）"], "#eaf6ea", "#5c9c5c"),
      ("ToolTraceService", "Service（留痕）", ["- messageMapper: AiChatMessageMapper"], [
         "+ record(long sessionId, String toolName, String argsJson,",
         "         String resultJson, int latencyMs): void",
@@ -604,12 +612,14 @@ CLASS_FIGS = {
    edges=[("AiController","ChatService",""),("AiController","KbService",""),
           ("AiController","AnalysisService",""),
           ("ChatService","AgentEngine",""),
-          ("AgentEngine","LlmAgent","实现"),("AgentEngine","MockAgent","实现"),
+          ("AgentEngine","LlmAgent","实现"),
           ("LlmAgent","LlmGateway",""),("LlmAgent","HousingToolProvider","Function Calling"),
           ("HousingToolProvider","HousingTools","委托执行"),
           ("HousingToolProvider","ToolTraceService","工具留痕"),
-          ("MockAgent","HousingTools","规则引擎"),
-          ("MockAgent","ToolTraceService","规则引擎留痕"),
+          ("HousingToolProvider","ChatService","来源引用（citations）"),
+          ("AnalysisService","AiJsonClient","结构化调用"),
+          ("AiJsonClient","AiPrompts","提示词"),
+          ("AiJsonClient","LlmGateway","同步模型"),
           ("LlmGateway","AnthropicMessagesChatModel",""),
           ("LlmGateway","OpenAiResponsesChatModel",""),
           ("HousingTools","KbService","searchKnowledge"),
@@ -746,15 +756,15 @@ def fig_agent_structure():
          fillcolor="#efe9f7", color="#8a6fb0", width=4.0];
     llm [label="LlmAgent\nLangChain4j AiServices 编排\n按 scene 路由角色设定\n工具注册表（@Tool 扫描）\n记忆窗口 + 摘要压缩",
          fillcolor="#f3e2f7", color="#9b6fb0"];
-    mck [label="MockAgent（降级）\n无有效 Key 时启用\n意图解析 + 状态化话术\n仍调用真实房源检索工具",
+    ajc [label="AiJsonClient（结构化模型调用）\n定价 / 检测 / 解读 / 识别填充\n提示词 AiPrompts → 模型 JSON → 校验\n不合规重试一次，仍失败报 4001",
          fillcolor="#f3e2f7", color="#9b6fb0"];
-    {{rank=same; llm; mck;}}
+    {{rank=same; llm; ajc;}}
   }}
 
   subgraph cluster_gw {{
     label="模型接入层（LLM 网关，三协议可切换）"; fontsize=13; fontcolor="#7a5a30";
     style="rounded,filled"; fillcolor="#fdfaf6"; color="#b08a5c"; margin=10;
-    gw [label="LlmGateway\n按 AI_BACKEND 选择后端 → available() / chat()\n　　　　　　　　　　/ streaming() / chatOnce()\n超时 60 秒 · 异常降级 · describe() 上报后端",
+    gw [label="LlmGateway\n按 AI_BACKEND 选择后端 → available() / chat()\n　　　　　　　　　　/ streaming() / describe()\n超时 60 秒 · 未配置模型即报 4001",
         fillcolor="#f7f0e6", color="#b08a5c", width=4.6];
     p1 [label="openai-chat-completions\n通用协议（多厂商/网关兼容）", fillcolor="#f7e7e7", color="#c07070"];
     p2 [label="anthropic-messages\n自研适配器 · 兼容端点", fillcolor="#f7e7e7", color="#c07070"];
@@ -779,10 +789,10 @@ def fig_agent_structure():
   ui -> ctrl;
   ctrl -> chat; ctrl -> kb; ctrl -> ana;
   chat -> api; kb -> api; ana -> api;
-  api -> llm [label="启用"]; api -> mck [label="降级"];
-  llm -> gw [label="模型调用"]; llm -> prov [label="工具提供器"];
+  api -> llm; api -> ajc [label="分析类能力"];
+  llm -> gw [label="流式调用"]; llm -> prov [label="工具提供器"];
   prov -> tools [label="委托执行"]; prov -> trace [label="工具留痕"];
-  mck -> tools [label="规则引擎"]; mck -> trace [label="规则引擎留痕"];
+  ajc -> gw [label="同步模型"];
   tools -> rag [style=dotted, label="客服意图"];
   gw -> p1; gw -> p2; gw -> p3;
   tools -> data; ana -> data; chat -> data; kb -> data; trace -> data;

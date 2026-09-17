@@ -178,11 +178,6 @@ function TracePanel({ detail }: { detail: AdminChatDetail }) {
         <Descriptions title="智能体设定" size="small" column={1} bordered>
           <Descriptions.Item label="当前生效引擎">
             <Tag color="geekblue">{detail.currentEngine}</Tag>
-            {detail.hasRuleEngineTurn && (
-              <Tooltip title="本会话部分回复由规则引擎生成（当时无可用模型 Key 或模型调用失败降级）">
-                <Tag color="orange">含规则引擎降级回复</Tag>
-              </Tooltip>
-            )}
             <span style={{ color: '#909399', fontSize: 12, marginLeft: 8 }}>
               引擎为查看时刻生效值，历史消息未逐条快照
             </span>
@@ -212,7 +207,6 @@ function TracePanel({ detail }: { detail: AdminChatDetail }) {
               <Tooltip key={t.name} title={`调用 ${t.count} 次 · 平均耗时 ${t.avgLatencyMs} ms`}>
                 <Tag color="orange" style={{ marginBottom: 4 }}>
                   🔧 {t.name} ×{t.count}
-                  {t.ruleEngine && <span style={{ marginLeft: 4 }}>（规则引擎）</span>}
                 </Tag>
               </Tooltip>
             ))}

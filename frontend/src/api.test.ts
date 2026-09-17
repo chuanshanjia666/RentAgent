@@ -6,7 +6,10 @@ import { ssePost } from './api'
  * 流式响应按行解析、半行缓冲、非 data 行与坏 JSON 容错、失败降级回调。
  * 后端 /ai/sessions/{id}/messages 为 text/event-stream，前端必须逐字渲染而不能等整包。
  */
-function sseResponse(chunks: string[], init: { ok?: boolean; status?: number; body?: unknown } = {}) {
+function sseResponse(
+  chunks: string[],
+  init: { ok?: boolean; status?: number; body?: unknown; contentType?: string; json?: unknown } = {}
+) {
   const encoder = new TextEncoder()
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -14,10 +17,13 @@ function sseResponse(chunks: string[], init: { ok?: boolean; status?: number; bo
       controller.close()
     }
   })
+  const contentType = init.contentType ?? (init.json === undefined ? 'text/event-stream' : 'application/json')
   return {
     ok: init.ok ?? true,
     status: init.status ?? 200,
-    body: init.body === undefined ? stream : init.body
+    body: init.body === undefined ? (init.json === undefined ? stream : null) : init.body,
+    headers: new Headers({ 'content-type': contentType }),
+    json: async () => init.json
   }
 }
 
@@ -111,15 +117,49 @@ describe('FT-SSE AI 对话流式解析', () => {
     expect(done?.messageId).toBe(3)
   })
 
-  it('FT-SSE-04 HTTP 失败时回调错误并带上状态码', async () => {
-    fetchMock.mockResolvedValue(sseResponse([], { ok: false, status: 4002, body: null }))
+  it('FT-SSE-04 后端返回业务错误（非事件流）时透出后端原因', async () => {
+    // 典型场景：未配置模型时 /ai/sessions/{id}/messages 返回 {code:4001,message:...}
+    fetchMock.mockResolvedValue(
+      sseResponse([], {
+        ok: false,
+        status: 200,
+        json: { code: 4001, message: '未配置大模型服务：请注入模型凭据（AI_API_KEY / AGGREGATOR_API_KEY 等环境变量）后使用 AI 能力' }
+      })
+    )
     const onError = vi.fn()
     const onDelta = vi.fn()
 
     await ssePost('/ai/sessions/1/messages', { content: '你好' }, { onDelta, onError })
 
-    expect(onError).toHaveBeenCalledWith('连接智能助手失败（4002）')
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0][0]).toContain('未配置大模型服务')
     expect(onDelta).not.toHaveBeenCalled()
+  })
+
+  it('FT-SSE-04b 响应不是事件流且响应体非 JSON 时退回状态码提示', async () => {
+    fetchMock.mockResolvedValue(
+      sseResponse([], { ok: false, status: 502, contentType: 'text/html', json: undefined, body: null })
+    )
+    const onError = vi.fn()
+
+    await ssePost('/ai/sessions/1/messages', { content: '你好' }, { onError })
+
+    expect(onError).toHaveBeenCalledWith('连接智能助手失败（502）')
+  })
+
+  it('FT-SSE-04c 流中出现 error 载荷时回调错误原因（模型调用失败不再伪造回答）', async () => {
+    fetchMock.mockResolvedValue(
+      sseResponse(['data: {"error":"智能助手调用失败，请稍后重试"}\n\n'])
+    )
+    const onError = vi.fn()
+    const onDelta = vi.fn()
+    const onDone = vi.fn()
+
+    await ssePost('/ai/sessions/1/messages', { content: '你好' }, { onDelta, onDone, onError })
+
+    expect(onError).toHaveBeenCalledWith('智能助手调用失败，请稍后重试')
+    expect(onDelta).not.toHaveBeenCalled()
+    expect(onDone).not.toHaveBeenCalled()
   })
 
   it('FT-SSE-05 网络异常时回调「网络连接失败」而不抛出', async () => {

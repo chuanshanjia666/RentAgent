@@ -1,20 +1,15 @@
 package com.rentagent.agent;
 
 import com.rentagent.config.AiProps;
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
-import dev.langchain4j.model.output.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -26,7 +21,9 @@ import java.util.Map;
  *   <li>openai-responses —— OpenAI Responses API 新接口（本网关内置适配器实现）。</li>
  * </ul>
  * 兼容旧别名：openai → openai-chat-completions，anthropic → anthropic-messages。
- * 未配置有效 Key 时 available()=false，上层智能体自动降级为规则引擎（MockAgent）。
+ * <p>
+ * 未配置有效模型时 available()=false，且**没有任何本地兜底**：AI 对话与四项 AI 分析能力
+ * 一律返回 4001 并提示注入模型凭据（2026-09-17 口径：用真实模型，缺模型直接报错）。
  */
 @Slf4j
 @Component
@@ -45,7 +42,7 @@ public class LlmGateway {
         return backend() != null;
     }
 
-    /** 同步模型（AiServices 编排 / chatOnce 使用） */
+    /** 同步模型（结构化分析调用 AiJsonClient 使用） */
     public ChatLanguageModel chat() {
         backend();
         return chatModel;
@@ -57,23 +54,14 @@ public class LlmGateway {
         return streamingModel;
     }
 
-    /** 当前生效后端描述，如 "openai-chat-completions:deepseek/deepseek-v4.1-flash"；未启用为 "rule-engine" */
+    /** 当前生效后端描述，如 "openai-chat-completions:deepseek/deepseek-v4.1-flash"；未启用为 "none" */
     public String describe() {
         AiProps.Backend b = backend();
-        return b == null ? "rule-engine" : normalizeProtocol(b.getProtocol()) + ":" + b.getModel();
+        return b == null ? MODEL_NOT_CONFIGURED : normalizeProtocol(b.getProtocol()) + ":" + b.getModel();
     }
 
-    /** 非流式单轮调用，异常返回 null（调用方降级处理） */
-    public String chatOnce(String system, String user) {
-        try {
-            Response<AiMessage> resp = chat().generate(
-                    List.of(SystemMessage.from(system), UserMessage.from(user)));
-            return resp.content().text();
-        } catch (Exception e) {
-            log.warn("LLM 调用失败（{}），降级处理: {}", describe(), e.getMessage());
-            return null;
-        }
-    }
+    /** 未配置模型时的引擎标识（仅用于展示/日志；AI 能力调用会直接报 4001） */
+    public static final String MODEL_NOT_CONFIGURED = "none";
 
     private synchronized AiProps.Backend backend() {
         if (resolved == null) {

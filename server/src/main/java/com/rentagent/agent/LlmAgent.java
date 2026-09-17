@@ -13,9 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * 真模型智能体：LangChain4j AiServices 编排（角色设定 + 会话记忆 + Function Calling 工具）。
- * 模型客户端由 LLM 网关按配置提供（OpenAI 兼容 / Anthropic Messages 双协议可切换）；
- * 网关不可用时上层自动降级为 MockAgent。
+ * 智能体（唯一实现）：LangChain4j AiServices 编排（角色设定 + 会话记忆 + Function Calling 工具）。
+ * 模型客户端由 LLM 网关按配置提供（三种协议可切换）；网关不可用时上层直接报错（4001），无本地兜底。
  */
 @Component
 @Slf4j
@@ -35,6 +34,10 @@ public class LlmAgent implements AgentEngine {
     interface Assistant {
         @SystemMessage(SYSTEM_PROMPT)
         TokenStream chat(@MemoryId long sessionId, @UserMessage String message);
+
+        /** 非流式单轮（工具调用可靠）：流式通道丢失工具调用时用它兜底，仍由同一个 Agent 与同一份会话记忆执行 */
+        @SystemMessage(SYSTEM_PROMPT)
+        String chatSync(@MemoryId long sessionId, @UserMessage String message);
     }
 
     private final LlmGateway llmGateway;
@@ -55,16 +58,20 @@ public class LlmAgent implements AgentEngine {
         return llmGateway.describe();
     }
 
+    /** 兜底重试用：非流式结果按固定长度切片回放，前端渲染体验与流式一致 */
+    private static final int SYNC_CHUNK = 24;
+
     @Override
     public void stream(long sessionId, long userId, int scene, String userMessage, Callback callback) {
-        run(sessionId, scene, userMessage, 0, callback);
+        run(sessionId, scene, userMessage, callback);
     }
 
     /**
-     * 单轮对话；找房场景（scene=1）若模型只回了过程语而没有真正调用工具，带强化指令重试一次
-     * ——对应设计文档"模型不稳定 → 重试一次 → 降级话术"的降级链路。
+     * 单轮对话（流式）；若流式通道没带上工具调用（见 {@link #shouldFallbackToSync}），
+     * 带强化指令改用非流式重跑一次——这是对传输通道/模型输出质量的兜底，
+     * 重跑拿到的仍是模型真实回答与真实工具结果，不生成任何本地虚构答案。
      */
-    private void run(long sessionId, int scene, String userMessage, int attempt, Callback callback) {
+    private void run(long sessionId, int scene, String userMessage, Callback callback) {
         Assistant a = assistant();
         StringBuilder buf = new StringBuilder();
         a.chat(sessionId, userMessage)
@@ -80,22 +87,59 @@ public class LlmAgent implements AgentEngine {
                     if (resp.tokenUsage() != null) {
                         callback.onUsage(resp.tokenUsage().totalTokenCount());
                     }
-                    if (attempt == 0 && scene == 1 && tooShortForSearch(effective)) {
-                        log.warn("找房回答疑似未调用工具（{} 字），带强化指令重试一次", effective.trim().length());
-                        callback.onToken("\n\n");
-                        run(sessionId, scene, userMessage + RETRY_HINT, 1, callback);
+                    // NFR-05：知识库来源取自 searchKnowledge 工具的返回体（非 null 即说明本轮真的调用了工具）
+                    String citations = housingToolProvider.takeKnowledgeCitations(sessionId);
+                    if (shouldFallbackToSync(scene, effective, citations)) {
+                        log.warn("流式回答疑似未带上工具调用（{} 字，工具={}），改用非流式兜底重跑一次",
+                                effective.trim().length(), citations == null ? "未调用" : "已调用");
+                        callback.onToken(effective.isBlank() ? "" : "\n\n");
+                        syncRun(sessionId, scene, userMessage + RETRY_HINT, callback);
                         return;
                     }
-                    boolean transferred = effective.contains("转接人工客服");
-                    callback.onComplete(effective, null, transferred);
+                    callback.onComplete(effective, citations, effective.contains("转接人工客服"));
                 })
                 .onError(callback::onError)
                 .start();
     }
 
+    /**
+     * 是否需要非流式兜底重跑：
+     * 找房场景（scene=1）必须调 searchHouses 并列出房源，回答过短即视为只回了过程语；
+     * 客服/合同场景（scene=2/3）必须调 searchKnowledge 并给出来源，没有引用即视为工具调用丢失。
+     * <p>
+     * 依赖背景：部分聚合网关的**流式**响应会在模型叙述句之后被截断、丢掉 tool_calls（实测现象是
+     * 用户只看到"我先为您查询…"这类过程语），而非流式调用稳定可靠，故此处以非流式重跑兜底。
+     */
+    private boolean shouldFallbackToSync(int scene, String text, String citations) {
+        if (scene == 1) {
+            return tooShortForSearch(text);
+        }
+        return citations == null;
+    }
+
     /** 找房场景的正常答复会列出房源与价格，过短即视为只回复了过程语 */
     private boolean tooShortForSearch(String text) {
         return text == null || text.replaceAll("\\s", "").length() < 40;
+    }
+
+    /**
+     * 非流式兜底：AiServices 以同步方式执行（工具调用可靠），拿到完整回答后按固定长度切片回放为 delta。
+     * 输出的仍然是模型的真实回答与真实工具结果，只是改变了传输方式。
+     */
+    private void syncRun(long sessionId, int scene, String userMessage, Callback callback) {
+        try {
+            String text = assistant().chatSync(sessionId, userMessage);
+            if (text == null) {
+                text = "";
+            }
+            for (int i = 0; i < text.length(); i += SYNC_CHUNK) {
+                callback.onToken(text.substring(i, Math.min(text.length(), i + SYNC_CHUNK)));
+            }
+            String citations = housingToolProvider.takeKnowledgeCitations(sessionId);
+            callback.onComplete(text, citations, text.contains("转接人工客服"));
+        } catch (Exception e) {
+            callback.onError(e);
+        }
     }
 
     private Assistant assistant() {
@@ -104,6 +148,7 @@ public class LlmAgent implements AgentEngine {
                 if (assistant == null) {
                     assistant = AiServices.builder(Assistant.class)
                             .streamingChatLanguageModel(llmGateway.streaming())
+                            .chatLanguageModel(llmGateway.chat())
                             .toolProvider(housingToolProvider)
                             .chatMemoryProvider(memoryId -> MessageWindowChatMemory.withMaxMessages(12))
                             .build();

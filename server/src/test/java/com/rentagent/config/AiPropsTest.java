@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-/** LLM 网关多后端解析优先级测试：active 指定 → 第一个有 Key 的命名后端 → 快捷单后端 → null（降级） */
+/** LLM 网关多后端解析优先级测试：active 指定 → 第一个有 Key 的命名后端 → 快捷单后端 → null（无可用后端，AI 能力报 4001） */
 class AiPropsTest {
 
     private AiProps.Backend backend(String protocol, String key, String model) {
@@ -18,7 +18,7 @@ class AiPropsTest {
     }
 
     @Test
-    void 无任何配置时返回null降级规则引擎() {
+    void 无任何配置时无可用后端() {
         assertNull(new AiProps().activeBackend());
     }
 

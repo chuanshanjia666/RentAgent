@@ -61,7 +61,7 @@ digraph system {
     d2 [label="Redis 7\n验证码 / 限流 / 热度", fillcolor="#e7f2e7", color="#5c9c5c", width=1.9];
     d3 [label="Redis Stack\n向量索引（RAG 升级位）", fillcolor="#e7f2e7", color="#5c9c5c", width=1.9];
     d4 [label="文件存储\n房源图片本地卷", fillcolor="#e7f2e7", color="#5c9c5c", width=1.9];
-    ex [label="大模型服务（HTTPS 出网）\n任意兼容模型（DeepSeek / Claude / GPT / GLM …）\n三协议适配 · 模型无关 · 超时降级 · 无 Key 降级规则引擎",
+    ex [label="大模型服务（HTTPS 出网）\n任意兼容模型（DeepSeek / Claude / GPT / GLM …）\n三协议适配 · 模型无关 · 未配置/调用失败即报错",
         fillcolor="#f7e7e7", color="#c07070", width=3.1];
     {rank=same; d1; d2; d3; d4; ex;}
   }

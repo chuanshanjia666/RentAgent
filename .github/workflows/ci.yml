@@ -124,7 +124,13 @@ jobs:
       JWT_SECRET: rentagent-ci-secret-key-0123456789abcdef0123456789abcdef
       AES_KEY: cmVudGFnZW50LWNpLWtleS0zMi1ieXRlcy1hYmNkZWY=
       BASE_URL: http://localhost:8080
-      # 本作业不注入任何 AI Key：验证「无 Key 时降级规则引擎」这一演示必备路径
+      # AI 通道：系统已移除全部模拟/规则兜底，AI 用例必须接真实模型。
+      # AGGREGATOR_API_KEY 为必填 Secret（Settings → Secrets and variables → Actions 新建）；
+      # 模型与端点可用同名 Secret 覆盖，未配置时回落到下面的默认演示取值。Key 不会出现在日志里。
+      AI_BACKEND: ${{ secrets.AI_BACKEND || 'commandcode-chat' }}
+      AGGREGATOR_BASE_URL: ${{ secrets.AGGREGATOR_BASE_URL || 'https://api.commandcode.ai/provider/v1' }}
+      AGGREGATOR_MODEL: ${{ secrets.AGGREGATOR_MODEL || 'deepseek/deepseek-v4.1-flash' }}
+      AGGREGATOR_API_KEY: ${{ secrets.AGGREGATOR_API_KEY }}
       # 注：UPLOAD_DIR 依赖 runner 上下文，只能写在步骤级 env（job 级 env 不提供 runner 上下文）
 
     steps:
@@ -141,39 +147,68 @@ jobs:
         run: |
           sudo apt-get -qq update
           sudo apt-get -qq install -y mysql-client
-          for i in $(seq 1 60); do
-            mysqladmin ping -h 127.0.0.1 -uroot -proot123456 --silent && break
-            sleep 2
+          # 注意：mysqladmin ping 在容器 init 阶段（临时实例）就会返回成功，此时库与授权可能尚未就绪，
+          # 所以建表语句本身必须重试；且不要把错误重定向到 /dev/null——否则失败会被静默吞掉，
+          # 后续表现为"后端启动报 Table doesn't exist"，排查成本很高。
+          for i in $(seq 1 30); do
+            if mysql -h 127.0.0.1 -uroot -proot123456 rentagent < docker/mysql-init/01_schema.sql; then
+              echo "建表成功（第 ${i} 次尝试）"
+              break
+            fi
+            echo "第 ${i} 次建表失败，5 秒后重试…"
+            sleep 5
           done
-          mysql -h 127.0.0.1 -uroot -proot123456 rentagent < docker/mysql-init/01_schema.sql
-          mysql -h 127.0.0.1 -uroot -proot123456 -N -e \
-            "select concat('表数量=', count(*)) from information_schema.tables where table_schema='rentagent'"
+          tables=$(mysql -h 127.0.0.1 -uroot -proot123456 -N -e \
+            "select count(*) from information_schema.tables where table_schema='rentagent'")
+          echo "rentagent 表数量=$tables"
+          [ "${tables:-0}" -ge 18 ] || { echo "建表未完成（期望 18 张表）"; exit 1; }
 
       - name: 构建后端可执行 jar
         run: mvn -B -ntp -DskipTests package
         working-directory: server
 
-      - name: 启动后端并等待就绪
+      - name: 启动后端并等待就绪（含演示种子数据）
         env:
           UPLOAD_DIR: ${{ runner.temp }}/rentagent-uploads
         run: |
           JAR=$(ls server/target/rentagent-server-*.jar | head -1)
           echo "启动 $JAR"
           nohup java -jar "$JAR" >/tmp/backend.log 2>&1 &
-          for i in $(seq 1 60); do
+          # 就绪判据必须查库：DataInitializer 是 CommandLineRunner + @Transactional，
+          # Web 端口（连带连接池）都先于种子提交就绪，只探 /ai/engine 会在空库首启时抢跑，
+          # 导致登录拿到 1002、后续用例连锁失败。故等 /houses 返回演示房源后再进入冒烟。
+          for i in $(seq 1 90); do
             if curl -sf "$BASE_URL/api/v1/ai/engine" >/dev/null; then
-              echo "后端就绪（等待 ${i} 次）"
-              curl -s "$BASE_URL/api/v1/ai/engine"; echo
-              exit 0
+              total=$(curl -sS "$BASE_URL/api/v1/houses?size=1" 2>/dev/null | jq -r '.data.total // 0' 2>/dev/null || echo 0)
+              if [ "${total:-0}" -ge 1 ] 2>/dev/null; then
+                echo "后端与演示种子数据就绪（第 ${i} 次探测，演示房源 ${total} 套）"
+                exit 0
+              fi
             fi
             sleep 2
           done
-          echo "后端启动超时，日志尾部："
+          echo "启动或种子数据写入超时，日志尾部："
           tail -80 /tmp/backend.log
           exit 1
 
       - name: 运行集成冒烟断言（scripts/ci-smoke.sh）
         run: bash scripts/ci-smoke.sh
+
+      # 反向门禁：另起一个不注入模型凭据的实例，验证「没有真实模型就直接报错」——
+      # 任何 AI 接口在无模型时若仍返回结果，说明兜底实现被重新引入，判定失败。
+      - name: 校验「未配置模型时 AI 能力硬报错」
+        env:
+          UPLOAD_DIR: ${{ runner.temp }}/rentagent-uploads-no-model
+          AI_BACKEND: ''
+          AGGREGATOR_MODEL: ''
+          AGGREGATOR_BASE_URL: ''
+          AGGREGATOR_API_KEY: ''
+        run: |
+          JAR=$(ls server/target/rentagent-server-*.jar | head -1)
+          SERVER_PORT=8081 nohup java -jar "$JAR" >/tmp/backend-no-model.log 2>&1 &
+          BASE_URL=http://localhost:8081 bash scripts/ci-no-model-check.sh || {
+            echo "无模型实例日志尾部："; tail -40 /tmp/backend-no-model.log; exit 1;
+          }
 
       - name: 失败时归档后端日志
         if: failure()
@@ -182,5 +217,6 @@ jobs:
           name: backend-runtime-log
           path: |
             /tmp/backend.log
+            /tmp/backend-no-model.log
             /tmp/ci_smoke_sse.txt
           if-no-files-found: ignore

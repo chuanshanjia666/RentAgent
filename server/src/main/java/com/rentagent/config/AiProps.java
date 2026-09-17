@@ -20,7 +20,7 @@ import java.util.Map;
  *   <li>命名多后端：ai.backends.&lt;name&gt;.* 注册多个后端，ai.active（环境变量 AI_BACKEND）选择，
  *       演示与评测时可一键切换厂商。</li>
  * </ol>
- * 生效后端无 api-key 时网关不可用，上层智能体自动降级为规则引擎（风险 R1 应对）。
+ * 生效后端无 api-key 时网关不可用：上层 AI 能力（对话与四项分析）一律返回 4001，不做本地兜底。
  */
 @Data
 @Component

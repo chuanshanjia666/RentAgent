@@ -111,7 +111,6 @@ export interface AdminChatMessage {
 export interface AdminChatDetail {
   session: AdminChatSession
   currentEngine: string
-  hasRuleEngineTurn: boolean
   systemPrompt: string
   messages: AdminChatMessage[]
   stats: {
@@ -120,7 +119,7 @@ export interface AdminChatDetail {
     toolCallCount: number
     totalTokens: number
     avgLatencyMs: number
-    tools: { name: string; count: number; avgLatencyMs: number; ruleEngine: boolean }[]
+    tools: { name: string; count: number; avgLatencyMs: number }[]
   }
   [key: string]: any
 }

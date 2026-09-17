@@ -34,7 +34,11 @@ http.interceptors.response.use(
   }
 )
 
-/** AI 对话 SSE：POST 流式读取，delta 事件逐字回调，done 事件收尾回调 */
+/**
+ * AI 对话 SSE：POST 流式读取，delta 事件逐字回调，done 事件收尾回调。
+ * 两类失败都要如实透出原因：① 响应不是事件流（如未配置模型时后端返回 {code:4001,message}）；
+ * ② 流中收到 {error} 载荷（模型调用失败）。
+ */
 export async function ssePost(
   path: string,
   body: unknown,
@@ -56,8 +60,14 @@ export async function ssePost(
     cbs.onError && cbs.onError('网络连接失败')
     return
   }
-  if (!resp.ok || !resp.body) {
-    cbs.onError && cbs.onError('连接智能助手失败（' + resp.status + '）')
+  const contentType = resp.headers ? resp.headers.get('content-type') || '' : ''
+  if (!resp.ok || !resp.body || !contentType.includes('text/event-stream')) {
+    let reason = '连接智能助手失败（' + resp.status + '）'
+    try {
+      const payload = await resp.json()
+      reason = payload.message || payload.error || reason
+    } catch (e) { /* 响应体不是 JSON，保留状态码提示 */ }
+    cbs.onError && cbs.onError(reason)
     return
   }
   const reader = resp.body.getReader()
@@ -73,7 +83,8 @@ export async function ssePost(
       if (!line.startsWith('data:')) continue
       try {
         const d = JSON.parse(line.slice(5))
-        if (d.delta !== undefined) cbs.onDelta && cbs.onDelta(d.delta)
+        if (d.error) cbs.onError && cbs.onError(d.error)
+        else if (d.delta !== undefined) cbs.onDelta && cbs.onDelta(d.delta)
         else cbs.onDone && cbs.onDone(d)
       } catch (e) { /* 忽略不完整行 */ }
     }

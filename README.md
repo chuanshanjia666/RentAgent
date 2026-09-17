@@ -7,7 +7,7 @@
 | 前端（final） | React 18 + TypeScript + Vite 5 + Ant Design 5 + ECharts（`frontend/`，一套代码两种分发：**浏览器 Web 版** + **Electron 桌面端**） |
 | 后端 | Spring Boot 3.x + MyBatis-Plus + LangChain4j + 自研 LLM 协议适配器（`server/`） |
 | 数据 | MySQL 8（18 张业务表）+ Redis Stack（缓存 / 向量检索预留） |
-| AI | **模型无关的 LLM 网关**：三协议适配（OpenAI Chat Completions / Anthropic Messages / OpenAI Responses），端点、模型、Key 全部可配置，换模型只改配置；当前演示通道经聚合网关接入 `deepseek/deepseek-v4.1-flash`；无可用 Key 自动降级内置规则引擎 |
+| AI | **模型无关的 LLM 网关**：三协议适配（OpenAI Chat Completions / Anthropic Messages / OpenAI Responses），端点、模型、Key 全部可配置，换模型只改配置；当前演示通道经聚合网关接入 `deepseek/deepseek-v4.1-flash`。**AI 能力必须接真实模型**：未配置模型或模型调用失败时统一返回 4001 并提示，不做任何规则/模拟兜底 |
 | 设计文档 | `doc/`（需求定义说明书、需求分析矩阵、概要设计说明 v1.5、数据库设计简介 v1.2 等） |
 | 演示原型 | `doc/02.需求分析/prototype/`（React 高保真原型，规则模拟 AI，无需后端） |
 
@@ -35,7 +35,7 @@ AI_BASE_URL=https://你的端点/v1 \
 AI_MODEL=你的模型名 mvn spring-boot:run
 # 方式三：切命名后端（yml 里预置了聚合网关 / DeepSeek / Claude / OpenAI 四条通道）
 AI_BACKEND=commandcode-chat AGGREGATOR_API_KEY=你的Key mvn spring-boot:run
-# 方式四：不配 Key —— 智能体自动降级为内置规则引擎，全功能可演示
+# 方式四：不配 Key —— AI 能力会明确报 4001（本系统不使用模拟/规则兜底，其余功能正常）
 mvn spring-boot:run
 ```
 

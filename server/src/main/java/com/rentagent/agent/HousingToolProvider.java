@@ -20,6 +20,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 工具提供器（NFR-05 可追溯）：注册方式等价于 {@code AiServices.tools(housingTools)}，
@@ -41,6 +42,14 @@ public class HousingToolProvider implements ToolProvider {
     /** @Tool 方法清单在启动后不变，只反射一次（按方法名排序，保证注册顺序稳定） */
     private volatile List<Method> toolMethods;
 
+    /**
+     * 会话最近一次知识库检索的引用（sessionId → refs JSON）。
+     * NFR-05 要求"合同/资金类回答必须附知识库来源"，而模型只会在正文里写"（来源：xxx）"，
+     * 结构化引用需要从这里取：{@link HousingTools#searchKnowledge} 的返回体本身就是引用数组，
+     * 与助手回复一起落库为 citations，前端据此展示来源卡片。
+     */
+    private final Map<Long, String> knowledgeCitations = new ConcurrentHashMap<>();
+
     @Override
     public ToolProviderResult provideTools(ToolProviderRequest request) {
         Map<ToolSpecification, ToolExecutor> tools = new LinkedHashMap<>();
@@ -58,12 +67,20 @@ public class HousingToolProvider implements ToolProvider {
         long sessionId = sessionOf(memoryId);
         try {
             String result = delegate.execute(req, memoryId);
+            if (sessionId > 0 && "searchKnowledge".equals(req.name()) && result != null) {
+                knowledgeCitations.put(sessionId, result);
+            }
             toolTraceService.record(sessionId, req.name(), req.arguments(), result, elapsed(start));
             return result;
         } catch (RuntimeException e) {
             toolTraceService.record(sessionId, req.name(), req.arguments(), errorJson(e), elapsed(start));
             throw e;
         }
+    }
+
+    /** 取走本会话最近一次知识库引用（读取即清除，不在内存里长期驻留） */
+    public String takeKnowledgeCitations(long sessionId) {
+        return knowledgeCitations.remove(sessionId);
     }
 
     private List<Method> methods() {

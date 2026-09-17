@@ -65,7 +65,7 @@ public class AiController {
         return chatService.send(id, req.content(), UserContext.userId());
     }
 
-    @Operation(summary = "当前智能体引擎（<协议>:<模型> / rule-engine）")
+    @Operation(summary = "当前智能体引擎（<协议>:<模型>；未配置模型时返回 4001）")
     @GetMapping("/engine")
     public R<Map<String, String>> engine() {
         return R.ok(Map.of("engine", chatService.engineName()));

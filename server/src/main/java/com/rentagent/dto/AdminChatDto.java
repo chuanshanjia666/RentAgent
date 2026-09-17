@@ -20,10 +20,9 @@ public class AdminChatDto {
     }
 
     /**
-     * @param currentEngine     查看时刻生效的引擎（历史消息未逐条快照引擎，故不代表本会话当时的引擎）
-     * @param hasRuleEngineTurn 本会话是否含规则引擎（无模型 Key 降级）的回复，据工具留痕判定
+     * @param currentEngine 查看时刻生效的引擎（历史消息未逐条快照引擎，故不代表本会话当时的引擎）
      */
-    public record DetailVO(SessionVO session, String currentEngine, Boolean hasRuleEngineTurn,
+    public record DetailVO(SessionVO session, String currentEngine,
                            String systemPrompt, List<MessageVO> messages, StatsVO stats) {
     }
 

@@ -43,7 +43,7 @@ public class HousingTools {
         }
     }
 
-    /** 房源卡片 JSON（工具返回体；规则引擎复用同一形状，保证两种引擎的留痕可比对） */
+    /** 房源卡片 JSON（工具返回体，同时作为工具留痕的 tool_result 落库） */
     public String cardsJson(List<House> houses) {
         List<Map<String, Object>> cards = houses.stream().map(h -> {
             Map<String, Object> card = new HashMap<>();

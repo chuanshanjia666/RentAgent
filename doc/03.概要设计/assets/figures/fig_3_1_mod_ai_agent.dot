@@ -49,12 +49,12 @@ LangChain4j AiServices 编排
 工具注册表（@Tool 扫描）
 记忆窗口 + 摘要压缩",
          fillcolor="#f3e2f7", color="#9b6fb0"];
-    mck [label="MockAgent（降级）
-无有效 Key 时启用
-意图解析 + 状态化话术
-仍调用真实房源检索工具",
+    ajc [label="AiJsonClient（结构化模型调用）
+定价 / 检测 / 解读 / 识别填充
+提示词 AiPrompts → 模型 JSON → 校验
+不合规重试一次，仍失败报 4001",
          fillcolor="#f3e2f7", color="#9b6fb0"];
-    {rank=same; llm; mck;}
+    {rank=same; llm; ajc;}
   }
 
   subgraph cluster_gw {
@@ -62,8 +62,8 @@ LangChain4j AiServices 编排
     style="rounded,filled"; fillcolor="#fdfaf6"; color="#b08a5c"; margin=10;
     gw [label="LlmGateway
 按 AI_BACKEND 选择后端 → available() / chat()
-　　　　　　　　　　/ streaming() / chatOnce()
-超时 60 秒 · 异常降级 · describe() 上报后端",
+　　　　　　　　　　/ streaming() / describe()
+超时 60 秒 · 未配置模型即报 4001",
         fillcolor="#f7f0e6", color="#b08a5c", width=4.6];
     p1 [label="openai-chat-completions
 通用协议（多厂商/网关兼容）", fillcolor="#f7e7e7", color="#c07070"];
@@ -103,10 +103,10 @@ Redis：会话缓存　|　外部：大模型服务 HTTPS 出网",
   ui -> ctrl;
   ctrl -> chat; ctrl -> kb; ctrl -> ana;
   chat -> api; kb -> api; ana -> api;
-  api -> llm [label="启用"]; api -> mck [label="降级"];
-  llm -> gw [label="模型调用"]; llm -> prov [label="工具提供器"];
+  api -> llm; api -> ajc [label="分析类能力"];
+  llm -> gw [label="流式调用"]; llm -> prov [label="工具提供器"];
   prov -> tools [label="委托执行"]; prov -> trace [label="工具留痕"];
-  mck -> tools [label="规则引擎"]; mck -> trace [label="规则引擎留痕"];
+  ajc -> gw [label="同步模型"];
   tools -> rag [style=dotted, label="客服意图"];
   gw -> p1; gw -> p2; gw -> p3;
   tools -> data; ana -> data; chat -> data; kb -> data; trace -> data;

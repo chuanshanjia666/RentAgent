@@ -50,7 +50,8 @@ login() { req POST /auth/login - "$(jq -nc --arg u "$1" '{username:$u,password:"
 # req <方法> <路径> <token|-> [JSON 体]
 req() {
   local method="$1" path="$2" token="$3" body="${4:-}"
-  local args=(-sS -X "$method" "$BASE$path" -H 'Content-Type: application/json')
+  # -m：模型类接口单次调用数秒到数十秒，给 60s 安全网，避免脚本卡死
+  local args=(-sS -m 60 -X "$method" "$BASE$path" -H 'Content-Type: application/json')
   [[ "$token" != "-" ]] && args+=(-H "Authorization: Bearer $token")
   [[ -n "$body" ]] && args+=(-d "$body")
   curl "${args[@]}"
@@ -68,6 +69,66 @@ req_q() {
 
 command -v jq >/dev/null || { echo "缺少 jq"; exit 2; }
 date -d '+1 day' +%F >/dev/null 2>&1 || { echo "date 需支持 -d（GNU coreutils）"; exit 2; }
+
+# 打印结论并按门禁约定退出（失败 1）
+finish() {
+  printf '\n\033[1m集成冒烟结果：通过 %d 条，失败 %d 条\033[0m\n' "$PASS" "$FAIL"
+  if ((FAIL > 0)); then
+    printf '\033[31m存在失败断言，流水线判定不通过\033[0m\n'
+    exit 1
+  fi
+  printf '\033[32m全部断言通过\033[0m\n'
+}
+
+# 关键前置值守卫：缺失说明上游步骤已失败，立即给结论，避免后续 jq 抛解析错误掩盖真实原因
+require_id() { # require_id <说明> <值>
+  if [[ -z "$2" || "$2" == "null" ]]; then
+    no "$1 未取得，后续依赖用例无法执行（原因见上方失败断言）"
+    finish
+  fi
+}
+
+# 等待后端完成演示种子写入（本地与 CI 通用）。
+# 必要性：DataInitializer 是 CommandLineRunner + @Transactional，Web 端口与数据库连接池都先于种子提交就绪，
+# 空库首启时存在「接口能响应、但账号尚未落库」的窗口（本机实测约 0.6s，CI 冷容器下可达数秒）。
+# 此时登录会拿到 1002 并产生空 token，后续用例连锁失败——所以门禁必须先等数据。
+# 判据用不鉴权的 /houses（查库）：demo 库为空即视为未就绪。
+wait_for_seed() {
+  local tries="${SEED_WAIT_TRIES:-45}" total i
+  printf '  等待后端与演示数据就绪（空库首启需先灌种子数据）'
+  for ((i = 1; i <= tries; i++)); do
+    total=$(curl -sS -m 5 "$BASE/houses?size=1" 2>/dev/null | jq -r '.data.total // empty' 2>/dev/null || true)
+    if [[ "$total" =~ ^[0-9]+$ ]] && ((total >= 1)); then
+      printf '\r\033[32m✓\033[0m 后端与演示数据就绪（第 %d 次探测，演示房源 %s 套）\n' "$i" "$total"
+      return 0
+    fi
+    printf '.'
+    sleep 2
+  done
+  printf '\n\033[31m✗\033[0m 等待演示数据超时（%d 秒内 /houses 仍为空）\n' "$((tries * 2))"
+  printf '  排查：数据库须为空库且已执行 docker/mysql-init/01_schema.sql；后端日志应出现「演示种子数据写入完成」。\n'
+  exit 2
+}
+
+# 大模型接入前置检查（本系统不做任何模拟/规则兜底：没接上真实模型就不该跑 AI 用例）
+wait_for_model() {
+  local engine code
+  engine=$(curl -sS -m 15 "$BASE/ai/engine" 2>/dev/null | jq -r '.data.engine // empty' 2>/dev/null || true)
+  if [[ -n "$engine" && "$engine" != "none" ]]; then
+    printf '  \033[32m✓\033[0m 大模型通道就绪（%s）\n' "$engine"
+    return 0
+  fi
+  code=$(curl -sS -m 15 "$BASE/ai/engine" 2>/dev/null | jq -r '.code // empty' 2>/dev/null || true)
+  printf '\n\033[31m✗\033[0m 未接入可用大模型（GET /ai/engine → code=%s）\n' "${code:-无响应}"
+  printf '  本系统已移除全部模拟实现：AI 对话与四项 AI 分析必须接真实模型，缺模型即报 4001。\n'
+  printf '  本地：用 server/run-dev.sh 启动，或自行 export AI_API_KEY / AGGREGATOR_API_KEY 等凭据。\n'
+  printf '  CI：仓库 Settings → Secrets and variables → Actions 配置 AGGREGATOR_API_KEY\n'
+  printf '      （模型与端点可选：AGGREGATOR_MODEL / AGGREGATOR_BASE_URL / AI_BACKEND）。\n'
+  exit 2
+}
+
+wait_for_seed
+wait_for_model
 
 # ── 1. 登录与鉴权基线 ──────────────────────────────────────────
 say "1. 登录与鉴权基线"
@@ -100,6 +161,7 @@ expect_eq "面积非法被参数校验拦截" "$(code_of "$(req POST /houses "$T
 
 HOUSE_RESP=$(req POST /houses "$T_LI" "$(jq -nc '{title:"冒烟测试房源 近地铁精装一居",community:"凌水小镇",city:"大连市",district:"甘井子区",address:"黄浦路 50 号",layout:"1室1厅",area:45,rent:2100,depositType:"押一付三",facilities:["近地铁","精装修"],description:"冒烟与集成测试专用房源，近软件园地铁站，精装修家电齐全，周边配套成熟，适合上班族长期租住。",lng:121.5268,lat:38.8718,images:[]}')")
 HID=$(data_of "$HOUSE_RESP" | jq -r '.id // empty')
+require_id "发布房源返回的 houseId" "$HID"
 expect_eq "已实名房东发布房源" "$(code_of "$HOUSE_RESP")" "0"
 expect_eq "新发布房源初始为待审核" "$(data_of "$HOUSE_RESP" | jq -r '.status')" "0"
 expect_eq "待审核房源对匿名访客不可见" "$(code_of "$(req GET "/houses/$HID" -)")" "2001"
@@ -154,6 +216,7 @@ say "4. FR-17 看房预约"
 APPT_TIME=$(date -d "+$((RANDOM % 20 + 2)) day +$((RANDOM % 600)) minute" '+%Y-%m-%dT%H:%M:00')
 APPT_RESP=$(req POST /appointments "$T_TENANT" "$(jq -nc --argjson h "$HID" --arg t "$APPT_TIME" '{houseId:$h,appointmentTime:$t,remark:"想看看房"}')")
 APPT_ID=$(data_of "$APPT_RESP" | jq -r '.id // empty')
+require_id "创建预约返回的 appointmentId" "$APPT_ID"
 expect_eq "租客创建预约" "$(code_of "$APPT_RESP")" "0"
 expect_eq "预约初始为待确认" "$(data_of "$APPT_RESP" | jq -r '.status')" "0"
 expect_eq "同房源同时段重复预约冲突" "$(code_of "$(req POST /appointments "$T_TENANT" "$(jq -nc --argjson h "$HID" --arg t "$APPT_TIME" '{houseId:$h,appointmentTime:$t}')")")" "3001"
@@ -173,6 +236,7 @@ expect_eq "租期非法（起止相同）被拒" "$(code_of "$(req POST /contrac
 
 CONTRACT_RESP=$(req POST /contracts "$T_TENANT" "$BODY_C")
 CID=$(data_of "$CONTRACT_RESP" | jq -r '.id // empty')
+require_id "创建合同返回的 contractId" "$CID"
 expect_eq "租客发起签约" "$(code_of "$CONTRACT_RESP")" "0"
 expect_eq "合同初始为待租客确认" "$(data_of "$CONTRACT_RESP" | jq -r '.status')" "0"
 expect_eq "同房源同租客不可重复发起" "$(code_of "$(req POST /contracts "$T_TENANT" "$BODY_C")")" "3003"
@@ -181,6 +245,7 @@ expect_eq "租客签署后待房东确认" "$(req PATCH "/contracts/$CID" "$T_TE
 
 SIGN=$(req PATCH "/contracts/$CID" "$T_LI" '{"action":"sign"}')
 OID=$(data_of "$SIGN" | jq -r '.orderId // empty')
+require_id "合同生效派生订单 orderId" "$OID"
 expect_eq "房东签署后合同生效" "$(data_of "$SIGN" | jq -r '.status')" "2"
 expect_true "合同生效派生订单 id" "$([[ -n "$OID" && "$OID" != "null" ]] && echo 0 || echo 1)"
 expect_eq "生效后房源置为已出租" "$(req GET "/houses/$HID" - | jq -r '.data.house.status')" "5"
@@ -197,6 +262,7 @@ expect_eq "非订单相关方不可查看账单" "$(code_of "$(req GET "/orders/
 expect_eq "房东（非承租人）不可支付账单" "$(code_of "$(req PATCH "/bills/$(data_of "$BILLS" | jq -r '.[0].id')/pay" "$T_LI")")" "1007"
 
 BILL1=$(data_of "$BILLS" | jq -r '.[0].id')
+require_id "首期账单 id" "$BILL1"
 expect_eq "租客支付首期账单" "$(code_of "$(req PATCH "/bills/$BILL1/pay" "$T_TENANT")")" "0"
 expect_eq "已支付账单不可重复支付" "$(code_of "$(req PATCH "/bills/$BILL1/pay" "$T_TENANT")")" "1000"
 
@@ -213,39 +279,54 @@ expect_eq "同一订单不可重复评价" "$(code_of "$(req POST /reviews "$T_T
 expect_ge "房源评价列表回填" "$(req GET "/houses/$HID/reviews" - | jq -r '.data.total')" "1"
 
 # ── 6. FR-11/14/15/16 AI 与推荐（规则引擎） ─────────────────────
-say "7. FR-11 推荐与 FR-14/15/16 AI 能力"
+say "7. FR-11 推荐与 FR-08/14/15/16 AI 能力（真实模型）"
 REC1=$(req GET '/recommendations?limit=10' "$T_TENANT" | jq -c '[.data[].id]')
 REC2=$(req GET '/recommendations?limit=10' "$T_TENANT" | jq -c '[.data[].id]')
 expect_true "FR-11 推荐位返回房源" "$([[ "$REC1" != "[]" ]] && echo 0 || echo 1)"
 expect_eq "FR-11 同一用户 24 小时内推荐列表前 10 项重合（验收口径 ≥60%）" "$REC1" "$REC2"
 
+expect_match "AI 引擎标识为真实模型（<协议>:<模型>）" \
+  "$(req GET /ai/engine - | jq -r '.data.engine')" '^[a-z0-9-]+:.+$'
+
 INTERP=$(req POST "/contracts/$CID/interpret" "$T_TENANT")
-expect_eq "FR-14 合同智能解读" "$(code_of "$INTERP")" "0"
+expect_eq "FR-14 合同智能解读（真模型）" "$(code_of "$INTERP")" "0"
 expect_ge "FR-14 逐条解读条款数" "$(data_of "$INTERP" | jq -r '.items | length')" "5"
 expect_ge "FR-14 风险条款命中数（示范合同含押金不退/违约金等样例）" \
-  "$(data_of "$INTERP" | jq -r '[.items[] | select(.risk)] | length')" "2"
+  "$(data_of "$INTERP" | jq -r '[.items[] | select(.risk)] | length')" "1"
+expect_true "FR-14 每条解读都有通俗解释且标注风险布尔值" \
+  "$(data_of "$INTERP" | jq -r 'if ([.items[] | select((.explanation | length) < 10 or (.risk | type) != "boolean")] | length) == 0 then 0 else 1 end')"
 expect_true "FR-14/NFR-05 解读附带免责声明" \
   "$(data_of "$INTERP" | jq -r 'if .disclaimer | test("仅供参考") then 0 else 1 end')"
+expect_match "FR-14 解读结果标注真实引擎" "$(data_of "$INTERP" | jq -r '.model')" '^[a-z0-9-]+:.+$'
 expect_eq "FR-14 非合同双方不可解读" "$(code_of "$(req POST "/contracts/$CID/interpret" "$T_WANG")")" "1007"
 
-expect_eq "AI 引擎标识（无 Key 时降级规则引擎）" "$(req GET /ai/engine - | jq -r '.data.engine')" "rule-engine"
-
 PRICING=$(req POST "/ai/houses/$HID/pricing-suggestion" "$T_LI")
-expect_eq "房东获取智能定价建议" "$(code_of "$PRICING")" "0"
-expect_ge "定价样本量（同小区不足 3 条时回退同区域同户型）" "$(data_of "$PRICING" | jq -r '.sampleCount')" "1"
-expect_true "定价区间与均价均非空" "$(data_of "$PRICING" | jq -r 'if .low and .high and .avg then 0 else 1 end')"
-expect_eq "定价结果标注引擎" "$(data_of "$PRICING" | jq -r '.model')" "rule-engine"
-expect_eq "非房源所有者不可获取定价建议" "$(code_of "$(req POST "/ai/houses/$HID/pricing-suggestion" "$T_WANG")")" "1007"
+expect_eq "FR-15 房东获取智能定价建议（真模型）" "$(code_of "$PRICING")" "0"
+expect_ge "FR-15 定价样本量（同小区不足 3 条时回退同区域同户型）" "$(data_of "$PRICING" | jq -r '.sampleCount')" "1"
+expect_true "FR-15 区间与依据均返回，且 low ≤ high" \
+  "$(data_of "$PRICING" | jq -r 'if (.low | type == "number") and (.high | type == "number")
+      and (.low <= .high) and (.basis | length) > 0 then 0 else 1 end')"
+expect_match "FR-15 定价结果标注真实引擎" "$(data_of "$PRICING" | jq -r '.model')" '^[a-z0-9-]+:.+$'
+expect_eq "FR-15 非房源所有者不可获取定价建议" "$(code_of "$(req POST "/ai/houses/$HID/pricing-suggestion" "$T_WANG")")" "1007"
 
 DETECT=$(req POST "/admin/houses/$HID/fake-detect" "$T_ADMIN")
-expect_eq "管理员执行虚假房源检测" "$(code_of "$DETECT")" "0"
-expect_true "检测结果含风险分与处置建议" \
-  "$(data_of "$DETECT" | jq -r 'if (.riskScore | type == "number") and (.suggestion | length > 0) then 0 else 1 end')"
+expect_eq "FR-16 管理员执行虚假房源检测（真模型）" "$(code_of "$DETECT")" "0"
+expect_true "FR-16 风险分在 0~100 且有疑点数组与处置建议" \
+  "$(data_of "$DETECT" | jq -r 'if (.riskScore | type == "number") and .riskScore >= 0 and .riskScore <= 100
+      and (.suspicions | type == "array") and (.suggestion | length) > 0 then 0 else 1 end')"
+expect_match "FR-16 检测结果标注真实引擎" "$(data_of "$DETECT" | jq -r '.model')" '^[a-z0-9-]+:.+$'
+
+FILL=$(req POST /ai/assist-fill "$T_LI" '{"title":"近地铁精装高层两居","community":"软件园公寓","layout":"2室1厅","imageFileName":"IMG_0021.jpg"}')
+expect_eq "FR-08 房源信息智能识别填充（真模型）" "$(code_of "$FILL")" "0"
+expect_true "FR-08 返回描述、朝向、楼层与设施标签" \
+  "$(data_of "$FILL" | jq -r 'if (.description | length) >= 20 and (.orientation | length) > 0
+      and (.floorDesc | length) > 0 and (.facilities | type == "array") and (.facilities | length) > 0 then 0 else 1 end')"
 
 # ── 7. FR-21 通知与数据看板 ────────────────────────────────────
 say "8. FR-21 通知与数据看板"
 expect_ge "房东未读通知数（审核/预约/签约/账单/评价触发）" "$(req GET /notifications/unread-count "$T_LI" | jq -r '.data')" "1"
-NID=$(req GET '/notifications?onlyUnread=true&size=1' "$T_LI" | jq -r '.data.list[0].id')
+NID=$(req GET '/notifications?onlyUnread=true&size=1' "$T_LI" | jq -r '.data.list[0].id // empty')
+require_id "未读通知 id" "$NID"
 expect_eq "FR-21 标记通知已读" "$(code_of "$(req PATCH "/notifications/$NID/read" "$T_LI")")" "0"
 expect_eq "FR-21 标记他人通知已读被拒" "$(code_of "$(req PATCH "/notifications/$NID/read" "$T_WANG")")" "1007"
 DASH=$(req GET '/admin/dashboard?granularity=day' "$T_ADMIN")
@@ -254,9 +335,10 @@ expect_true "看板含用户/房源/在租/订单/AI 指标" \
   "$(data_of "$DASH" | jq -r 'if has("userCount") and has("houseCount") and has("rentedCount") and has("orderCount") and has("chatCount") and has("toolCallCount") then 0 else 1 end')"
 
 # ── 8. FR-12/13 AI 对话、解析口径与工具留痕（NFR-05） ───────────
-say "9. FR-12/13 AI 对话、解析口径与工具留痕"
-SID=$(req POST /ai/sessions "$T_TENANT" '{"scene":1}' | jq -r '.data.id')
-curl -sS -N -X POST "$BASE/ai/sessions/$SID/messages" \
+say "9. FR-12/13 AI 对话（真实模型）与工具留痕"
+SID=$(req POST /ai/sessions "$T_TENANT" '{"scene":1}' | jq -r '.data.id // empty')
+require_id "AI 会话 id" "$SID"
+curl -sS -m 180 -N -X POST "$BASE/ai/sessions/$SID/messages" \
   -H "Authorization: Bearer $T_TENANT" -H 'Content-Type: application/json' \
   -d "$(jq -nc '{content:"预算2500以内，要一居室，近地铁"}')" >/tmp/ci_smoke_sse.txt
 DELTA_HITS=$(grep -c '"delta"' /tmp/ci_smoke_sse.txt || true)
@@ -264,38 +346,41 @@ DONE_HITS=$(grep -c '"messageId"' /tmp/ci_smoke_sse.txt || true)
 expect_true "SSE 流式消息返回 delta 与 done 事件" \
   "$([[ "$DELTA_HITS" -ge 1 && "$DONE_HITS" -ge 1 ]] && echo 0 || echo 1)"
 
-# 逐字 delta 需按序拼接后才能校验整句解析结果
+# 逐字 delta 需按序拼接后才能校验整段回答
 REPLY=$(sed -n 's/^data: *//p' /tmp/ci_smoke_sse.txt | jq -r '.delta // empty' 2>/dev/null | tr -d '\n')
-expect_true "FR-12 自然语言解析：预算 2500 元内" "$([[ "$REPLY" == *"预算 2500 元内"* ]] && echo 0 || echo 1)"
-expect_true "FR-12 自然语言解析：一居室 → 1室" "$([[ "$REPLY" == *"1室"* ]] && echo 0 || echo 1)"
-expect_true "FR-12 自然语言解析：近地铁" "$([[ "$REPLY" == *"近地铁"* ]] && echo 0 || echo 1)"
-expect_true "FR-12 回复含房源推荐列表" "$([[ "$REPLY" == *"为您推荐"* ]] && echo 0 || echo 1)"
+expect_true "FR-12 助手返回非空回答（真实模型流式输出）" "$([[ ${#REPLY} -ge 20 ]] && echo 0 || echo 1)"
+expect_true "FR-12 回答未走失败兜底文案" \
+  "$([[ "$REPLY" == *"智能助手调用失败"* ]] && echo 1 || echo 0)"
 
 TRACE=$(req GET "/admin/chats/$SID" "$T_ADMIN")
 expect_eq "管理员查看会话轨迹" "$(code_of "$TRACE")" "0"
 expect_eq "会话轮次统计（1 轮用户消息）" "$(data_of "$TRACE" | jq -r '.stats.roundCount')" "1"
-expect_ge "工具调用留痕（规则引擎 searchHouses）" "$(data_of "$TRACE" | jq -r '.stats.toolCallCount')" "1"
-expect_eq "留痕工具名与检索工具一致" "$(data_of "$TRACE" | jq -r '.stats.tools[0].name')" "searchHouses"
+expect_ge "工具调用留痕（真实模型调用工具）" "$(data_of "$TRACE" | jq -r '.stats.toolCallCount')" "1"
+expect_true "FR-12 模型实际调用了 searchHouses 工具（而非凭空作答）" \
+  "$(data_of "$TRACE" | jq -r 'if ([.stats.tools[].name] | index("searchHouses")) != null then 0 else 1 end')"
 expect_ge "审计视图全站会话数" "$(req GET '/admin/chats?size=1' "$T_ADMIN" | jq -r '.data.total')" "1"
 expect_eq "非会话所有者不可读取会话历史" "$(code_of "$(req GET "/ai/sessions/$SID/history" "$T_WANG")")" "4002"
 
 # FR-13 智能客服：知识库命中附来源（NFR-05），未命中礼貌转人工
 SID2=$(req POST /ai/sessions "$T_TENANT" '{"scene":2}' | jq -r '.data.id')
-curl -sS -N -X POST "$BASE/ai/sessions/$SID2/messages" \
+curl -sS -m 180 -N -X POST "$BASE/ai/sessions/$SID2/messages" \
   -H "Authorization: Bearer $T_TENANT" -H 'Content-Type: application/json' \
   -d "$(jq -nc '{content:"押金怎么退，什么情况会被扣"}')" >/tmp/ci_smoke_sse_kb.txt
 KB_REPLY=$(sed -n 's/^data: *//p' /tmp/ci_smoke_sse_kb.txt | jq -r '.delta // empty' 2>/dev/null | tr -d '\n')
-expect_true "FR-13 知识库命中并给出回答" "$([[ "$KB_REPLY" == *"根据平台知识库"* ]] && echo 0 || echo 1)"
+expect_true "FR-13 客服返回非空回答" "$([[ ${#KB_REPLY} -ge 20 ]] && echo 0 || echo 1)"
+KB_TRACE=$(req GET "/admin/chats/$SID2" "$T_ADMIN")
+expect_true "FR-13 模型实际调用了 searchKnowledge 工具" \
+  "$(data_of "$KB_TRACE" | jq -r 'if ([.stats.tools[].name] | index("searchKnowledge")) != null then 0 else 1 end')"
 expect_ge "NFR-05 客服回答附带知识库来源引用" \
   "$(sed -n 's/^data: *//p' /tmp/ci_smoke_sse_kb.txt | jq -rs '[.[] | select(.citations != null) | .citations | length] | max // 0' 2>/dev/null | tr -d '\n')" "1"
 
 # 该问法刻意与知识库无 2 字滑窗关键词交集（KbService 按 2 字窗口检索），保证走「未命中转人工」分支
 SID3=$(req POST /ai/sessions "$T_TENANT" '{"scene":2}' | jq -r '.data.id')
-curl -sS -N -X POST "$BASE/ai/sessions/$SID3/messages" \
+curl -sS -m 180 -N -X POST "$BASE/ai/sessions/$SID3/messages" \
   -H "Authorization: Bearer $T_TENANT" -H 'Content-Type: application/json' \
   -d "$(jq -nc '{content:"比特币可以直接用来交房租吗"}')" >/tmp/ci_smoke_sse_miss.txt
 MISS_REPLY=$(sed -n 's/^data: *//p' /tmp/ci_smoke_sse_miss.txt | jq -r '.delta // empty' 2>/dev/null | tr -d '\n')
-expect_true "FR-13 知识库未命中时礼貌转人工" "$([[ "$MISS_REPLY" == *"转接人工客服"* ]] && echo 0 || echo 1)"
+expect_true "FR-13 知识库未命中时礼貌转人工" "$([[ "$MISS_REPLY" == *"人工客服"* ]] && echo 0 || echo 1)"
 
 # ── 9. FR-03 实名认证（含身份证脱敏回归） ───────────────────────
 say "10. FR-03 实名认证与身份证脱敏"
@@ -304,6 +389,7 @@ expect_eq "获取演示验证码" "$(code_of "$(req POST /auth/captcha - "$(jq -
 REG=$(req POST /auth/register - "$(jq -nc --arg p "$PHONE" '{phone:$p,captcha:"246810",password:"123456",role:2,nickname:"冒烟房东"}')")
 T_NEW=$(data_of "$REG" | jq -r '.token // empty')
 NEW_UID=$(data_of "$REG" | jq -r '.userId // empty')
+require_id "新注册用户 userId" "$NEW_UID"
 NEW_PHONE="$PHONE"
 expect_eq "注册房东并自动登录" "$(code_of "$REG")" "0"
 expect_eq "未提交实名时查询返回空" "$(req GET /users/me/realname "$T_NEW" | jq -c '.data')" "null"
@@ -313,7 +399,8 @@ expect_match "身份证号脱敏展示（AES-GCM 解密回归）" "$MASKED" '^[0
 
 # ── 11. FR-22/23 用户管理与内容审核 ────────────────────────────
 say "11. FR-22/23 用户管理与内容审核"
-ADMIN_ID=$(req GET '/admin/users?keyword=admin&size=5' "$T_ADMIN" | jq -r '[.data.list[] | select(.username == "admin")][0].id')
+ADMIN_ID=$(req GET '/admin/users?keyword=admin&size=5' "$T_ADMIN" | jq -r '[.data.list[] | select(.username == "admin")][0].id // empty')
+require_id "管理员用户 id" "$ADMIN_ID"
 expect_true "FR-22 后台用户检索命中管理员账号" "$([[ -n "$ADMIN_ID" && "$ADMIN_ID" != "null" ]] && echo 0 || echo 1)"
 expect_eq "FR-22 不可禁用管理员账号" "$(code_of "$(req PATCH "/admin/users/$ADMIN_ID/status?enabled=false" "$T_ADMIN")")" "1007"
 expect_eq "FR-22 禁用普通用户" "$(code_of "$(req PATCH "/admin/users/$NEW_UID/status?enabled=false" "$T_ADMIN")")" "0"
@@ -324,6 +411,7 @@ expect_eq "FR-22 禁用不存在的用户" "$(code_of "$(req PATCH '/admin/users
 
 REPORT=$(req POST /reports "$T_TENANT" "$(jq -nc --argjson h "$HID" '{targetType:1,targetId:$h,reason:"疑似虚假房源，租金明显偏低"}')")
 RID=$(data_of "$REPORT" | jq -r '.id // empty')
+require_id "举报 id" "$RID"
 expect_eq "FR-23 租客提交举报" "$(code_of "$REPORT")" "0"
 expect_ge "FR-23 管理员举报列表含该举报" "$(req GET '/admin/reports?status=-1&size=20' "$T_ADMIN" | jq -r '.data.total')" "1"
 expect_eq "FR-23 管理员处理举报" "$(code_of "$(req PATCH "/admin/reports/$RID/handle" "$T_ADMIN" '{"remark":"已核实处理"}')")" "0"
@@ -332,9 +420,4 @@ expect_eq "FR-23 处理不存在的举报" "$(code_of "$(req PATCH '/admin/repor
 expect_ge "FR-23 审核留痕（操作日志）" "$(req GET '/admin/audits?size=20' "$T_ADMIN" | jq -r '.data.total')" "1"
 
 # ── 结果 ──────────────────────────────────────────────────────
-printf '\n\033[1m集成冒烟结果：通过 %d 条，失败 %d 条\033[0m\n' "$PASS" "$FAIL"
-if ((FAIL > 0)); then
-  printf '\033[31m存在失败断言，流水线判定不通过\033[0m\n'
-  exit 1
-fi
-printf '\033[32m全部断言通过\033[0m\n'
+finish

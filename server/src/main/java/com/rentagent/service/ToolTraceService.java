@@ -13,8 +13,7 @@ import java.util.Map;
 /**
  * 工具调用留痕（NFR-05 可追溯）：智能体每调用一次工具，就写入一条 role=3 的消息，
  * 后台"AI 对话审计"据此回放工具链（工具名 / 入参 / 返回 / 耗时）。
- * 真模型经 {@code HousingToolProvider} 自动留痕，规则引擎在 MockAgent 内显式留痕。
- * 留痕失败只告警，不影响对话主流程。
+ * 留痕由 {@code HousingToolProvider} 在每次工具执行时自动完成；留痕失败只告警，不影响对话主流程。
  */
 @Slf4j
 @Service
@@ -29,17 +28,11 @@ public class ToolTraceService {
 
     /** 记录一次工具调用（入参/返回为 JSON 字符串，可为 null） */
     public void record(long sessionId, String toolName, String argsJson, String resultJson, int latencyMs) {
-        record(sessionId, toolName, argsJson, resultJson, latencyMs, false);
-    }
-
-    /** @param ruleEngine true 表示规则引擎（无模型 Key 降级）中的等价调用，视图上标注来源 */
-    public void record(long sessionId, String toolName, String argsJson, String resultJson, int latencyMs,
-                       boolean ruleEngine) {
         try {
             AiChatMessage m = new AiChatMessage();
             m.setSessionId(sessionId);
             m.setRole(3);
-            m.setContent("调用工具 " + toolName + (ruleEngine ? "（规则引擎）" : ""));
+            m.setContent("调用工具 " + toolName);
             m.setToolName(toolName);
             m.setToolArgs(normalize(argsJson));
             m.setToolResult(normalize(resultJson));

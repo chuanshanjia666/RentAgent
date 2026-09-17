@@ -13,8 +13,9 @@
 
 1. **每次推送/PR 都跑得动**：单次流水线目标 10 分钟量级，不依赖任何付费服务或私有凭据。
 2. **三层门禁，逐层加严**：静态/单元（秒级）→ 构建（分钟级）→ 集成冒烟（全栈，~2 分钟）。
-3. **零密钥可跑**：不注入任何大模型 Key，正好验证"无 Key 时降级规则引擎"这一演示必备路径；
-   需要真实模型的评测另行人工执行（见《测试用例设计》第七节遗留项 8）。
+3. **AI 全部走真实模型**：系统已移除全部模拟/规则兜底，AI 用例必须接入真实模型——
+   CI 通过 **GitHub Secrets** 注入模型凭据（Key 只进环境变量、不进日志），
+   同时用反向门禁校验"没有模型时必须报错"，两条约束一起保证"不会偷偷降级"。
 4. **本地与 CI 同源**：CI 调用的就是开发者本地用的命令与脚本，不写第二套逻辑。
 
 | 门禁 | 命令 | 拦截什么 |
@@ -22,7 +23,8 @@
 | 后端单元测试 | `mvn -B -ntp test`（148 条） | 业务状态机、权限、金额/日期计算、加解密回归 |
 | 前端单测 | `npm test`（vitest，20 条） | 运行时地址解析、状态字典、SSE 流式解析 |
 | 前端类型与构建 | `npm run build:web`（`tsc --noEmit` + vite） | TS 严格模式下的类型错误、构建失败 |
-| 集成冒烟 | `bash scripts/ci-smoke.sh`（121 条断言） | 跨模块业务闭环、真实 MySQL/Redis 语义、鉴权链路、降级路径 |
+| 集成冒烟 | `bash scripts/ci-smoke.sh`（125 条断言） | 跨模块业务闭环、真实 MySQL/Redis 语义、鉴权链路、**真实模型**的工具调用与引用来源 |
+| 反向门禁 | `bash scripts/ci-no-model-check.sh`（6 条断言） | "未配置模型时 AI 能力必须硬报错"——防止模拟/规则兜底被重新引入 |
 
 ---
 
@@ -66,11 +68,41 @@
 | 服务容器 | `mysql:8.0`（库/账号与 `docker-compose.yml` 一致，含 healthcheck）与 `redis:7` |
 | 初始化库 | 安装 `mysql-client` → 等 MySQL 就绪 → 执行 `docker/mysql-init/01_schema.sql` → 打印表数量（应 18） |
 | 构建 | `mvn -B -ntp -DskipTests package`（产出可执行 jar） |
-| 启动 | 后台启动 jar（注入 `MYSQL_*`/`REDIS_*`/`JWT_SECRET`/`AES_KEY`），轮询 `/api/v1/ai/engine` 直到就绪（最多 2 分钟），超时打印后端日志尾部 |
-| 冒烟 | `bash scripts/ci-smoke.sh`（121 条断言，失败即非 0 退出） |
+| 启动 | 后台启动 jar（注入 `MYSQL_*`/`REDIS_*`/`JWT_SECRET`/`AES_KEY`），轮询直到**接口可用且种子数据已提交**（先探 `/api/v1/ai/engine`，再探查库的 `/api/v1/houses?size=1` 且 `total ≥ 1`，最多 3 分钟），超时打印后端日志尾部 |
+| 冒烟 | `bash scripts/ci-smoke.sh`（125 条断言，失败即非 0 退出） |
+| 无模型校验 | 另起一个不注入模型凭据的实例（`SERVER_PORT=8081`），执行 `scripts/ci-no-model-check.sh`，校验 AI 能力全部返回 4001 |
 | 归档 | 失败时上传 `/tmp/backend.log` 与 SSE 原始输出 |
 
 种子数据无需准备：空库启动时由应用 `DataInitializer` 自动灌入演示账号、房源与知识库。
+
+### 2.3.1 为什么就绪判据必须查库（首次 CI 失败的真实根因）
+
+首次在 GitHub Actions 跑冒烟时，出现"租客/未实名房东两次登录取不到 token → 后续用例连锁返回 1007/5000"的失败。
+根因不是业务缺陷，而是**启动竞态**：
+
+- `DataInitializer` 是 `CommandLineRunner`，且 `run()` 标注了 `@Transactional`；
+- 因此 Web 端口（连带数据库连接池）都**先于**种子数据提交就绪。本机启动日志实测：
+
+  ```
+  14:44:15.557  Tomcat started on port 8080      ← 端口已监听
+  14:44:15.562  Started RentAgentApplication     ← Web 服务就绪
+  14:44:15.566  HikariPool-1 - Starting...       ← 连接池都还没建
+  14:44:15.709  空库检测到，写入演示种子数据...
+  14:44:16.067  nio-8080-exec-1 请求已进来       ← 请求撞在种子写入过程中
+  14:44:16.124  演示种子数据写入完成             ← 种子才提交
+  ```
+
+- 窗口在本机约 **0.57 秒**，CI 冷容器 + 容器网络下放大到数秒，于是冒烟脚本开头两次登录正好落在窗口内，
+  拿到 `1002`（用户还不存在）→ 空 token → 所有依赖登录态的断言连锁失败。
+- 本地开发库通常已有种子（`selectCount > 0` 直接返回），所以只在空库首启时暴露。
+
+修复分两层，互为兜底：
+1. **流水线**：`启动后端并等待就绪（含演示种子数据）` 步骤以查库的 `/houses` 为判据；
+2. **脚本自身**：`ci-smoke.sh` 开头 `wait_for_seed()` 同样等待种子提交后再执行断言（本地手跑也无需预热），
+   并新增 `require_id()` 守卫——关键 id 缺失时打印结论并以退出码 1 结束，而不是让 `jq --argjson` 抛解析错误掩盖真实原因。
+
+> 注意：等待判据**不能**用"反复尝试登录"实现——登录失败会计入 Redis 失败计数（5 次锁定 10 分钟），
+> 反复重试反而会把演示账号锁住。
 
 ### 2.4 流水线拓扑
 
@@ -98,11 +130,15 @@ push / PR / 手动
 | `UPLOAD_DIR` | `${{ runner.temp }}/rentagent-uploads` | 写在**步骤级** env：job 级 env 不提供 `runner` 上下文 |
 | `BASE_URL` | `http://localhost:8080` | 冒烟脚本基址 |
 | `TZ` | `Asia/Shanghai` | 全流程统一时区 |
-| `AI_*` / `AGGREGATOR_*` / `ANTHROPIC_*` | **不设置** | 触发规则引擎降级；注意仓库内 `server/run-dev.sh` 含个人 Key 且已被 `.gitignore` 忽略，CI 绝不引用 |
+| `AI_BACKEND` | `secrets.AI_BACKEND`，缺省 `commandcode-chat` | 选择命名后端（协议+端点+模型组合） |
+| `AGGREGATOR_BASE_URL` | `secrets.AGGREGATOR_BASE_URL`，缺省演示端点 | 模型端点 |
+| `AGGREGATOR_MODEL` | `secrets.AGGREGATOR_MODEL`，缺省 `deepseek/deepseek-v4.1-flash` | 模型名 |
+| `AGGREGATOR_API_KEY` | `secrets.AGGREGATOR_API_KEY`（**必填**） | 模型凭据。只读 Secrets，不落文件、不 echo；GitHub 会对其做日志脱敏 |
 
 安全约定：
-- 密钥一律走 GitHub Secrets / 环境变量，仓库内不保存任何真实 Key（当前 CI 不需要任何外部凭据）；
-- 集成作业使用一次性数据库容器，无需清理逻辑，也不会污染任何持久数据。
+- 密钥一律走 GitHub Secrets / 环境变量，仓库内不保存任何真实 Key（`server/run-dev.sh` 含个人 Key，已被 `.gitignore` 忽略，CI 绝不引用）；
+- 集成作业使用一次性数据库容器，无需清理逻辑，也不会污染任何持久数据；
+- 无模型校验步骤通过**同名环境变量置空**（`AGGREGATOR_API_KEY: ''`）构造"未接入模型"的实例，不会误用主实例的凭据。
 
 ---
 
@@ -116,8 +152,9 @@ push / PR / 手动
 | 集成验证 | `bash scripts/ci-smoke.sh` | 同一条命令 |
 | 单测 | `mvn test` / `npm test` | 同上 |
 
-差异说明：本地若配置了真实模型 Key，AI 相关断言（`IT-7-08`、`IT-9-*`）会因引擎标识与回答文本变化而失败。
-此类场景请临时 `unset AI_API_KEY AGGREGATOR_API_KEY AI_BACKEND` 后执行，或将 AI 断言单独分组执行。
+差异说明：**本地与 CI 都必须接入真实模型**（否则脚本在 `wait_for_model` 前置检查处失败并退出码 2，同时提示配置方式）。
+本地直接用 `server/run-dev.sh`（含个人演示 Key）启动即可；若临时不想接模型，可改用
+`SERVER_PORT=8081 java -jar …`（不带 AI 环境变量）+ `scripts/ci-no-model-check.sh` 验证"零兜底"约束。
 
 ---
 
@@ -126,6 +163,7 @@ push / PR / 手动
 1. **单测失败**：作业内直接看到 surefire 摘要，并可从 Artifacts 下载完整报告；本地用 `mvn test -Dtest=<类名>` 复现。
 2. **前端失败**：日志含 vitest 用例名与断言差异；本地用 `npx vitest run src/<文件>` 复现。
 3. **冒烟失败**：脚本逐条打印 `✓/✗` 与"期望/实际"，末尾给出通过/失败计数；结合上传的后端日志与 SSE 原始文件定位。
+   退出码语义：`0` 通过、`1` 断言失败、`2` 前置未就绪（后端/种子数据/模型通道）。
    本地复现命令：
    ```bash
    docker compose up -d mysql redis     # 或复用已有实例
@@ -136,6 +174,10 @@ push / PR / 手动
    bash scripts/ci-smoke.sh             # 另开终端
    ```
 4. **后端启动超时**：作业会打印 `/tmp/backend.log` 尾部 80 行（通常是数据库连通性或建表缺失）。
+5. **建表步骤失败**：`mysqladmin ping` 在容器 init 阶段（临时实例）就会成功，此时建库与授权可能尚未就绪——
+   作业里的建表语句本身带重试与表数校验（≥18），失败会明确报错而不会被静默吞掉。
+6. **AI 断言失败**：先看 `ci-no-model-check` 与 `wait_for_model` 的输出确认模型通道；再看后端日志中
+   `改用非流式兜底重跑一次` 的记录（说明该网关流式响应丢了 tool_calls，属已知通道特性，已有兜底）。
 
 ---
 
@@ -163,4 +205,10 @@ push / PR / 手动
 | 集成冒烟 | 本机真实 MySQL 8 + Redis + 运行中后端 → **121 条断言全过，退出码 0**（连续 6 轮稳定） |
 | 失败路径 | `BASE_URL` 指向空端口 → 退出码 7 并提示后端未就绪，门禁有效 |
 | lockfile 一致性 | `npm ci --dry-run` 通过（新增测试依赖已同步进 `package-lock.json`） |
+| CI 首跑（GitHub Actions） | 失败：前两次登录取不到 token → 连锁 1007/5000，脚本以退出码 2 中断。定位为启动竞态（见 §2.3.1，非业务缺陷），已按上述两层修复 |
+| 修复后回归 | 本机以"清空库 → 起后端 → 立刻跑脚本"复现同一竞态：修复前 `login xiaochen` 得 `1002`、`/houses.total=0`；修复后脚本自动等待并 **121 条断言全过、退出码 0** |
+| 异常路径验证 | 种子未就绪 → 退出码 2 + 排查提示；关键 id 缺失 → 退出码 1 + 失败结论（不再是 jq 解析错误） |
+| 真实模型口径首跑 | 失败 4 条：分析结果 `model` 恒为 `rule-engine`（实为 14:15 的旧 jar——上一步建表静默失败打断了 `&&` 链，打包未执行）与客服 `citations=0`；定位到聚合网关**流式响应截断丢失 tool_calls**（客服只回 15 字过程语），按"非流式重跑兜底"修复后 **125 条全过** |
+| 无模型反向门禁 | 另起无凭据实例实测：AI 对话/定价/识别填充/合同解读/引擎探针 **6/6 全部 4001**，零兜底 |
+| 建表步骤加固 | 本机复现了"ping 成功但建表失败"的窗口，作业已改为重试 + 表数校验（≥18）+ 不吞错误输出 |
 | 未在本机执行的步骤 | `actions/setup-*`、服务容器创建、Artifacts 上传等 GitHub 托管步骤（需托管 runner；已通过 `act` 结构校验与等价命令本地验证） |

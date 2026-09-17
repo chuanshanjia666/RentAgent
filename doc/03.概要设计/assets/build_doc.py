@@ -420,6 +420,11 @@ def build(out_path, toc_pages=None, total_pages=None):
         for i, v in enumerate(r):
             cells[i].text = ""
             set_para_runs(cells[i].paragraphs[0]._p, v, size=9)
+    # 该表来自模板、不经 b.table() 的 _no_split，跨页时表头不会重复——
+    # 版本行文字很长必然跨页，这里显式让首行作为重复表头（保留行内可拆分，避免整行被推到下页留下大片空白）
+    trPr = t.rows[0]._tr.get_or_add_trPr()
+    if not trPr.findall(qn_w("tblHeader")):
+        trPr.append(OxmlElement("w:tblHeader"))
 
     # ── 3. 页眉版本号 ───────────────────────────────────────────────────────
     for sec in doc.sections:
@@ -529,12 +534,14 @@ def section3(b):
         b.table(["序号", "功能点", "功能点详细说明"], m["funcs"],
                 [1.2, 3.4, 12.39], align_center_cols=(0,))
 
-        b.heading(3, f"{num}.2", f"{m['title']}模块结构")
+        # 模块名本身可能已含"模块"（如"AI 智能体服务模块"），此处去掉后缀避免"模块模块结构"
+        mod_name = m['title'].removesuffix('模块')
+        b.heading(3, f"{num}.2", f"{mod_name}模块结构")
         b.body(f"{m['title']}的模块结构如下图所示。")
         fig_n += 1
         mod_fig, cls_fig = MOD_FIGS[m["key"]]
         wid = 16.2 if m["key"] == "ai" else 12.6
-        b.figure(mod_fig, f"图3-{fig_n}  {m['title']}模块结构图", width_cm=wid)
+        b.figure(mod_fig, f"图3-{fig_n}  {mod_name}模块结构图", width_cm=wid)
 
         b.heading(3, f"{num}.3", f"{m['title']}类图")
         fig_n += 1

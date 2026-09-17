@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rentagent.agent.AgentEngine;
 import com.rentagent.agent.LlmAgent;
-import com.rentagent.agent.MockAgent;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
 import com.rentagent.dto.AiDto;
@@ -24,29 +23,35 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * AI 会话服务（FR-12/13）：SSE 流式对话编排，
- * 消息全量落库（NFR-05 可追溯），引擎按 Key 有无自动选择 LlmAgent（真模型）/ MockAgent（规则引擎）。
+ * AI 会话服务（FR-12/13）：SSE 流式对话编排，消息全量落库（NFR-05 可追溯）。
+ * <p>
+ * 引擎为真实大模型（{@link LlmAgent}）；未配置模型或模型不可用时**直接报错 4001**，
+ * 不提供规则引擎/模拟回答兜底（2026-09-17 口径）。
  */
 @Slf4j
 @Service
 public class ChatService {
 
+    /** 未配置模型时的统一提示（指引运维/开发者注入凭据） */
+    static final String MODEL_MISSING_MSG =
+            "未配置大模型服务：请注入模型凭据（AI_API_KEY / AGGREGATOR_API_KEY 等环境变量）后重试";
+
     private final AiChatSessionMapper sessionMapper;
     private final AiChatMessageMapper messageMapper;
     private final LlmAgent llmAgent;
-    private final MockAgent mockAgent;
     private final ObjectMapper objectMapper;
 
     public ChatService(AiChatSessionMapper sessionMapper, AiChatMessageMapper messageMapper,
-                       LlmAgent llmAgent, MockAgent mockAgent, ObjectMapper objectMapper) {
+                       LlmAgent llmAgent, ObjectMapper objectMapper) {
         this.sessionMapper = sessionMapper;
         this.messageMapper = messageMapper;
         this.llmAgent = llmAgent;
-        this.mockAgent = mockAgent;
         this.objectMapper = objectMapper;
     }
 
+    /** 当前引擎标识（<协议>:<模型>）；未配置模型时报 4001，便于调用方与前端明确感知 */
     public String engineName() {
+        requireModel();
         return llmAgent.describe();
     }
 
@@ -77,6 +82,7 @@ public class ChatService {
 
     /** 发送消息：SSE 流式返回（delta* + done），异步回调中落库（NFR-02 首字流式） */
     public SseEmitter send(long sessionId, String content, long uid) {
+        requireModel();
         AiChatSession s = owned(sessionId, uid);
         saveMessage(s.getId(), 1, content, null, null, 0);
 
@@ -88,7 +94,7 @@ public class ChatService {
         // token 用量：找房重试时模型会多次上报，累加计为本轮总消耗（NFR-05 留痕）
         int[] tokens = {0};
 
-        engine().stream(s.getId(), uid, s.getScene(), content, new AgentEngine.Callback() {
+        llmAgent.stream(s.getId(), uid, s.getScene(), content, new AgentEngine.Callback() {
             @Override
             public void onToken(String token) {
                 full.append(token);
@@ -134,13 +140,11 @@ public class ChatService {
 
             @Override
             public void onError(Throwable t) {
-                log.warn("AI 引擎异常", t);
-                String fallback = "智能助手暂时繁忙，请稍后再试；押金/退租等紧急问题可转人工客服。";
+                // 不伪造任何回答：把失败如实通知前端（SSE error 载荷），由界面提示用户重试
+                log.warn("AI 引擎调用失败：{}", t == null ? "unknown" : t.getMessage());
                 try {
-                    emitter.send(SseEmitter.event().name("delta").data(
-                            objectMapper.writeValueAsString(Map.of("delta", fallback))));
-                    emitter.send(SseEmitter.event().name("done").data(
-                            objectMapper.writeValueAsString(Map.of("messageId", 0, "transferred", true))));
+                    emitter.send(SseEmitter.event().name("error").data(objectMapper.writeValueAsString(
+                            Map.of("error", "智能助手调用失败，请稍后重试"))));
                     emitter.complete();
                 } catch (Exception e) {
                     emitter.completeWithError(t);
@@ -150,8 +154,11 @@ public class ChatService {
         return emitter;
     }
 
-    private AgentEngine engine() {
-        return llmAgent.available() ? llmAgent : mockAgent;
+    /** 无模型可用即报错（4001）；本系统不提供本地兜底回答 */
+    private void requireModel() {
+        if (!llmAgent.available()) {
+            throw new BizException(ErrorCode.AI_UNAVAILABLE.getCode(), MODEL_MISSING_MSG);
+        }
     }
 
     private AiChatSession owned(long sessionId, long uid) {

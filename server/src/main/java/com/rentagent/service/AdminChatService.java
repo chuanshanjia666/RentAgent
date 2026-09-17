@@ -40,8 +40,6 @@ public class AdminChatService {
     private static final Map<Integer, String> MSG_ROLES = Map.of(1, "用户", 2, "AI 助手", 3, "工具调用");
     /** 列表页最后一条消息的预览长度 */
     private static final int PREVIEW_CHARS = 60;
-    /** 规则引擎留痕在工具消息 content 上的标记（与 ToolTraceService 约定一致） */
-    private static final String RULE_ENGINE_MARK = "（规则引擎）";
 
     private final AiChatSessionMapper sessionMapper;
     private final AiChatMessageMapper messageMapper;
@@ -88,15 +86,9 @@ public class AdminChatService {
         Map<Long, SysUser> users = usersOf(List.of(s.getUserId()));
         return new AdminChatDto.DetailVO(
                 vo(s, users.get(s.getUserId()), aggregateOf(raw), lastPreview(raw)),
-                chatService.engineName(), hasRuleEngineTurn(raw), LlmAgent.SYSTEM_PROMPT,
+                chatService.engineName(), LlmAgent.SYSTEM_PROMPT,
                 raw.stream().map(this::toMessage).toList(),
                 stats(raw));
-    }
-
-    /** 规则引擎的回复会在工具留痕里带"（规则引擎）"标记，据此判断本会话是否含降级回复 */
-    private boolean hasRuleEngineTurn(List<AiChatMessage> messages) {
-        return messages.stream().anyMatch(m -> m.getRole() == 3 && m.getContent() != null
-                && m.getContent().contains(RULE_ENGINE_MARK));
     }
 
     // ---------- 会话 → VO ----------
@@ -223,7 +215,6 @@ public class AdminChatService {
         int latencySum = 0;
         int latencyCount = 0;
         Map<String, int[]> byTool = new LinkedHashMap<>();
-        Map<String, Boolean> ruleEngine = new LinkedHashMap<>();
         for (AiChatMessage m : messages) {
             if (m.getRole() == 1) {
                 rounds++;
@@ -242,8 +233,6 @@ public class AdminChatService {
                 int[] acc = byTool.computeIfAbsent(m.getToolName(), k -> new int[3]);
                 acc[0]++;
                 acc[1] += m.getLatencyMs() == null ? 0 : m.getLatencyMs();
-                ruleEngine.put(m.getToolName(), (m.getContent() != null && m.getContent().contains(RULE_ENGINE_MARK))
-                        || Boolean.TRUE.equals(ruleEngine.get(m.getToolName())));
             }
         }
         List<Map<String, Object>> tools = new ArrayList<>();
@@ -252,7 +241,6 @@ public class AdminChatService {
             t.put("name", name);
             t.put("count", acc[0]);
             t.put("avgLatencyMs", acc[0] == 0 ? 0 : acc[1] / acc[0]);
-            t.put("ruleEngine", Boolean.TRUE.equals(ruleEngine.get(name)));
             tools.add(t);
         });
         return new AdminChatDto.StatsVO(rounds, assistants, tools.stream().mapToInt(t -> (int) t.get("count")).sum(),
