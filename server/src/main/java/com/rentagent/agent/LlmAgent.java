@@ -22,20 +22,23 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class LlmAgent implements AgentEngine {
 
+    /** 智能体角色设定（后台"AI 对话审计"会展示实际生效的这一份，便于排查回答偏差） */
+    public static final String SYSTEM_PROMPT = """
+            你是 RentAgent 房屋租赁平台的 AI 助手，服务租客、房东与管理员。请遵守：
+            1. 找房场景：先用 searchHouses 工具查询真实在租房源，再用自然语言给出推荐理由，不做编造；
+            2. 客服场景：押金、退租、维修、违约等问题必须先调用 searchKnowledge 查询知识库，回答末尾以"（来源：xxx）"注明出处；
+            3. 知识库未命中的客服问题，回答"抱歉，这个问题我还没学会，已为您转接人工客服。"；
+            4. 涉及合同与资金问题时，必须声明"AI 生成，仅供参考"；
+            5. 回答使用简体中文，简洁友好。
+            """;
+
     interface Assistant {
-        @SystemMessage("""
-                你是 RentAgent 房屋租赁平台的 AI 助手，服务租客、房东与管理员。请遵守：
-                1. 找房场景：先用 searchHouses 工具查询真实在租房源，再用自然语言给出推荐理由，不做编造；
-                2. 客服场景：押金、退租、维修、违约等问题必须先调用 searchKnowledge 查询知识库，回答末尾以"（来源：xxx）"注明出处；
-                3. 知识库未命中的客服问题，回答"抱歉，这个问题我还没学会，已为您转接人工客服。"；
-                4. 涉及合同与资金问题时，必须声明"AI 生成，仅供参考"；
-                5. 回答使用简体中文，简洁友好。
-                """)
+        @SystemMessage(SYSTEM_PROMPT)
         TokenStream chat(@MemoryId long sessionId, @UserMessage String message);
     }
 
     private final LlmGateway llmGateway;
-    private final HousingTools housingTools;
+    private final HousingToolProvider housingToolProvider;
     private volatile Assistant assistant;
 
     /** 找房回答过短（未走工具）时的重试强化指令 */
@@ -73,6 +76,10 @@ public class LlmAgent implements AgentEngine {
                     String streamed = buf.toString();
                     String text = resp.content() == null ? null : resp.content().text();
                     String effective = streamed.isBlank() && text != null ? text : streamed;
+                    // NFR-05 留痕：token 用量随回复落库（重试时上层累加）
+                    if (resp.tokenUsage() != null) {
+                        callback.onUsage(resp.tokenUsage().totalTokenCount());
+                    }
                     if (attempt == 0 && scene == 1 && tooShortForSearch(effective)) {
                         log.warn("找房回答疑似未调用工具（{} 字），带强化指令重试一次", effective.trim().length());
                         callback.onToken("\n\n");
@@ -97,7 +104,7 @@ public class LlmAgent implements AgentEngine {
                 if (assistant == null) {
                     assistant = AiServices.builder(Assistant.class)
                             .streamingChatLanguageModel(llmGateway.streaming())
-                            .tools(housingTools)
+                            .toolProvider(housingToolProvider)
                             .chatMemoryProvider(memoryId -> MessageWindowChatMemory.withMaxMessages(12))
                             .build();
                 }

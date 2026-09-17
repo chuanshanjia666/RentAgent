@@ -11,7 +11,7 @@
 PROJECT = "RentAgent —— 基于 AI 智能体的房屋租赁系统"
 DOC_NO = "D0000-PPC-RA2026-PPD-2026"
 PROJ_NO = "RA2026"
-DOC_VER = "V1.1"
+DOC_VER = "V1.2"
 DOC_DATE = "2026-09-17"
 ORG = "大连理工大学创新实践基地"
 AUTHOR = "王硕"
@@ -28,6 +28,15 @@ CHANGE_ROWS = [
      "桌面端外壳仅注入后端地址、不新增界面与功能；② 按《项目最终确认书》v1.5 与《概要设计说明》v1.5 "
      "明确大模型口径为模型无关：图 2-1 与 AI 智能体模块类图中的模型服务节点改为“任意兼容模型”表述，"
      "不再把系统与某一厂商绑定",
+     DOC_DATE),
+    ("3", "V1.2",
+     "新增 AI 对话审计与工具调用留痕设计，并按实现同步：① 第 3 章 AI 智能体服务模块新增“对话审计与工具留痕”"
+     "功能项与 HousingToolProvider / ToolTraceService 两个类（图 3-8 同步），后台管理模块新增“AI 对话审计”"
+     "功能项与管理端接口函数（图 3-14 同步）；AI 与后台管理的模块结构图同步补入工具提供器、工具留痕服务与"
+     "对话审计服务；② 第 4 章关键数据结构补 AdminChatDto（会话列表 / 会话详情 / "
+     "消息 / 规模统计），并修正业务状态字典中 ai_chat_message.role 的取值（1 用户 / 2 助手 / 3 工具，原记为 "
+     "0/1/2）；③ 第 5 章接口函数清单补充 GET /admin/chats 与 GET /admin/chats/{id}，并在 5.2 节补两份"
+     "对应接口规约（chats / chatDetail）",
      DOC_DATE),
 ]
 
@@ -274,6 +283,10 @@ MODULES_CONTENT = [
                                  "openai-responses），经 AI_BACKEND 一键切换；单次超时 60 秒并自动降级话术；"
                                  "无有效密钥时回落内置规则引擎（风险 R1）"),
             ("9", "流式输出", "SSE 逐字推送 delta 事件与收尾 done 事件，配合关闭思维链降低首字延迟（NFR-02）"),
+            ("10", "对话审计与工具留痕", "用户 / 助手 / 工具三类消息全量落库；每次工具调用记录工具名、入参、返回与耗时，"
+                                     "助手回复记录 token 用量；真模型经 HousingToolProvider 自动留痕、规则引擎在 "
+                                     "MockAgent 内显式留痕，两种引擎口径一致；管理员可回放全站会话轨迹"
+                                     "（NFR-05、FR-24）"),
         ],
         apis=[
             ("1", "AI 智能体服务", "createSession(SessionCreateReq)", "创建会话（按 scene 路由角色与工具集）"),
@@ -289,7 +302,9 @@ MODULES_CONTENT = [
         ],
         cls_note="本模块类图如图 3-8 所示。ChatService 负责会话生命周期与 SSE 发送，KbService 负责知识库切片与"
                  "检索，AnalysisService 负责四类 AI 分析任务；三者统一经 AgentEngine 接口调用智能体能力，"
-                 "由 LlmGateway 完成模型后端选择、超时控制与降级。",
+                 "由 LlmGateway 完成模型后端选择、超时控制与降级。工具调用留痕由 ToolTraceService 统一落库："
+                 "真模型侧经 HousingToolProvider 以工具提供器方式包装每个 @Tool 方法的执行（新增工具自动获得留痕，"
+                 "NFR-09），规则引擎侧由 MockAgent 在检索与知识库调用处显式留痕，两者写出的工具消息口径一致。",
     ),
     dict(
         key="trade",
@@ -384,10 +399,14 @@ MODULES_CONTENT = [
                            "通知房东限期整改（FR-23）"),
             ("4", "操作审计留痕", "审核、禁用、处理举报等管理动作全量写入审计日志（操作人、动作、目标类型与 ID、"
                              "详情 JSON、IP）（FR-23、NFR-08）"),
-            ("5", "数据统计看板", "用户、房源、订单、预约等核心指标的总量与按日 / 周 / 月分组的趋势统计；"
+            ("5", "数据统计看板", "用户、房源、订单、预约等核心指标的总量与按日 / 周 / 月分组的趋势统计，"
+                             "并含 AI 对话量（会话数、消息数、工具调用数、转人工会话数与会话新增趋势）；"
                              "全部为只读聚合查询，不写业务表（FR-24）"),
             ("6", "虚假房源检测入口", "管理员可在审核环节触发 AI 虚假房源检测，将风险分与疑点作为裁决参考（FR-16）"),
             ("7", "审计日志查询", "按时间倒序分页查询审计日志，供问题追溯（FR-23）"),
+            ("8", "AI 对话审计", "查看全站 AI 会话列表（含归属用户与角色、轮次、工具调用次数、token 与会话标题），"
+                             "并可回放单会话完整轨迹：人物信息、多轮对话、工具调用（工具名 / 入参 / 返回 / 耗时）、"
+                             "RAG 引用来源与角色设定原文；只读，不提供修改与删除入口（NFR-05、FR-24）"),
         ],
         apis=[
             ("1", "后台管理", "users(String keyword, page, size)", "用户分页查询"),
@@ -398,9 +417,13 @@ MODULES_CONTENT = [
             ("6", "后台管理", "reports(int status, page, size)", "举报列表"),
             ("7", "后台管理", "handleReport(long id, Map body)", "处理举报"),
             ("8", "后台管理", "auditLogs(page, size)", "审计日志查询"),
-            ("9", "后台管理", "dashboard(String granularity)", "统计看板（day / week / month）"),
+            ("9", "后台管理", "dashboard(String granularity)", "统计看板（day / week / month，含 AI 对话量与会话趋势）"),
+            ("10", "后台管理", "chats(keyword, scene, transferred, userId, page, size)",
+             "AI 会话审计列表（全站，支持关键词 / 场景 / 转人工 / 用户过滤）"),
+            ("11", "后台管理", "chatDetail(long id)", "AI 会话详情（多轮消息 + 工具调用轨迹 + 人物与角色设定）"),
         ],
-        cls_note="本模块类图如图 3-14 所示。AdminService 承担用户管理、审核与看板聚合，ReportService 承担举报"
+        cls_note="本模块类图如图 3-14 所示。AdminService 承担用户管理、审核与看板聚合，AdminChatService 承担"
+                 "AI 对话审计的读模型（会话列表与会话轨迹，按会话聚合以避免逐会话查询），ReportService 承担举报"
                  "流转，AuditLogService 作为横切服务被审核、禁用与举报处理共同调用；看板统计通过聚合查询实现，"
                  "不引入额外统计表，避免数据冗余与一致性问题。",
     ),
@@ -475,7 +498,8 @@ TABLE_LIST = [
     ("12", "report", "举报", "id", "reporter_id", "target_type、target_id（多态逻辑关联）；reason；status；handle_by；handled_at"),
     ("13", "audit_log", "审计日志", "id", "operator_id（逻辑关联）", "action；target_type、target_id；detail(JSON)；ip（只增不改）"),
     ("14", "ai_chat_session", "AI 会话", "id", "user_id", "scene 1 找房/2 客服/3 合同解读；title；context_summary；is_transferred"),
-    ("15", "ai_chat_message", "AI 对话消息", "id", "session_id", "role user/assistant/tool；content；tool_name/tool_args/tool_result；citations(JSON)；latency_ms"),
+    ("15", "ai_chat_message", "AI 对话消息", "id", "session_id",
+     "role 1 用户/2 助手/3 工具调用；content；tool_name、tool_args、tool_result；citations(JSON)；token_count、latency_ms"),
     ("16", "ai_analysis", "AI 分析结果", "id", "user_id（逻辑关联）", "type 定价/检测/解读/识别；target_type、target_id；input_snapshot；result(JSON)；model"),
     ("17", "kb_document", "知识库文档", "id", "—", "title；category；source_url；content；status；chunk_count"),
     ("18", "kb_chunk", "知识库切片", "id", "document_id", "seq；content；token_count；vector_ref；UNIQUE(document_id, seq)"),
@@ -523,7 +547,7 @@ STATUS_DICT = [
     ("合同状态", "ContractService.ST_*", "0 待租客确认 / 1 待房东确认 / 2 已生效 / 3 已终止 / 4 已作废", "FR-18 状态机"),
     ("账单状态", "rent_bill.status", "0 = 未支付，1 = 已支付（仅记录，不对接支付渠道）", "FR-19"),
     ("AI 会话场景", "ai_chat_session.scene", "1 = 找房助手，2 = 智能客服，3 = 合同解读", "FR-12/13/14 路由"),
-    ("AI 消息角色", "ai_chat_message.role", "0 = user，1 = assistant，2 = tool", "NFR-05 留痕"),
+    ("AI 消息角色", "ai_chat_message.role", "1 = 用户，2 = 助手，3 = 工具调用（role=3 由工具留痕服务写入）", "NFR-05 留痕"),
     ("通知类型", "notification.type", "1 审核 / 2 预约 / 3 签约 / 4 账单 / 5 举报处理", "FR-21"),
 ]
 SEC51_MID = [
@@ -928,6 +952,55 @@ SPECS = [
                 "处理动作写入审计日志。",
          notes="举报处理必须留痕且可追溯；评价处置采用隐藏而非删除，保留原始记录以备复核；"
                "房源类举报不做自动下架，由管理员结合虚假房源检测结果人工裁决。"),
+    dict(
+        module="后台管理模块",
+        name="chats",
+        file="AdminController.java / AdminChatService.java",
+        summary="AI 对话审计列表：全站会话分页查询（含归属用户与对话规模指标）",
+        params=[
+            ("String", "keyword", "IN", "关键词（匹配会话标题、用户昵称 / 账号 / 手机号），可为空"),
+            ("Integer", "scene", "IN", "会话场景 1 找房助手 / 2 智能客服 / 3 合同解读，可为空表示全部"),
+            ("Boolean", "transferred", "IN", "是否只看已转人工会话，可为空表示全部"),
+            ("Long", "userId", "IN", "按归属用户过滤，可为空表示全部用户"),
+            ("long", "page", "IN", "页码，默认 1"),
+            ("long", "size", "IN", "每页条数，默认 10"),
+        ],
+        ret_type="R<PageVO<AdminChatDto.SessionVO>>",
+        ret_vals=[
+            ("成功", "code = 0，data = { list, total, page, size }；每行含会话（场景 / 标题 / 转人工）、"
+                     "归属用户（昵称 / 账号 / 手机号 / 角色）、规模（轮次 / 消息数 / 工具调用数 / token）"
+                     "与末条消息预览"),
+            ("失败", "code = 1007 无权限执行该操作（非管理员）"),
+        ],
+        detail="按更新时间倒序分页返回全站会话，不限归属用户。会话规模不做逐会话查询：先对命中的 session_id "
+               "集合执行一次 GROUP BY session_id 聚合（消息数、用户轮次、工具调用数、token 合计、末条消息 id），"
+               "再批量取出末条消息生成预览，避免 N+1 查询。关键词先匹配用户表，命中则以用户 id 集合与会话标题"
+               "做 OR 匹配。",
+        notes="只读接口，不提供修改与删除入口——对话日志只增不改，保证审计链路完整（NFR-05）。该接口是 FR-24"
+              "“AI 对话量”指标的明细入口，汇总值由看板接口提供。",
+    ),
+    dict(
+        module="后台管理模块",
+        name="chatDetail",
+        file="AdminController.java / AdminChatService.java",
+        summary="AI 会话轨迹：单会话逐步消息（含工具入参 / 返回）、引用来源、规模统计与角色设定原文",
+        params=[
+            ("long", "id", "IN", "会话 ID（路径参数）"),
+        ],
+        ret_type="R<AdminChatDto.DetailVO>",
+        ret_vals=[
+            ("成功", "code = 0，data = { session, currentEngine, hasRuleEngineTurn, systemPrompt, "
+                     "messages[], stats }"),
+            ("失败", "code = 1007 无权限执行该操作；code = 4002 会话不存在"),
+        ],
+        detail="按主键升序返回会话全部消息：role = 1 用户、2 助手、3 工具调用。工具消息的 tool_args 与 "
+               "tool_result 在库内为 JSON 列，合法时解析为对象返回，供前端结构化展示；解析失败原样返回字符串。"
+               "stats 给出轮次、助手消息数、工具调用数、token 合计、平均回答时延（只统计助手消息，工具耗时另在"
+               "工具明细中给出）以及按工具名聚合的调用次数与平均耗时。",
+        notes="会话历史未逐条快照所用引擎，故 currentEngine 表示查看时刻生效的引擎；若会话含规则引擎留痕"
+              "（工具消息带“（规则引擎）”标记），hasRuleEngineTurn 置真，前端据此提示降级回复，"
+              "避免把规则引擎回答误记为模型输出。",
+    ),
 ]
 
 SEC53_INTRO = [
@@ -1033,4 +1106,20 @@ CODE_VO = [
     "                       String suggestion, String model) {}",
     "public record InterpItem(Integer index, String clause, Boolean risk, String explanation) {}",
     "public record InterpVO(List<InterpItem> items, String disclaimer, String model) {}",
+    "",
+    "// ── 后台 AI 对话审计（AdminChatDto，仅管理员可见）─────",
+    "// SessionVO：会话 + 人物（归属用户与角色）+ 规模（轮次/消息数/工具调用数/token）",
+    "// DetailVO(currentEngine, hasRuleEngineTurn, systemPrompt, messages, stats)",
+    "// MessageVO：role 1 用户 / 2 助手 / 3 工具调用，工具消息带 toolName / toolArgs / toolResult",
+    "// StatsVO：roundCount, assistantCount, toolCallCount, totalTokens, avgLatencyMs, tools[]",
+    "public record SessionVO(Long id, Integer scene, String sceneName, String title,",
+    "                        Long userId, String nickname, String username, String phone,",
+    "                        Integer userRole, Integer isTransferred, Integer messageCount,",
+    "                        Integer roundCount, Integer toolCallCount, Integer totalTokens,",
+    "                        String lastMessage, LocalDateTime createdAt,",
+    "                        LocalDateTime updatedAt) {}",
+    "public record MessageVO(Long id, Integer role, String roleName, String content,",
+    "                        String toolName, Object toolArgs, Object toolResult,",
+    "                        List<Map<String, Object>> citations, Integer tokenCount,",
+    "                        Integer latencyMs, LocalDateTime createdAt) {}",
 ]

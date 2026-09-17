@@ -29,7 +29,10 @@ SSE 流式发送
 定价建议
 虚假检测
 合同解读 · 识别", fillcolor="#eaf6ea", color="#5c9c5c"];
-    {rank=same; chat; kb; ana;}
+    trace [label="ToolTraceService
+工具调用留痕（role=3）
+工具名 · 入参 · 返回 · 耗时", fillcolor="#eaf6ea", color="#5c9c5c"];
+    {rank=same; chat; kb; ana; trace;}
   }
 
   subgraph cluster_engine {
@@ -74,6 +77,11 @@ LangChain4j AiServices 编排
   subgraph cluster_tools {
     label="工具与知识层"; fontsize=13; fontcolor="#31527a"; style="rounded,filled";
     fillcolor="#eef4fb"; color="#4a7ebb"; margin=10;
+    prov [label="HousingToolProvider（工具提供器）
+向 AiServices 注册 @Tool 规格
+并把执行包装为
+计时 → 执行 → 留痕 → 返回",
+           fillcolor="#eef4fb", color="#4a7ebb", width=4.6];
     tools [label="HousingTools（业务工具，@Tool 注册）
 searchHouses(maxRent, layoutKeyword,
 　　　　　　　district, keyword, subway)
@@ -96,9 +104,10 @@ Redis：会话缓存　|　外部：大模型服务 HTTPS 出网",
   ctrl -> chat; ctrl -> kb; ctrl -> ana;
   chat -> api; kb -> api; ana -> api;
   api -> llm [label="启用"]; api -> mck [label="降级"];
-  llm -> gw [label="模型调用"]; llm -> tools [label="Function Calling"];
-  mck -> tools [label="规则引擎"];
+  llm -> gw [label="模型调用"]; llm -> prov [label="工具提供器"];
+  prov -> tools [label="委托执行"]; prov -> trace [label="工具留痕"];
+  mck -> tools [label="规则引擎"]; mck -> trace [label="规则引擎留痕"];
   tools -> rag [style=dotted, label="客服意图"];
   gw -> p1; gw -> p2; gw -> p3;
-  tools -> data; ana -> data; chat -> data; kb -> data;
+  tools -> data; ana -> data; chat -> data; kb -> data; trace -> data;
 }

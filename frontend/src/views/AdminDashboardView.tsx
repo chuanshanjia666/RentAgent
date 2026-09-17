@@ -17,19 +17,34 @@ export default function AdminDashboardView() {
   useEffect(() => {
     if (!data || !chartEl.current) return
     const chart = echarts.init(chartEl.current)
-    const periods = data.userTrend.map((t: any) => t.period)
-    const mk = (key: string) => data[key].map((t: any) => Number(t.cnt))
+    // AI 会话趋势的周期可能不与用户趋势完全重合，取并集后缺失补 0（FR-24）
+    const series: [string, string, string][] = [
+      ['userTrend', '新增用户', '#1f6feb'],
+      ['houseTrend', '新增房源', '#52c41a'],
+      ['orderTrend', '新增订单', '#fa8c16'],
+      ['chatTrend', '新增 AI 会话', '#722ed1']
+    ]
+    const byKey: Record<string, Map<string, number>> = {}
+    const periodSet = new Set<string>()
+    for (const [key] of series) {
+      const m = new Map<string, number>()
+      for (const t of data[key] || []) {
+        m.set(t.period, Number(t.cnt))
+        periodSet.add(t.period)
+      }
+      byKey[key] = m
+    }
+    const periods = Array.from(periodSet).sort()
     chart.setOption({
       tooltip: { trigger: 'axis' },
-      legend: { data: ['新增用户', '新增房源', '新增订单'] },
+      legend: { data: series.map(s => s[1]) },
       grid: { left: 40, right: 20, top: 40, bottom: 30 },
       xAxis: { type: 'category', data: periods },
       yAxis: { type: 'value', minInterval: 1 },
-      series: [
-        { name: '新增用户', type: 'line', smooth: true, data: mk('userTrend'), itemStyle: { color: '#1f6feb' } },
-        { name: '新增房源', type: 'line', smooth: true, data: mk('houseTrend'), itemStyle: { color: '#52c41a' } },
-        { name: '新增订单', type: 'line', smooth: true, data: mk('orderTrend'), itemStyle: { color: '#fa8c16' } }
-      ]
+      series: series.map(([key, name, color]) => ({
+        name, type: 'line', smooth: true, itemStyle: { color },
+        data: periods.map(p => byKey[key].get(p) ?? 0)
+      }))
     })
     const onResize = () => chart.resize()
     window.addEventListener('resize', onResize)
@@ -55,12 +70,25 @@ export default function AdminDashboardView() {
         <Col span={6}><Card><Statistic title="订单总数" value={data ? data.orderCount : '-'} suffix={`/ 在租 ${data ? data.rentedCount : '-'}`} /></Card></Col>
       </Row>
 
-      <Card title="增长趋势" style={{ marginTop: 16 }}>
+      <Row gutter={16} style={{ marginTop: 16 }}>
+        <Col span={6}><Card><Statistic title="AI 会话总数" value={data ? data.chatCount : '-'} /></Card></Col>
+        <Col span={6}>
+          <Card>
+            <Statistic title="AI 消息 / 工具调用" value={data ? data.chatMessageCount : '-'}
+              suffix={`/ ${data ? data.toolCallCount : '-'}`} />
+          </Card>
+        </Col>
+        <Col span={6}><Card><Statistic title="待审核房源" value={data ? data.pendingCount : '-'} /></Card></Col>
+        <Col span={6}>
+          <Card>
+            <Statistic title="转人工会话" value={data ? data.transferredCount : '-'}
+              suffix={data && data.transferredCount > 0 ? '（知识库未命中）' : ''} />
+          </Card>
+        </Col>
+      </Row>
+
+      <Card title="增长趋势（含 AI 对话量）" style={{ marginTop: 16 }}>
         <div ref={chartEl} style={{ width: '100%', height: 380 }} />
-      </Card>
-      <Card style={{ marginTop: 16 }}>
-        <Statistic title="待审核房源" value={data ? data.pendingCount : '-'}
-          suffix={data && data.pendingCount > 0 ? '（去审核工作台处理）' : ''} />
       </Card>
     </div>
   )

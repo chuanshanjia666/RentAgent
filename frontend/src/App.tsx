@@ -14,6 +14,7 @@ import NotificationsView from './views/NotificationsView'
 import ProfileView from './views/ProfileView'
 import LandlordHousesView from './views/LandlordHousesView'
 import AdminAuditView from './views/AdminAuditView'
+import AdminChatsView from './views/AdminChatsView'
 import AdminUsersView from './views/AdminUsersView'
 import AdminReportsView from './views/AdminReportsView'
 import AdminDashboardView from './views/AdminDashboardView'
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="/landlord/orders" element={<Require roles={[2]}><OrdersView /></Require>} />
         <Route path="/landlord/profile" element={<Require roles={[2]}><ProfileView /></Require>} />
         <Route path="/admin/audit" element={<Require roles={[3]}><AdminAuditView /></Require>} />
+        <Route path="/admin/chats" element={<Require roles={[3]}><AdminChatsView /></Require>} />
         <Route path="/admin/users" element={<Require roles={[3]}><AdminUsersView /></Require>} />
         <Route path="/admin/reports" element={<Require roles={[3]}><AdminReportsView /></Require>} />
         <Route path="/admin/dashboard" element={<Require roles={[3]}><AdminDashboardView /></Require>} />

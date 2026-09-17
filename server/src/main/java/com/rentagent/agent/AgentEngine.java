@@ -17,6 +17,10 @@ public interface AgentEngine {
         /** @param citationsJson RAG 引用（JSON 数组字符串，可为 null） */
         void onComplete(String fullText, String citationsJson, boolean transferred);
 
+        /** 模型上报的 token 用量（NFR-05 留痕用；规则引擎不上报，默认空实现） */
+        default void onUsage(Integer totalTokens) {
+        }
+
         void onError(Throwable t);
     }
 }

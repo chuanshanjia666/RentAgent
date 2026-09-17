@@ -24,10 +24,11 @@ digraph mod_admin {
     label="Service 业务层"; fontsize=11; fontcolor="#2f6b2f";
     style="rounded,filled"; fillcolor="#f4fbf4"; color="#5c9c5c"; margin=10;
   s0 [label="AdminService", fillcolor="#eaf6ea", color="#5c9c5c"];
-  s1 [label="ReportService\n(处理)", fillcolor="#eaf6ea", color="#5c9c5c"];
-  s2 [label="AuditLogService", fillcolor="#eaf6ea", color="#5c9c5c"];
-  s3 [label="AnalysisService\n(检测)", fillcolor="#eaf6ea", color="#5c9c5c"];
-  {rank=same; s0; s1; s2; s3;}
+  s1 [label="AdminChatService\n(对话审计)", fillcolor="#eaf6ea", color="#5c9c5c"];
+  s2 [label="ReportService\n(处理)", fillcolor="#eaf6ea", color="#5c9c5c"];
+  s3 [label="AuditLogService", fillcolor="#eaf6ea", color="#5c9c5c"];
+  s4 [label="AnalysisService\n(检测)", fillcolor="#eaf6ea", color="#5c9c5c"];
+  {rank=same; s0; s1; s2; s3; s4;}
 
   }
 
@@ -38,7 +39,8 @@ digraph mod_admin {
   p1 [label="HouseMapper", fillcolor="#efe9f7", color="#8a6fb0"];
   p2 [label="ReportMapper", fillcolor="#efe9f7", color="#8a6fb0"];
   p3 [label="AuditLogMapper", fillcolor="#efe9f7", color="#8a6fb0"];
-  {rank=same; p0; p1; p2; p3;}
+  p4 [label="AiChatSessionMapper /\nAiChatMessageMapper\n(审计读取)", fillcolor="#efe9f7", color="#8a6fb0"];
+  {rank=same; p0; p1; p2; p3; p4;}
 
   }
 
@@ -56,22 +58,32 @@ digraph mod_admin {
   c0 -> s1;
   c0 -> s2;
   c0 -> s3;
+  c0 -> s4;
   s0 -> p0;
   s0 -> p1;
   s0 -> p2;
   s0 -> p3;
+  s0 -> p4;
   s1 -> p0;
   s1 -> p1;
   s1 -> p2;
   s1 -> p3;
+  s1 -> p4;
   s2 -> p0;
   s2 -> p1;
   s2 -> p2;
   s2 -> p3;
+  s2 -> p4;
   s3 -> p0;
   s3 -> p1;
   s3 -> p2;
   s3 -> p3;
+  s3 -> p4;
+  s4 -> p0;
+  s4 -> p1;
+  s4 -> p2;
+  s4 -> p3;
+  s4 -> p4;
   p0 -> e0 [style=dotted, arrowhead=none, color="#8c8c8c"];
   p0 -> e1 [style=dotted, arrowhead=none, color="#8c8c8c"];
   p1 -> e0 [style=dotted, arrowhead=none, color="#8c8c8c"];
@@ -80,4 +92,6 @@ digraph mod_admin {
   p2 -> e1 [style=dotted, arrowhead=none, color="#8c8c8c"];
   p3 -> e0 [style=dotted, arrowhead=none, color="#8c8c8c"];
   p3 -> e1 [style=dotted, arrowhead=none, color="#8c8c8c"];
+  p4 -> e0 [style=dotted, arrowhead=none, color="#8c8c8c"];
+  p4 -> e1 [style=dotted, arrowhead=none, color="#8c8c8c"];
 }

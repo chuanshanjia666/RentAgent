@@ -85,6 +85,8 @@ public class ChatService {
         StringBuilder full = new StringBuilder();
         String[] citationsJson = {null};
         boolean[] transferred = {false};
+        // token 用量：找房重试时模型会多次上报，累加计为本轮总消耗（NFR-05 留痕）
+        int[] tokens = {0};
 
         engine().stream(s.getId(), uid, s.getScene(), content, new AgentEngine.Callback() {
             @Override
@@ -99,11 +101,19 @@ public class ChatService {
             }
 
             @Override
+            public void onUsage(Integer totalTokens) {
+                if (totalTokens != null) {
+                    tokens[0] += totalTokens;
+                }
+            }
+
+            @Override
             public void onComplete(String text, String citations, boolean isTransferred) {
                 citationsJson[0] = citations;
                 transferred[0] = isTransferred;
                 long latency = System.currentTimeMillis() - start;
-                AiChatMessage saved = saveMessage(s.getId(), 2, full.toString(), citations, null, (int) latency);
+                AiChatMessage saved = saveMessage(s.getId(), 2, full.toString(), citations, null, (int) latency,
+                        tokens[0] == 0 ? null : tokens[0]);
                 if (isTransferred) {
                     s.setIsTransferred(1);
                 }
@@ -154,6 +164,11 @@ public class ChatService {
 
     private AiChatMessage saveMessage(long sessionId, int role, String content, String citations,
                                       String toolName, int latencyMs) {
+        return saveMessage(sessionId, role, content, citations, toolName, latencyMs, null);
+    }
+
+    private AiChatMessage saveMessage(long sessionId, int role, String content, String citations,
+                                      String toolName, int latencyMs, Integer tokenCount) {
         AiChatMessage m = new AiChatMessage();
         m.setSessionId(sessionId);
         m.setRole(role);
@@ -161,6 +176,7 @@ public class ChatService {
         m.setCitations(citations);
         m.setToolName(toolName);
         m.setLatencyMs(latencyMs);
+        m.setTokenCount(tokenCount);
         messageMapper.insert(m);
         return m;
     }

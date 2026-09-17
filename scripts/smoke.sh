@@ -41,4 +41,12 @@ curl -s -X POST $B/admin/houses/$HID/fake-detect -H "Authorization: Bearer $T_AD
 
 echo "8) 通知与看板"
 echo "  房东未读: $(curl -s $B/notifications/unread-count -H "Authorization: Bearer $T_LI" | j .data)"
-curl -s "$B/admin/dashboard?granularity=day" -H "Authorization: Bearer $T_ADMIN" | j '"看板: 用户=\(.data.userCount) 房源=\(.data.houseCount) 在租=\(.data.rentedCount) 订单=\(.data.orderCount)"'
+curl -s "$B/admin/dashboard?granularity=day" -H "Authorization: Bearer $T_ADMIN" | j '"看板: 用户=\(.data.userCount) 房源=\(.data.houseCount) 在租=\(.data.rentedCount) 订单=\(.data.orderCount) AI会话=\(.data.chatCount) 工具调用=\(.data.toolCallCount)"'
+
+echo "9) AI 对话审计（NFR-05 可追溯）：管理员查看全站会话与工具链"
+CSID=$(curl -s -X POST $B/ai/sessions -H "Authorization: Bearer $T_TENANT" -H 'Content-Type: application/json' -d '{"scene":1}' | j .data.id)
+curl -s -N -X POST $B/ai/sessions/$CSID/messages -H "Authorization: Bearer $T_TENANT" -H 'Content-Type: application/json' \
+  -d '{"content":"预算2500以内，要一居室，近地铁"}' > /dev/null
+echo "  会话 $CSID 轨迹: $(curl -s "$B/admin/chats/$CSID" -H "Authorization: Bearer $T_ADMIN" | j '"轮次=\(.data.stats.roundCount) 工具调用=\(.data.stats.toolCallCount) 工具=\(.data.stats.tools[0].name // "无") 回答时延=\(.data.stats.avgLatencyMs)ms"')"
+echo "  全站会话数: $(curl -s "$B/admin/chats?size=1" -H "Authorization: Bearer $T_ADMIN" | j .data.total)"
+echo "  越权检查——租客访问后台审计: $(curl -s "$B/admin/chats" -H "Authorization: Bearer $T_TENANT" | j '"code=\(.code) msg=\(.message)"')"

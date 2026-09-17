@@ -29,6 +29,7 @@ public class AdminService {
     private final HouseMapper houseMapper;
     private final LeaseOrderMapper orderMapper;
     private final AuditLogMapper auditLogMapper;
+    private final AdminChatService adminChatService;
 
     /** FR-22：用户查询 */
     public Page<SysUser> users(String keyword, long page, long size) {
@@ -83,6 +84,8 @@ public class AdminService {
         vo.put("userTrend", trend(userMapper, fmt, "sys_user", "role != 3"));
         vo.put("houseTrend", trend(houseMapper, fmt, "house", null));
         vo.put("orderTrend", trend(orderMapper, fmt, "lease_order", null));
+        // FR-24 口径中的"AI 对话量"：会话数/消息数/工具调用量与新增趋势（含转人工会话数）
+        vo.putAll(adminChatService.dashboardMetrics(fmt));
         return vo;
     }
 

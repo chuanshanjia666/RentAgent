@@ -63,6 +63,68 @@ export interface ChatMsg {
   [key: string]: any
 }
 
+/** 会话场景：1 找房助手 2 智能客服 3 合同解读（与 ai_chat_session.scene 对应） */
+export const SCENE_NAME: Record<number, string> = { 1: '找房助手', 2: '智能客服', 3: '合同解读' }
+export const SCENE_COLOR: Record<number, string> = { 1: 'blue', 2: 'green', 3: 'purple' }
+/** 用户角色：1 租客 2 房东 3 管理员 */
+export const USER_ROLE: Record<number, string> = { 1: '租客', 2: '房东', 3: '管理员' }
+
+/** 后台会话审计列表行：GET /admin/chats */
+export interface AdminChatSession {
+  id: number
+  scene: number
+  sceneName: string
+  title?: string
+  userId: number
+  nickname?: string
+  username?: string
+  phone?: string
+  userRole?: number
+  isTransferred: number
+  messageCount: number
+  roundCount: number
+  toolCallCount: number
+  totalTokens: number
+  lastMessage?: string | null
+  createdAt?: string
+  updatedAt?: string
+  [key: string]: any
+}
+
+/** 后台会话审计消息：role 1用户 2助手 3工具调用 */
+export interface AdminChatMessage {
+  id: number
+  role: number
+  roleName: string
+  content?: string | null
+  toolName?: string | null
+  toolArgs?: unknown
+  toolResult?: unknown
+  citations?: { title: string; snippet?: string }[]
+  tokenCount?: number | null
+  latencyMs?: number | null
+  createdAt?: string
+  [key: string]: any
+}
+
+/** 后台会话审计详情：GET /admin/chats/{id} */
+export interface AdminChatDetail {
+  session: AdminChatSession
+  currentEngine: string
+  hasRuleEngineTurn: boolean
+  systemPrompt: string
+  messages: AdminChatMessage[]
+  stats: {
+    roundCount: number
+    assistantCount: number
+    toolCallCount: number
+    totalTokens: number
+    avgLatencyMs: number
+    tools: { name: string; count: number; avgLatencyMs: number; ruleEngine: boolean }[]
+  }
+  [key: string]: any
+}
+
 /** 登录/注册响应 */
 export interface LoginResult {
   token: string

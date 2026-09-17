@@ -88,14 +88,14 @@ npm run dist:desktop       # 打包安装包 → frontend/release/（AppImage + 
 | xiaochen | 租客 | AI 找房、收藏、预约、签约、订单、评价 |
 | wanglandlord | 房东（未实名） | 实名认证拦截演示 |
 | lilandlord | 房东（已实名） | 房源发布、AI 定价建议、AI 填充 |
-| admin | 管理员 | 审核工作台、AI 虚假房源检测、用户/举报管理、数据看板 |
+| admin | 管理员 | 审核工作台、AI 虚假房源检测、用户/举报管理、AI 对话审计（全站会话与工具调用轨迹）、数据看板 |
 
 注册验证码固定 `246810`（演示环境）。
 
 ## 冒烟测试
 
 ```bash
-bash scripts/smoke.sh   # 覆盖 实名拦截→发布→审核→预约冲突→签约→账单→评价限制→AI 分析→看板
+bash scripts/smoke.sh   # 覆盖 实名拦截→发布→审核→预约冲突→签约→账单→评价限制→AI 分析→看板→AI 对话审计（含越权检查）
 ```
 
 ## 前端两种版本的关系

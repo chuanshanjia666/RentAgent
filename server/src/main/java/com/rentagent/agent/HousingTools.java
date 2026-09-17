@@ -36,20 +36,29 @@ public class HousingTools {
                     Boolean.TRUE.equals(subway) ? List.of("近地铁") : null,
                     null, null, null, null, "rent_asc", 1L, 5L);
             List<House> houses = searchService.search(req).getRecords();
-            List<Map<String, Object>> cards = houses.stream().map(h -> {
-                Map<String, Object> card = new HashMap<>();
-                card.put("id", h.getId());
-                card.put("title", h.getTitle());
-                card.put("district", h.getDistrict());
-                card.put("community", h.getCommunity());
-                card.put("layout", h.getLayout());
-                card.put("rent", h.getRent());
-                card.put("facilities", houseService.toList(h.getFacilities()));
-                return card;
-            }).toList();
-            return objectMapper.writeValueAsString(cards);
+            return cardsJson(houses);
         } catch (Exception e) {
             log.warn("searchHouses 工具执行失败: {}", e.getMessage());
+            return "[]";
+        }
+    }
+
+    /** 房源卡片 JSON（工具返回体；规则引擎复用同一形状，保证两种引擎的留痕可比对） */
+    public String cardsJson(List<House> houses) {
+        List<Map<String, Object>> cards = houses.stream().map(h -> {
+            Map<String, Object> card = new HashMap<>();
+            card.put("id", h.getId());
+            card.put("title", h.getTitle());
+            card.put("district", h.getDistrict());
+            card.put("community", h.getCommunity());
+            card.put("layout", h.getLayout());
+            card.put("rent", h.getRent());
+            card.put("facilities", houseService.toList(h.getFacilities()));
+            return card;
+        }).toList();
+        try {
+            return objectMapper.writeValueAsString(cards);
+        } catch (Exception e) {
             return "[]";
         }
     }

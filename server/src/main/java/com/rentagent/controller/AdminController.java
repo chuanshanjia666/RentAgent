@@ -2,6 +2,7 @@ package com.rentagent.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.R;
+import com.rentagent.dto.AdminChatDto;
 import com.rentagent.dto.AiDto;
 import com.rentagent.dto.PageVO;
 import com.rentagent.entity.AuditLog;
@@ -11,6 +12,7 @@ import com.rentagent.entity.SysUser;
 import com.rentagent.mapper.HouseMapper;
 import com.rentagent.security.RequireRole;
 import com.rentagent.security.UserContext;
+import com.rentagent.service.AdminChatService;
 import com.rentagent.service.AdminService;
 import com.rentagent.service.AnalysisService;
 import com.rentagent.service.AuditLogService;
@@ -42,6 +44,7 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminService adminService;
+    private final AdminChatService adminChatService;
     private final AnalysisService analysisService;
     private final AuditLogService auditLogService;
     private final NotificationService notificationService;
@@ -130,5 +133,22 @@ public class AdminController {
     @GetMapping("/dashboard")
     public R<Map<String, Object>> dashboard(@RequestParam(defaultValue = "day") String granularity) {
         return R.ok(adminService.dashboard(granularity));
+    }
+
+    @Operation(summary = "AI 对话列表（全站会话，含归属用户与工具调用量，NFR-05）")
+    @GetMapping("/chats")
+    public R<PageVO<AdminChatDto.SessionVO>> chats(@RequestParam(required = false) String keyword,
+                                                   @RequestParam(required = false) Integer scene,
+                                                   @RequestParam(required = false) Boolean transferred,
+                                                   @RequestParam(required = false) Long userId,
+                                                   @RequestParam(defaultValue = "1") long page,
+                                                   @RequestParam(defaultValue = "10") long size) {
+        return R.ok(PageVO.of(adminChatService.sessions(keyword, scene, transferred, userId, page, size)));
+    }
+
+    @Operation(summary = "AI 对话详情（多轮对话 + 工具调用轨迹 + 人物与角色设定，NFR-05）")
+    @GetMapping("/chats/{id}")
+    public R<AdminChatDto.DetailVO> chatDetail(@PathVariable long id) {
+        return R.ok(adminChatService.detail(id));
     }
 }

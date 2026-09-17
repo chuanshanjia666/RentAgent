@@ -6,11 +6,13 @@ import com.rentagent.entity.House;
 import com.rentagent.service.KbService;
 import com.rentagent.service.HouseService;
 import com.rentagent.service.SearchService;
+import com.rentagent.service.ToolTraceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -22,6 +24,7 @@ import java.util.regex.Pattern;
  * 规则引擎智能体（无可用模型 Key 时的降级实现，风险 R1 应对）：
  * 找房场景解析预算/户型/区域/地铁后调用真实检索；客服场景走知识库命中，未命中礼貌转人工。
  * 模拟流式输出以保证前端体验一致。
+ * 检索与知识库调用同样写入工具留痕（NFR-05），使后台审计视图在降级模式下也有工具链可看。
  */
 @Slf4j
 @Component
@@ -35,6 +38,8 @@ public class MockAgent implements AgentEngine {
     private final HouseService houseService;
     private final KbService kbService;
     private final ObjectMapper objectMapper;
+    private final ToolTraceService toolTraceService;
+    private final HousingTools housingTools;
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
 
     @Override
@@ -50,9 +55,11 @@ public class MockAgent implements AgentEngine {
                 String citationsJson = null;
                 boolean transferred = false;
                 if (scene == AiChatSessionScene.FIND_HOUSE) {
-                    full = findHouseReply(userMessage);
+                    full = findHouseReply(sessionId, userMessage);
                 } else if (scene == AiChatSessionScene.CUSTOMER_SERVICE) {
+                    long t0 = System.currentTimeMillis();
                     List<Map<String, String>> refs = kbService.search(userMessage, 3);
+                    traceKnowledge(sessionId, userMessage, refs, t0);
                     if (refs.isEmpty()) {
                         transferred = true;
                         full = "抱歉，这个问题我还没学会，已为您转接人工客服，工作时间为每日 9:00-21:00。您也可以先看看常见问题清单。";
@@ -66,7 +73,9 @@ public class MockAgent implements AgentEngine {
                         full = sb.toString();
                     }
                 } else {
+                    long t0 = System.currentTimeMillis();
                     List<Map<String, String>> refs = kbService.search(userMessage, 2);
+                    traceKnowledge(sessionId, userMessage, refs, t0);
                     full = refs.isEmpty()
                             ? "关于合同条款，建议您在签约页使用「合同智能解读」功能，AI 会逐条通俗化解释并标红风险条款（如高额违约金、单方涨租）。AI 生成，仅供参考。"
                             : "根据平台知识库：" + refs.get(0).get("snippet") + "\n（来源：" + refs.get(0).get("title") + "）\n详细条款解读请在签约页使用「合同智能解读」。AI 生成，仅供参考。";
@@ -84,7 +93,7 @@ public class MockAgent implements AgentEngine {
     }
 
     /** FR-12：自然语言 → 结构化条件 → 调用真实房源检索工具 → 推荐理由 */
-    private String findHouseReply(String message) {
+    private String findHouseReply(long sessionId, String message) {
         Integer maxRent = null;
         Matcher m = BUDGET.matcher(message.replaceAll("[,，。]", ""));
         while (m.find()) {
@@ -108,11 +117,16 @@ public class MockAgent implements AgentEngine {
         SearchReq req = new SearchReq(null, null, layout, null, null,
                 maxRent == null ? null : BigDecimal.valueOf(maxRent), null, null, null, null, null,
                 maxRent == null ? "hot" : "rent_asc", 1L, 3L);
+        long t0 = System.currentTimeMillis();
         List<House> houses = searchService.search(req).getRecords();
+        traceSearch(sessionId, maxRent, layout, null, subway, houses, t0);
         if (!subway && maxRent == null && layout == null) {
-            req = new SearchReq(stripNeed(message), null, null, null, null, null, null, null, null, null, null,
+            String keyword = stripNeed(message);
+            req = new SearchReq(keyword, null, null, null, null, null, null, null, null, null, null,
                     "hot", 1L, 3L);
+            t0 = System.currentTimeMillis();
             houses = searchService.search(req).getRecords();
+            traceSearch(sessionId, null, null, keyword, false, houses, t0);
         }
         if (houses.isEmpty()) {
             return "没有找到完全符合条件的房源。建议您：1）适当放宽预算或区域范围；2）在房源列表页使用多条件筛选；" +
@@ -142,6 +156,35 @@ public class MockAgent implements AgentEngine {
 
     private String stripNeed(String message) {
         return message.length() > 20 ? message.substring(0, 20) : message;
+    }
+
+    /** 留痕：参数名与 {#searchHouses} 对齐，便于后台审计视图比对两种引擎的检索条件 */
+    private void traceSearch(long sessionId, Integer maxRent, String layout, String keyword, Boolean subway,
+                             List<House> houses, long start) {
+        Map<String, Object> args = new LinkedHashMap<>();
+        args.put("maxRent", maxRent);
+        args.put("layoutKeyword", layout);
+        args.put("keyword", keyword);
+        args.put("subway", subway);
+        toolTraceService.record(sessionId, "searchHouses", json(args), housingTools.cardsJson(houses),
+                elapsed(start), true);
+    }
+
+    private void traceKnowledge(long sessionId, String question, List<Map<String, String>> refs, long start) {
+        toolTraceService.record(sessionId, "searchKnowledge", json(Map.of("question", question)), json(refs),
+                elapsed(start), true);
+    }
+
+    private String json(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private int elapsed(long start) {
+        return (int) (System.currentTimeMillis() - start);
     }
 
     /** 会话场景常量（与 ai_chat_session.scene 对应） */

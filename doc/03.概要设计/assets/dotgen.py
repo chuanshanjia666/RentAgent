@@ -150,8 +150,10 @@ MODULES = [
      ["Review", "Notification", "Report"]),
     ("admin", "后台管理模块", "FR-22 ~ FR-24",
      ["AdminController"],
-     ["AdminService", "ReportService\\n(处理)", "AuditLogService", "AnalysisService\\n(检测)"],
-     ["SysUserMapper", "HouseMapper", "ReportMapper", "AuditLogMapper"],
+     ["AdminService", "AdminChatService\\n(对话审计)", "ReportService\\n(处理)",
+      "AuditLogService", "AnalysisService\\n(检测)"],
+     ["SysUserMapper", "HouseMapper", "ReportMapper", "AuditLogMapper",
+      "AiChatSessionMapper /\\nAiChatMessageMapper\\n(审计读取)"],
      ["AuditLog", "Report\\n聚合查询(看板)"]),
     ("ai", "AI 智能体服务模块", "FR-12 ~ FR-16",
      ["AiController"],
@@ -545,7 +547,7 @@ CLASS_FIGS = {
         "+ describe(): String",
         "+ stream(long sessionId, long userId, int scene,",
         "         String userMessage, Callback callback): void"], "#f3e2f7", "#9b6fb0"),
-     ("LlmAgent", "AgentEngine 实现", ["- gateway: LlmGateway", "- tools: HousingTools",
+     ("LlmAgent", "AgentEngine 实现", ["- gateway: LlmGateway", "- toolProvider: HousingToolProvider",
         "- memory(Redis 窗口 + 摘要)"], [
         "+ stream(...): void",
         "- LangChain4j AiServices 编排（ReAct）",
@@ -574,6 +576,15 @@ CLASS_FIGS = {
         "+ generate(...tools...): Response&lt;AiMessage&gt;",
         "+ generate(...handler): void  // SSE 流式",
         "- 解析 output_text.delta 与 function_call"], "#f7e7e7", "#c07070"),
+     ("HousingToolProvider", "工具提供器（留痕）", ["- housingTools / toolTraceService"], [
+        "+ provideTools(ToolProviderRequest): ToolProviderResult",
+        "- 把每个 @Tool 执行包装为“计时 → 执行 → 留痕 → 返回”",
+        "- 会话号取自 ToolExecutor.execute(…, memoryId)"], "#eaf6ea", "#5c9c5c"),
+     ("ToolTraceService", "Service（留痕）", ["- messageMapper: AiChatMessageMapper"], [
+        "+ record(long sessionId, String toolName, String argsJson,",
+        "         String resultJson, int latencyMs): void",
+        "- 写 role=3 工具消息（tool_name / args / result / latency）",
+        "- JSON 列合法性校验与超长预览兜底"], "#eaf6ea", "#5c9c5c"),
      ("HousingTools", "工具注册表（@Tool）", ["- houseMapper / kbService"], [
         "+ searchHouses(Integer maxRent, String layoutKeyword,",
         "               String district, String keyword, Boolean subway): String",
@@ -594,19 +605,23 @@ CLASS_FIGS = {
           ("AiController","AnalysisService",""),
           ("ChatService","AgentEngine",""),
           ("AgentEngine","LlmAgent","实现"),("AgentEngine","MockAgent","实现"),
-          ("LlmAgent","LlmGateway",""),("LlmAgent","HousingTools","Function Calling"),
+          ("LlmAgent","LlmGateway",""),("LlmAgent","HousingToolProvider","Function Calling"),
+          ("HousingToolProvider","HousingTools","委托执行"),
+          ("HousingToolProvider","ToolTraceService","工具留痕"),
           ("MockAgent","HousingTools","规则引擎"),
+          ("MockAgent","ToolTraceService","规则引擎留痕"),
           ("LlmGateway","AnthropicMessagesChatModel",""),
           ("LlmGateway","OpenAiResponsesChatModel",""),
           ("HousingTools","KbService","searchKnowledge"),
           ("ChatService","AiChatSession / AiChatMessage / AiAnalysis","落库"),
           ("AnalysisService","AiChatSession / AiChatMessage / AiAnalysis","落库"),
-          ("KbService","KbDocument / KbChunk","切片入库")]),
+          ("KbService","KbDocument / KbChunk","切片入库"),
+          ("ToolTraceService","AiChatSession / AiChatMessage / AiAnalysis","落库")]),
 
  "admin": dict(
    title="后台管理模块类图",
    nodes=[
-     ("AdminController", "Controller（@RequireRole(3)）", ["- adminService / reportService / analysisService"], [
+     ("AdminController", "Controller（@RequireRole(3)）", ["- adminService / adminChatService / reportService / analysisService"], [
         "+ users(String, page, size): R&lt;PageVO&lt;SysUser&gt;&gt;",
         "+ setUserStatus(long, boolean): R&lt;Void&gt;",
         "+ pending(page, size): R&lt;PageVO&lt;House&gt;&gt;",
@@ -615,6 +630,8 @@ CLASS_FIGS = {
         "+ reports(int, page, size): R&lt;PageVO&lt;Map&gt;&gt;",
         "+ handleReport(long, Map): R&lt;Void&gt;",
         "+ audits(page, size): R&lt;PageVO&lt;AuditLog&gt;&gt;",
+        "+ chats(String, Integer, Boolean, Long, page, size)",
+        "+ chatDetail(long id): R&lt;DetailVO&gt;",
         "+ dashboard(String): R&lt;Map&gt;"], "#fdf3dc", "#d1a542"),
      ("AdminService", "Service", ["- userMapper / houseMapper / auditLogMapper"], [
         "+ users(String, long, long): Page&lt;SysUser&gt;",
@@ -623,6 +640,11 @@ CLASS_FIGS = {
         "+ dashboard(String): Map",
         "+ auditLogs(long, long): Page&lt;AuditLog&gt;",
         "- 聚合统计：按日/周/月分组（FR-24）"], "#eaf6ea", "#5c9c5c"),
+     ("AdminChatService", "Service（对话审计）", ["- sessionMapper / messageMapper / userMapper"], [
+        "+ sessions(String, Integer, Boolean, Long, long, long)",
+        "+ detail(long sessionId): DetailVO",
+        "+ dashboardMetrics(String periodFormat): Map",
+        "- GROUP BY session_id 批量聚合，避免 N+1（NFR-05）"], "#eaf6ea", "#5c9c5c"),
      ("ReportService", "Service", ["- reportMapper / reviewMapper / houseMapper"], [
         "+ page(int, long, long): Page&lt;Report&gt;",
         "+ handle(long, String, long): void"], "#eaf6ea", "#5c9c5c"),
@@ -640,8 +662,11 @@ CLASS_FIGS = {
         "AuditLog：operator_id, action, target_type, target_id, detail(JSON), ip"], [
         "（映射 sys_user / house / report / audit_log）"], "#f7f0e6", "#b08a5c"),
    ],
-   edges=[("AdminController","AdminService",""),("AdminController","ReportService",""),
+   edges=[("AdminController","AdminService",""),("AdminController","AdminChatService","NFR-05 审计"),
+          ("AdminController","ReportService",""),
           ("AdminController","AuditLogService","留痕"),
+          ("AdminChatService","SysUserMapper","人物信息"),
+          ("AdminService","AdminChatService","FR-24 AI 对话量"),
           ("AdminService","SysUserMapper",""),("AdminService","HouseMapper",""),
           ("AdminService","AuditLogMapper",""),
           ("ReportService","ReportMapper",""),("ReportService","ReviewMapper","隐藏评价"),
@@ -710,7 +735,8 @@ def fig_agent_structure():
     chat [label="ChatService\n会话 CRUD\nSSE 流式发送\n消息异步落库", fillcolor="#eaf6ea", color="#5c9c5c"];
     kb   [label="KbService\n文档切片入库\n关键词检索 topK\n命中判定", fillcolor="#eaf6ea", color="#5c9c5c"];
     ana  [label="AnalysisService\n定价建议\n虚假检测\n合同解读 · 识别", fillcolor="#eaf6ea", color="#5c9c5c"];
-    {{rank=same; chat; kb; ana;}}
+    trace [label="ToolTraceService\n工具调用留痕（role=3）\n工具名 · 入参 · 返回 · 耗时", fillcolor="#eaf6ea", color="#5c9c5c"];
+    {{rank=same; chat; kb; ana; trace;}}
   }}
 
   subgraph cluster_engine {{
@@ -739,6 +765,8 @@ def fig_agent_structure():
   subgraph cluster_tools {{
     label="工具与知识层"; fontsize=13; fontcolor="#31527a"; style="rounded,filled";
     fillcolor="#eef4fb"; color="#4a7ebb"; margin=10;
+    prov [label="HousingToolProvider（工具提供器）\n向 AiServices 注册 @Tool 规格\n并把执行包装为\n计时 → 执行 → 留痕 → 返回",
+           fillcolor="#eef4fb", color="#4a7ebb", width=4.6];
     tools [label="HousingTools（业务工具，@Tool 注册）\nsearchHouses(maxRent, layoutKeyword,\n　　　　　　　district, keyword, subway)\ngetHouseDetail · createAppointment\nsuggestPrice · detectFakeHouse · analyzeContract",
            fillcolor="#eef4fb", color="#4a7ebb", width=4.8];
     rag [label="RAG 检索\nsearchKnowledge(question) → 切片 + 来源引用\n首版关键词命中 + 计分；向量升级位已预留",
@@ -752,11 +780,12 @@ def fig_agent_structure():
   ctrl -> chat; ctrl -> kb; ctrl -> ana;
   chat -> api; kb -> api; ana -> api;
   api -> llm [label="启用"]; api -> mck [label="降级"];
-  llm -> gw [label="模型调用"]; llm -> tools [label="Function Calling"];
-  mck -> tools [label="规则引擎"];
+  llm -> gw [label="模型调用"]; llm -> prov [label="工具提供器"];
+  prov -> tools [label="委托执行"]; prov -> trace [label="工具留痕"];
+  mck -> tools [label="规则引擎"]; mck -> trace [label="规则引擎留痕"];
   tools -> rag [style=dotted, label="客服意图"];
   gw -> p1; gw -> p2; gw -> p3;
-  tools -> data; ana -> data; chat -> data; kb -> data;
+  tools -> data; ana -> data; chat -> data; kb -> data; trace -> data;
 }}
 '''
     render("fig_3_1_mod_ai_agent", d)
