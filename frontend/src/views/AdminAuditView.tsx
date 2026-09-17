@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Descriptions, Empty, Input, message, Modal, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
-import { fmtMoney, HOUSE_STATUS } from '../constants'
+import { fmtMoney, HOUSE_STATUS, HOUSE_STATUS_TYPE } from '../constants'
 
 export default function AdminAuditView() {
   const [list, setList] = useState<any[]>([])
@@ -27,33 +27,57 @@ export default function AdminAuditView() {
     setDetect(vo)
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+  }, [])
 
   const riskColor = (s: number) => (s >= 70 ? '#e6392f' : s >= 40 ? '#fa8c16' : '#52c41a')
 
   const columns: ColumnsType<any> = [
     {
-      title: '房源', render: (_, row) => (
+      title: '房源',
+      render: (_, row) => (
         <>
           <b>{row.title}</b>
           <div style={{ color: '#909399', fontSize: 12 }}>
             {row.district} · {row.community} · {row.layout} · {row.area}㎡
           </div>
-          <div style={{ color: '#606266', fontSize: 12 }}>{(row.description || '').slice(0, 60)}…</div>
+          <div style={{ color: '#606266', fontSize: 12 }}>
+            {(row.description || '').slice(0, 60)}…
+          </div>
         </>
       )
     },
     { title: '租金', width: 110, render: (_, row) => fmtMoney(row.rent) },
-    { title: '状态', width: 90, render: (_, row) => <Tag>{HOUSE_STATUS[row.status]}</Tag> },
     {
-      title: '操作', width: 330,
+      title: '状态',
+      width: 90,
+      render: (_, row) => (
+        <Tag color={HOUSE_STATUS_TYPE[row.status]}>{HOUSE_STATUS[row.status]}</Tag>
+      )
+    },
+    {
+      title: '操作',
+      width: 330,
       render: (_, row) => (
         <>
-          <Button size="small" type="primary" onClick={() => audit(row, true)}>通过</Button>
-          <Button size="small" danger style={{ marginLeft: 6 }}
-            onClick={() => { setRejectRow(row); setReason('房源信息不完整，请补充后重新提交') }}>驳回</Button>
-          <Button size="small" style={{ marginLeft: 6 }}
-            onClick={() => fakeDetect(row)}>🤖 虚假检测</Button>
+          <Button size="small" type="primary" onClick={() => audit(row, true)}>
+            通过
+          </Button>
+          <Button
+            size="small"
+            danger
+            style={{ marginLeft: 6 }}
+            onClick={() => {
+              setRejectRow(row)
+              setReason('房源信息不完整，请补充后重新提交')
+            }}
+          >
+            驳回
+          </Button>
+          <Button size="small" style={{ marginLeft: 6 }} onClick={() => fakeDetect(row)}>
+            🤖 虚假检测
+          </Button>
         </>
       )
     }
@@ -70,14 +94,25 @@ export default function AdminAuditView() {
         columns={columns}
       />
 
-      <Modal title="驳回房源" open={!!rejectRow} onOk={() => rejectRow && audit(rejectRow, false)}
-        okText="确认驳回" okButtonProps={{ danger: true }} onCancel={() => setRejectRow(null)}>
+      <Modal
+        title="驳回房源"
+        open={!!rejectRow}
+        onOk={() => rejectRow && audit(rejectRow, false)}
+        okText="确认驳回"
+        okButtonProps={{ danger: true }}
+        onCancel={() => setRejectRow(null)}
+      >
         <p>驳回理由将通知房东：</p>
         <Input.TextArea rows={2} value={reason} onChange={e => setReason(e.target.value)} />
       </Modal>
 
-      <Modal title="🤖 虚假房源检测（FR-16 · 辅助审核）" open={!!detect} footer={null} width={520}
-        onCancel={() => setDetect(null)}>
+      <Modal
+        title="🤖 虚假房源检测（FR-16 · 辅助审核）"
+        open={!!detect}
+        footer={null}
+        width={520}
+        onCancel={() => setDetect(null)}
+      >
         {detect && (
           <>
             <div style={{ textAlign: 'center', margin: '8px 0 14px' }}>
@@ -88,7 +123,9 @@ export default function AdminAuditView() {
             </div>
             {detect.suspicions.length ? (
               <ul style={{ paddingLeft: 20, lineHeight: 2 }}>
-                {detect.suspicions.map((s: string, i: number) => <li key={i}>{s}</li>)}
+                {detect.suspicions.map((s: string, i: number) => (
+                  <li key={i}>{s}</li>
+                ))}
               </ul>
             ) : (
               <p>未发现明显疑点。</p>

@@ -545,8 +545,8 @@ def section3(b):
 
         b.heading(3, f"{num}.3", f"{m['title']}类图")
         fig_n += 1
-        b.figure(cls_fig, f"图3-{fig_n}  {m['title']}类图",
-                 width_cm=15.4 if m["key"] not in ("ai",) else 15.4)
+        # 类图信息密度最高（十余个类框），按正文栏宽上限出图，避免等比缩小后框内文字过小
+        b.figure(cls_fig, f"图3-{fig_n}  {m['title']}类图", width_cm=16.2)
         b.body(m["cls_note"])
         b.body("模块对外接口函数清单如下表所示，函数级规约见第 5.2 节。")
         tbl_n += 1

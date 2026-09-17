@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Alert, Button, Card, Form, Input, message, Tag } from 'antd'
+import { useNavigate } from 'react-router-dom'
 import http from '../api'
 import { useAuth } from '../auth'
+import { USER_ROLE } from '../constants'
 
 interface RealnameInfo {
   status: number
@@ -13,12 +15,11 @@ interface RealnameInfo {
 
 export default function ProfileView() {
   const auth = useAuth()
+  const nav = useNavigate()
   const [me, setMe] = useState({ username: '', phone: '', nickname: '', email: '' })
   const [realname, setRealname] = useState<RealnameInfo | null>(null)
   const [rn, setRn] = useState({ realName: '', idCardNo: '' })
   const [pwd, setPwd] = useState({ oldPassword: '', newPassword: '' })
-
-  const roleText = ({ 1: '租客', 2: '房东', 3: '管理员' } as Record<number, string>)[auth.role] || '用户'
 
   async function load() {
     const d = await http.get('/users/me')
@@ -50,10 +51,12 @@ export default function ProfileView() {
     await http.patch('/users/me/password', pwd)
     message.success('密码已修改，请重新登录')
     auth.logout()
-    location.hash = '#/login'
+    nav('/login')
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+  }, [])
 
   return (
     <div className="page" style={{ maxWidth: 720 }}>
@@ -62,18 +65,23 @@ export default function ProfileView() {
       <Card title="基本信息" style={{ marginBottom: 16 }}>
         <Form layout="vertical" style={{ maxWidth: 420 }}>
           <Form.Item label="昵称">
-            <Input value={me.nickname} onChange={e => setMe(m => ({ ...m, nickname: e.target.value }))} />
+            <Input
+              value={me.nickname}
+              onChange={e => setMe(m => ({ ...m, nickname: e.target.value }))}
+            />
           </Form.Item>
           <Form.Item label="邮箱">
             <Input value={me.email} onChange={e => setMe(m => ({ ...m, email: e.target.value }))} />
           </Form.Item>
           <Form.Item>
-            <Tag>{roleText}</Tag>
+            <Tag>{USER_ROLE[auth.role] || '用户'}</Tag>
             <span style={{ color: '#909399', fontSize: 12, marginLeft: 8 }}>
               账号：{me.username} / {me.phone}
             </span>
           </Form.Item>
-          <Button type="primary" onClick={saveProfile}>保存资料</Button>
+          <Button type="primary" onClick={saveProfile}>
+            保存资料
+          </Button>
         </Form>
       </Card>
 
@@ -81,46 +89,77 @@ export default function ProfileView() {
         {auth.role === 2 ? (
           <>
             {realname && realname.status === 1 && (
-              <Alert type="success" showIcon style={{ marginBottom: 10 }}
-                message={`已通过实名认证：${realname.realName}（${realname.maskedIdCard}）`} />
+              <Alert
+                type="success"
+                showIcon
+                style={{ marginBottom: 10 }}
+                message={`已通过实名认证：${realname.realName}（${realname.maskedIdCard}）`}
+              />
             )}
             {realname && realname.status === 0 && (
-              <Alert type="warning" showIcon style={{ marginBottom: 10 }} message="实名认证审核中，请耐心等待" />
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 10 }}
+                message="实名认证审核中，请耐心等待"
+              />
             )}
             {realname && realname.status === 2 && (
-              <Alert type="error" showIcon style={{ marginBottom: 10 }}
-                message={`认证被驳回：${realname.rejectReason || '信息有误'}，请重新提交`} />
+              <Alert
+                type="error"
+                showIcon
+                style={{ marginBottom: 10 }}
+                message={`认证被驳回：${realname.rejectReason || '信息有误'}，请重新提交`}
+              />
             )}
             {(!realname || realname.status !== 0) && (
               <Form layout="vertical" style={{ maxWidth: 420 }}>
                 <Form.Item label="真实姓名">
-                  <Input value={rn.realName} onChange={e => setRn(r => ({ ...r, realName: e.target.value }))} />
+                  <Input
+                    value={rn.realName}
+                    onChange={e => setRn(r => ({ ...r, realName: e.target.value }))}
+                  />
                 </Form.Item>
                 <Form.Item label="身份证号">
-                  <Input maxLength={18} value={rn.idCardNo}
-                    onChange={e => setRn(r => ({ ...r, idCardNo: e.target.value }))} />
+                  <Input
+                    maxLength={18}
+                    value={rn.idCardNo}
+                    onChange={e => setRn(r => ({ ...r, idCardNo: e.target.value }))}
+                  />
                 </Form.Item>
-                <Button type="primary" onClick={submitRealname}>提交认证（加密存储）</Button>
+                <Button type="primary" onClick={submitRealname}>
+                  提交认证（加密存储）
+                </Button>
               </Form>
             )}
           </>
         ) : (
-          <Alert type="info" showIcon
-            message="租客无需实名认证即可浏览与预约；签约时需登记姓名与联系方式" />
+          <Alert
+            type="info"
+            showIcon
+            message="租客无需实名认证即可浏览与预约；签约时需登记姓名与联系方式"
+          />
         )}
       </Card>
 
       <Card title="修改密码">
         <Form layout="vertical" style={{ maxWidth: 420 }}>
           <Form.Item label="原密码">
-            <Input.Password value={pwd.oldPassword}
-              onChange={e => setPwd(p => ({ ...p, oldPassword: e.target.value }))} />
+            <Input.Password
+              value={pwd.oldPassword}
+              onChange={e => setPwd(p => ({ ...p, oldPassword: e.target.value }))}
+            />
           </Form.Item>
           <Form.Item label="新密码">
-            <Input.Password placeholder="6~32 位" value={pwd.newPassword}
-              onChange={e => setPwd(p => ({ ...p, newPassword: e.target.value }))} />
+            <Input.Password
+              placeholder="6~32 位"
+              value={pwd.newPassword}
+              onChange={e => setPwd(p => ({ ...p, newPassword: e.target.value }))}
+            />
           </Form.Item>
-          <Button danger onClick={changePwd}>修改密码（改后需重新登录）</Button>
+          <Button danger onClick={changePwd}>
+            修改密码（改后需重新登录）
+          </Button>
         </Form>
       </Card>
     </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Empty, message } from 'antd'
 import http from '../api'
 import HouseCard from '../components/HouseCard'
@@ -13,12 +13,14 @@ export default function FavoritesView() {
   }
 
   async function remove(id: number) {
-    await http.delete('/favorites/' + id)
+    await http.delete(`/favorites/${id}`)
     message.success('已取消收藏')
     load()
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+  }, [])
 
   return (
     <div className="page">
@@ -28,9 +30,16 @@ export default function FavoritesView() {
           {list.map(h => (
             <div key={h.id} style={{ position: 'relative' }}>
               <HouseCard house={h} />
-              <Button size="small" type="primary" danger ghost
+              <Button
+                size="small"
+                type="primary"
+                danger
+                ghost
                 style={{ position: 'absolute', top: 8, right: 8 }}
-                onClick={() => remove(h.id)}>取消收藏</Button>
+                onClick={() => remove(h.id)}
+              >
+                取消收藏
+              </Button>
             </div>
           ))}
         </div>

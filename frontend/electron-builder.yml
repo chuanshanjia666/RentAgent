@@ -43,7 +43,7 @@ win:
   icon: build/icon.png
 
 nsis:
-  oneClick: false                      # 允许选择安装目录
+  oneClick: false # 允许选择安装目录
   allowToChangeInstallationDirectory: true
   shortcutName: RentAgent
 

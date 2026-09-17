@@ -17,7 +17,8 @@ function sseResponse(
       controller.close()
     }
   })
-  const contentType = init.contentType ?? (init.json === undefined ? 'text/event-stream' : 'application/json')
+  const contentType =
+    init.contentType ?? (init.json === undefined ? 'text/event-stream' : 'application/json')
   return {
     ok: init.ok ?? true,
     status: init.status ?? 200,
@@ -68,10 +69,14 @@ describe('FT-SSE AI 对话流式解析', () => {
     const deltas: string[] = []
     let done: Record<string, any> | undefined
 
-    await ssePost('/ai/sessions/1/messages', { content: '预算 2500 以内' }, {
-      onDelta: d => deltas.push(d),
-      onDone: d => (done = d)
-    })
+    await ssePost(
+      '/ai/sessions/1/messages',
+      { content: '预算 2500 以内' },
+      {
+        onDelta: d => deltas.push(d),
+        onDone: d => (done = d)
+      }
+    )
 
     expect(deltas.join('')).toBe('预算2500')
     expect(done?.messageId).toBe(12)
@@ -86,10 +91,14 @@ describe('FT-SSE AI 对话流式解析', () => {
     const deltas: string[] = []
     let done: Record<string, any> | undefined
 
-    await ssePost('/ai/sessions/1/messages', { content: '你好' }, {
-      onDelta: d => deltas.push(d),
-      onDone: d => (done = d)
-    })
+    await ssePost(
+      '/ai/sessions/1/messages',
+      { content: '你好' },
+      {
+        onDelta: d => deltas.push(d),
+        onDone: d => (done = d)
+      }
+    )
 
     expect(deltas).toEqual(['你好'])
     expect(done?.messageId).toBe(2)
@@ -108,10 +117,14 @@ describe('FT-SSE AI 对话流式解析', () => {
     const deltas: string[] = []
     let done: Record<string, any> | undefined
 
-    await ssePost('/ai/sessions/1/messages', { content: '你好' }, {
-      onDelta: d => deltas.push(d),
-      onDone: d => (done = d)
-    })
+    await ssePost(
+      '/ai/sessions/1/messages',
+      { content: '你好' },
+      {
+        onDelta: d => deltas.push(d),
+        onDone: d => (done = d)
+      }
+    )
 
     expect(deltas).toEqual(['正常'])
     expect(done?.messageId).toBe(3)
@@ -123,7 +136,11 @@ describe('FT-SSE AI 对话流式解析', () => {
       sseResponse([], {
         ok: false,
         status: 200,
-        json: { code: 4001, message: '未配置大模型服务：请注入模型凭据（AI_API_KEY / AGGREGATOR_API_KEY 等环境变量）后使用 AI 能力' }
+        json: {
+          code: 4001,
+          message:
+            '未配置大模型服务：请注入模型凭据（AI_API_KEY / AGGREGATOR_API_KEY 等环境变量）后使用 AI 能力'
+        }
       })
     )
     const onError = vi.fn()
@@ -138,7 +155,13 @@ describe('FT-SSE AI 对话流式解析', () => {
 
   it('FT-SSE-04b 响应不是事件流且响应体非 JSON 时退回状态码提示', async () => {
     fetchMock.mockResolvedValue(
-      sseResponse([], { ok: false, status: 502, contentType: 'text/html', json: undefined, body: null })
+      sseResponse([], {
+        ok: false,
+        status: 502,
+        contentType: 'text/html',
+        json: undefined,
+        body: null
+      })
     )
     const onError = vi.fn()
 
@@ -148,9 +171,7 @@ describe('FT-SSE AI 对话流式解析', () => {
   })
 
   it('FT-SSE-04c 流中出现 error 载荷时回调错误原因（模型调用失败不再伪造回答）', async () => {
-    fetchMock.mockResolvedValue(
-      sseResponse(['data: {"error":"智能助手调用失败，请稍后重试"}\n\n'])
-    )
+    fetchMock.mockResolvedValue(sseResponse(['data: {"error":"智能助手调用失败，请稍后重试"}\n\n']))
     const onError = vi.fn()
     const onDelta = vi.fn()
     const onDone = vi.fn()
@@ -166,7 +187,9 @@ describe('FT-SSE AI 对话流式解析', () => {
     fetchMock.mockRejectedValue(new Error('offline'))
     const onError = vi.fn()
 
-    await expect(ssePost('/ai/sessions/1/messages', { content: '你好' }, { onError })).resolves.toBeUndefined()
+    await expect(
+      ssePost('/ai/sessions/1/messages', { content: '你好' }, { onError })
+    ).resolves.toBeUndefined()
     expect(onError).toHaveBeenCalledWith('网络连接失败')
   })
 

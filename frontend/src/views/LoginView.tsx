@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Button, Form, Input, message, Radio, Space, Tabs, Typography } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import http from '../api'
@@ -20,7 +20,13 @@ export default function LoginView() {
   const [loading, setLoading] = useState(false)
   const [captchaSent, setCaptchaSent] = useState(false)
   const [loginForm, setLoginForm] = useState({ username: '', password: '' })
-  const [regForm, setRegForm] = useState({ role: 1, phone: '', captcha: '', password: '', nickname: '' })
+  const [regForm, setRegForm] = useState({
+    role: 1,
+    phone: '',
+    captcha: '',
+    password: '',
+    nickname: ''
+  })
 
   async function doLogin(u?: string, p?: string) {
     const username = u ?? loginForm.username
@@ -82,14 +88,30 @@ export default function LoginView() {
               label: '登录',
               children: (
                 <div>
-                  <Input size="large" placeholder="账号 / 手机号" style={{ marginBottom: 14 }}
+                  <Input
+                    size="large"
+                    placeholder="账号 / 手机号"
+                    style={{ marginBottom: 14 }}
                     value={loginForm.username}
-                    onChange={e => setLoginForm(f => ({ ...f, username: e.target.value }))} />
-                  <Input.Password size="large" placeholder="密码" style={{ marginBottom: 18 }}
+                    onChange={e => setLoginForm(f => ({ ...f, username: e.target.value }))}
+                  />
+                  <Input.Password
+                    size="large"
+                    placeholder="密码"
+                    style={{ marginBottom: 18 }}
                     value={loginForm.password}
                     onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
-                    onPressEnter={() => doLogin()} />
-                  <Button type="primary" size="large" block loading={loading} onClick={() => doLogin()}>登 录</Button>
+                    onPressEnter={() => doLogin()}
+                  />
+                  <Button
+                    type="primary"
+                    size="large"
+                    block
+                    loading={loading}
+                    onClick={() => doLogin()}
+                  >
+                    登 录
+                  </Button>
                   <div style={{ fontSize: 12, color: '#8492a6', marginTop: 16, lineHeight: 2 }}>
                     演示账号（密码统一 123456）：
                     {['xiaochen', 'wanglandlord', 'lilandlord', 'admin'].map(quick)}
@@ -108,30 +130,50 @@ export default function LoginView() {
                       optionType="button"
                       buttonStyle="solid"
                       onChange={e => setRegForm(f => ({ ...f, role: e.target.value }))}
-                      options={[{ value: 1, label: '我是租客' }, { value: 2, label: '我是房东' }]}
+                      options={[
+                        { value: 1, label: '我是租客' },
+                        { value: 2, label: '我是房东' }
+                      ]}
                     />
                   </Form.Item>
                   <Form.Item label="手机号">
-                    <Input maxLength={11} placeholder="11 位手机号" value={regForm.phone}
-                      onChange={e => setRegForm(f => ({ ...f, phone: e.target.value }))} />
+                    <Input
+                      maxLength={11}
+                      placeholder="11 位手机号"
+                      value={regForm.phone}
+                      onChange={e => setRegForm(f => ({ ...f, phone: e.target.value }))}
+                    />
                   </Form.Item>
                   <Form.Item label="验证码">
                     <Space.Compact style={{ width: '100%' }}>
-                      <Input placeholder="验证码" value={regForm.captcha}
-                        onChange={e => setRegForm(f => ({ ...f, captcha: e.target.value }))} />
+                      <Input
+                        placeholder="验证码"
+                        value={regForm.captcha}
+                        onChange={e => setRegForm(f => ({ ...f, captcha: e.target.value }))}
+                      />
                       <Button onClick={sendCaptcha}>{captchaSent ? '已发送' : '发送验证码'}</Button>
                     </Space.Compact>
                   </Form.Item>
                   <Form.Item label="密码">
-                    <Input.Password placeholder="6~32 位" value={regForm.password}
-                      onChange={e => setRegForm(f => ({ ...f, password: e.target.value }))} />
+                    <Input.Password
+                      placeholder="6~32 位"
+                      value={regForm.password}
+                      onChange={e => setRegForm(f => ({ ...f, password: e.target.value }))}
+                    />
                   </Form.Item>
                   <Form.Item label="昵称">
-                    <Input placeholder="选填" value={regForm.nickname}
-                      onChange={e => setRegForm(f => ({ ...f, nickname: e.target.value }))} />
+                    <Input
+                      placeholder="选填"
+                      value={regForm.nickname}
+                      onChange={e => setRegForm(f => ({ ...f, nickname: e.target.value }))}
+                    />
                   </Form.Item>
-                  <Button type="primary" size="large" block loading={loading} onClick={doRegister}>注册并登录</Button>
-                  <div style={{ fontSize: 12, color: '#909399', marginTop: 8 }}>演示环境验证码固定为 246810</div>
+                  <Button type="primary" size="large" block loading={loading} onClick={doRegister}>
+                    注册并登录
+                  </Button>
+                  <div style={{ fontSize: 12, color: '#909399', marginTop: 8 }}>
+                    演示环境验证码固定为 246810
+                  </div>
                 </Form>
               )
             }

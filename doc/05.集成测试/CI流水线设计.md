@@ -1,7 +1,7 @@
 # RentAgent CI 流水线设计
 
 > 项目名称：RentAgent —— 基于 AI 智能体的房屋租赁系统
-> 文档版本：v1.1
+> 文档版本：v1.2（v1.2 于 2026-09-17 修正 BUG-02 根因：流式工具调用丢失是客户端解析问题（langchain4j 0.35 组装器在正文非空时丢弃 tool_calls），非网关截断；排障口径与断言口径相应更新）
 > 编制日期：2026-09-17
 > 编制：项目组测试担当（陈玄晔）
 > 关联文档：《单元测试用例设计》、《测试用例设计》（集成层）、`.github/workflows/ci.yml`、`scripts/ci-smoke.sh`
@@ -25,6 +25,7 @@
 | 门禁 | 命令 | 拦截什么 |
 | ---- | ---- | -------- |
 | 后端单元测试 | `mvn -B -ntp test`（148 条） | 业务状态机、权限、金额/日期计算、加解密回归 |
+| 前端静态检查与格式 | `npm run lint` + `npm run format:check`（ESLint + Prettier） | 死导入与未使用变量、hook 依赖数组遗漏、缩进引号等风格漂移 |
 | 前端单测 | `npm test`（vitest，20 条） | 运行时地址解析、状态字典、SSE 流式解析 |
 | 前端类型与构建 | `npm run build:web`（`tsc --noEmit` + vite） | TS 严格模式下的类型错误、构建失败 |
 | 集成冒烟 | `bash scripts/ci-smoke.sh`（125 条断言） | 跨模块业务闭环、真实 MySQL/Redis 语义、鉴权链路、**真实模型**的工具调用与引用来源 |
@@ -58,6 +59,8 @@
 | 检出代码 | `actions/checkout@v5` |
 | 环境 | `actions/setup-node@v5`（Node 20，`cache: npm`，`cache-dependency-path: frontend/package-lock.json`；v5 起新增"检测到 `packageManager` 字段即自动缓存"，本项目 `package.json` 未声明该字段且此处已显式指定 `cache: npm`，故缓存行为与 v4 一致） |
 | 依赖 | `npm ci --no-audit --no-fund`（严格按 lockfile，保证可复现） |
+| 静态检查 | `npm run lint`（ESLint 扁平配置 `frontend/eslint.config.js`） |
+| 格式检查 | `npm run format:check`（Prettier 配置 `frontend/prettier.config.js`） |
 | 单测 | `npm test`（vitest run） |
 | 构建 | `npm run build:web`（类型检查 + 生产构建，Web 版与桌面端共用同一份 `dist`） |
 | 归档 | 上传 `frontend/dist/`（`if-no-files-found: error`，构建产物缺失即失败） |
@@ -113,10 +116,10 @@
 ```
 push / PR / 手动
         │
-        ├── backend-test      JDK17 ── mvn test（148 条）──────────────┐
-        ├── frontend-test     Node20 ── npm ci → vitest → build:web ──┤ 并行
-        └── integration-smoke JDK17 + mysql:8.0 + redis:7             │
-                              └─ 建表 → 打包 → 启动 → ci-smoke.sh（121 条）┘
+        ├── backend-test      JDK17 ── mvn test（148 条）────────────────────────────────────────┐
+        ├── frontend-test     Node20 ── npm ci → lint → format:check → vitest → build:web ───────┤ 并行
+        └── integration-smoke JDK17 + mysql:8.0 + redis:7                                        │
+                              └─ 建表 → 打包 → 启动 → ci-smoke.sh（121 条）                      ┘
                                         ↓
                           全部成功 = 门禁通过；任一失败 = 阻断合并
 ```
@@ -181,7 +184,10 @@ push / PR / 手动
 5. **建表步骤失败**：`mysqladmin ping` 在容器 init 阶段（临时实例）就会成功，此时建库与授权可能尚未就绪——
    作业里的建表语句本身带重试与表数校验（≥18），失败会明确报错而不会被静默吞掉。
 6. **AI 断言失败**：先看 `ci-no-model-check` 与 `wait_for_model` 的输出确认模型通道；再看后端日志中
-   `改用非流式兜底重跑一次` 的记录（说明该网关流式响应丢了 tool_calls，属已知通道特性，已有兜底）。
+   `本轮未执行任何工具且回答疑似过程语` 的记录——出现它说明本轮工具链未走通（兜底已重跑一次），
+   若两条"模型实际调用了 searchHouses / searchKnowledge"断言同时失败，优先怀疑协议适配器的流式解析
+   （历史 BUG-02：客户端在正文非空时丢弃 tool_calls，已在 `OpenAiChatCompletionsModel` 修复），
+   而不是网关通道；排查手段是先 `curl -N` 取该端点的原始 SSE 分片，直接看 `delta.tool_calls` 是否存在。
 
 ---
 
@@ -213,7 +219,7 @@ push / PR / 手动
 | CI 首跑（GitHub Actions） | 失败：前两次登录取不到 token → 连锁 1007/5000，脚本以退出码 2 中断。定位为启动竞态（见 §2.3.1，非业务缺陷），已按上述两层修复 |
 | 修复后回归 | 本机以"清空库 → 起后端 → 立刻跑脚本"复现同一竞态：修复前 `login xiaochen` 得 `1002`、`/houses.total=0`；修复后脚本自动等待并 **121 条断言全过、退出码 0** |
 | 异常路径验证 | 种子未就绪 → 退出码 2 + 排查提示；关键 id 缺失 → 退出码 1 + 失败结论（不再是 jq 解析错误） |
-| 真实模型口径首跑 | 失败 4 条：分析结果 `model` 恒为 `rule-engine`（实为 14:15 的旧 jar——上一步建表静默失败打断了 `&&` 链，打包未执行）与客服 `citations=0`；定位到聚合网关**流式响应截断丢失 tool_calls**（客服只回 15 字过程语），按"非流式重跑兜底"修复后 **125 条全过** |
+| 真实模型口径首跑 | 失败 4 条：分析结果 `model` 恒为 `rule-engine`（实为 14:15 的旧 jar——上一步建表静默失败打断了 `&&` 链，打包未执行）与客服 `citations=0`；当时归因于聚合网关**流式响应截断丢失 tool_calls**，以"非流式重跑兜底"修复后 **125 条全过**。**后续复核更正**：抓取原始 SSE 分片确认网关流式分片完整，真实根因是 langchain4j 0.35 的流式组装器在正文非空时丢弃 tool_calls；改自研适配器后本轮复跑仍 **125 条全过**，且后端日志中不再出现兜底重跑记录 |
 | 无模型反向门禁 | 另起无凭据实例实测：AI 对话/定价/识别填充/合同解读/引擎探针 **6/6 全部 4001**，零兜底 |
 | 建表步骤加固 | 本机复现了"ping 成功但建表失败"的窗口，作业已改为重试 + 表数校验（≥18）+ 不吞错误输出 |
 | 未在本机执行的步骤 | `actions/setup-*`、服务容器创建、Artifacts 上传等 GitHub 托管步骤（需托管 runner；已通过 `act` 结构校验与等价命令本地验证） |

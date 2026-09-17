@@ -10,7 +10,7 @@ import {
   FLOORS,
   HOUSE_STATUS,
   LAYOUTS,
-  NOTIFY_TYPE,
+  NOTIFY_TYPE_NAME,
   ORIENTATIONS,
   ORDER_STATUS,
   fmtMoney,
@@ -43,7 +43,7 @@ describe('FT-DICT 状态字典与后端枚举对齐', () => {
   it('FT-DICT-03 通知类型字典覆盖后端使用的 type 值', () => {
     // 后端使用 1 预约 / 2 审核 / 3 签约 / 4 账单 / 9 评价（映射为"系统"）
     for (const t of [1, 2, 3, 4, 9]) {
-      expect(NOTIFY_TYPE[t]).toBeTruthy()
+      expect(NOTIFY_TYPE_NAME[t]).toBeTruthy()
     }
   })
 

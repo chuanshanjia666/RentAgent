@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Badge, Button, Dropdown, Menu, Space } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import http from '../api'
@@ -46,7 +46,9 @@ export default function NavLayout() {
       try {
         const n = await http.get<number>('/notifications/unread-count')
         if (alive) setUnread(n)
-      } catch (e) { /* 忽略 */ }
+      } catch {
+        /* 忽略：未读数拉取失败不影响导航 */
+      }
     }
     load()
     const timer = setInterval(load, 30000)
@@ -64,14 +66,22 @@ export default function NavLayout() {
             🏠 <b>RentAgent</b>
             <span className="badge">AI 智能租房</span>
           </div>
-          <Menu mode="horizontal" selectedKeys={[active]} style={{ flex: 1, borderBottom: 'none', minWidth: 0 }}>
+          <Menu
+            mode="horizontal"
+            selectedKeys={[active]}
+            style={{ flex: 1, borderBottom: 'none', minWidth: 0 }}
+          >
             {items.map(([path, label]) => (
-              <Menu.Item key={path} onClick={() => nav(path)}>{label}</Menu.Item>
+              <Menu.Item key={path} onClick={() => nav(path)}>
+                {label}
+              </Menu.Item>
             ))}
           </Menu>
           <Space size="middle">
             <Badge count={unread} size="small">
-              <Button type="text" onClick={() => nav(`${base}/notifications`)}>🔔 消息</Button>
+              <Button type="text" onClick={() => nav(`${base}/notifications`)}>
+                🔔 消息
+              </Button>
             </Badge>
             <Dropdown
               menu={{

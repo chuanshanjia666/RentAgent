@@ -28,7 +28,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }))
 
   const setLogin = useCallback((d: LoginResult) => {
-    const next: AuthState = { token: d.token, userId: d.userId, role: d.role, nickname: d.nickname || '' }
+    const next: AuthState = {
+      token: d.token,
+      userId: d.userId,
+      role: d.role,
+      nickname: d.nickname || ''
+    }
     setAuth(next)
     localStorage.setItem('ra_token', next.token)
     localStorage.setItem('ra_uid', String(next.userId))
@@ -46,18 +51,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ;['ra_token', 'ra_uid', 'ra_role', 'ra_nickname'].forEach(k => localStorage.removeItem(k))
   }, [])
 
-  const value = useMemo<AuthCtxType>(() => ({
-    ...auth,
-    isLogin: !!auth.token,
-    home: auth.role === 3 ? '/admin/audit' : auth.role === 2 ? '/landlord/houses' : '/app',
-    setLogin,
-    refreshNickname,
-    logout
-  }), [auth, setLogin, refreshNickname, logout])
+  const value = useMemo<AuthCtxType>(
+    () => ({
+      ...auth,
+      isLogin: !!auth.token,
+      home: auth.role === 3 ? '/admin/audit' : auth.role === 2 ? '/landlord/houses' : '/app',
+      setLogin,
+      refreshNickname,
+      logout
+    }),
+    [auth, setLogin, refreshNickname, logout]
+  )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+// AuthProvider 与 useAuth 必须同文件：拆开就得额外导出 AuthContext，反而多一层公开面
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthCtxType {
   return useContext(AuthContext) as AuthCtxType
 }

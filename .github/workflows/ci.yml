@@ -72,6 +72,14 @@ jobs:
       - name: 安装依赖（严格按 lockfile）
         run: npm ci --no-audit --no-fund
 
+      # 代码风格门禁：ESLint 管「写得对不对」（未使用变量、hook 依赖），Prettier 管「长得齐不齐」。
+      # 两条分开跑，失败时能一眼看出是逻辑问题还是格式问题。
+      - name: 静态检查（ESLint）
+        run: npm run lint
+
+      - name: 格式检查（Prettier）
+        run: npm run format:check
+
       - name: 运行前端单元测试
         run: npm test
 

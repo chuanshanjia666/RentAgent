@@ -11,7 +11,7 @@
 PROJECT = "RentAgent —— 基于 AI 智能体的房屋租赁系统"
 DOC_NO = "D0000-PPC-RA2026-PPD-2026"
 PROJ_NO = "RA2026"
-DOC_VER = "V1.3"
+DOC_VER = "V1.4"
 DOC_DATE = "2026-09-17"
 ORG = "大连理工大学创新实践基地"
 AUTHOR = "王硕"
@@ -44,6 +44,15 @@ CHANGE_ROWS = [
      "② 新增结构化调用层 AiJsonClient 与提示词库 AiPrompts，定价 / 虚假检测 / 合同解读 / 识别填充"
      "改为“数据事实 → 模型 JSON → 校验 → 落 ai_analysis”；③ 客服来源引用改由 searchKnowledge 工具返回体捕获（NFR-05）；"
      "④ 新增流式工具调用兜底（丢失 tool_calls 时非流式重跑一次）；图 2-1、图 3-7、图 3-8 同步更新",
+     DOC_DATE),
+    ("5", "V1.4",
+     "按《概要设计说明》v1.8 修正流式工具调用链路并强化结构化输出：① openai-chat-completions 协议改由"
+     "本项目自研适配器 OpenAiChatCompletionsModel 实现（三种协议全部自研，不再使用 langchain4j-open-ai），"
+     "同一轮内的正文与 tool_calls 分别累积后合并为一个 AiMessage——LangChain4j 0.35 的流式组装器在正文非空时会"
+     "丢弃工具调用，是客服场景“只回一句过程语、工具从未执行”的真正根因；② 四项分析调用改以"
+     "response_format=json_schema（strict）强约束输出结构，Schema 由目标类型经 JsonSchemas 生成，"
+     "端点不支持时自动退回提示词约束；③ 非流式兜底仅在本轮未执行任何工具时才启用（工具已执行的短回答不再重跑）；"
+     "图 3-7、图 3-8 同步更新",
      DOC_DATE),
 ]
 
@@ -87,7 +96,7 @@ REF_DOCS = [
     ("5", "06-原型设计评审报告", "姜厚云 / 项目组", "2026-09-07", "v1.0"),
     ("6", "07-项目企划书", "项目组", "2026-09-13", "v1.2"),
     ("7", "08-需求跟踪矩阵", "项目组", "2026-09-07", "v1.2"),
-    ("8", "概要设计说明", "王硕", "2026-09-17", "v1.5"),
+    ("8", "概要设计说明", "王硕", "2026-09-17", "v1.8"),
     ("9", "数据库设计简介", "李天泽", "2026-09-17", "v1.2"),
     ("10", "docker/mysql-init/01_schema.sql（建库脚本）", "李天泽", "2026-09-14", "v1.0"),
     ("11", "概要设计模板", "大连理工大学创新实践基地", "2026-01-01", "0.8.0-0.0.0"),
@@ -263,12 +272,16 @@ MODULES_CONTENT = [
             "AI 智能体服务模块是本项目的特色模块，覆盖 AI 找房助手、智能客服、合同智能解读、智能定价建议、"
             "虚假房源检测与房源信息智能识别六项能力。模块在常规三层架构之下引入智能体层：由 AgentEngine 接口抽象"
             "编排能力，LlmAgent 基于 LangChain4j 的 AiServices 实现真实模型编排（流式对话 + Function Calling 工具），"
-            "四项分析类能力经统一的结构化调用层 AiJsonClient（提示词库 AiPrompts）以“模型输出 JSON + 结果校验”方式实现。"
+            "四项分析类能力经统一的结构化调用层 AiJsonClient（提示词库 AiPrompts）实现：优先以"
+            "response_format=json_schema（strict）由服务端强制约束返回结构，Schema 由目标返回类型经 JsonSchemas "
+            "生成，端点不支持该参数时退回“提示词声明字段 + 解析容错”，并对结果做字段与取值域校验。"
             "本系统不提供规则引擎或模拟实现：未配置模型、调用失败或返回结构不合规时统一返回 4001 并附可读原因。",
             "模型接入由 LlmGateway 统一收口，支持三种协议后端（openai-chat-completions、anthropic-messages、"
             "openai-responses），端点、密钥与模型均可配置，并通过命名为后端的一键切换适配不同供应商。"
-            "其中 anthropic-messages 与 openai-responses 的适配器为本项目自研实现，前者兼容端点的思维链块"
-            "并主动关闭 thinking 以压缩首字延迟。",
+            "三种协议的适配器均为本项目自研实现：openai-chat-completions 与 anthropic-messages 的适配器"
+            "对同一轮内的正文与工具调用分别累积后合并（模型普遍“先叙述再调工具”，若按“有正文即丢弃工具调用”"
+            "处理，工具永远不会被执行），其中 anthropic-messages 适配器还兼容端点的思维链块并主动关闭 thinking "
+            "以压缩首字延迟。",
             "内容合规通过两条硬约束保障：知识库问答强制附带来源引用，合同与资金类问题只允许按知识库口径作答并"
             "附加“AI 生成，仅供参考”声明；全部对话与工具调用记录落库可追溯（NFR-05）。",
         ],
@@ -288,10 +301,11 @@ MODULES_CONTENT = [
                                 "（FR-12/13/14、NFR-05）"),
             ("7", "工具注册表", "业务能力以 @Tool 注解注册，Agent 运行时按需调用；新增工具只需注册定义与提示词片段，"
                             "不改动对话主流程（NFR-09）"),
-            ("8", "多后端 LLM 网关", "三种协议后端可配置（openai-chat-completions / anthropic-messages / "
-                                 "openai-responses），经 AI_BACKEND 一键切换；单次超时 60 秒；"
-                                 "未配置模型时 AI 能力统一报 4001（不做本地兜底，风险 R1）"),
-            ("9", "流式输出", "SSE 逐字推送 delta 事件与收尾 done 事件，配合关闭思维链降低首字延迟（NFR-02）"),
+            ("8", "多后端 LLM 网关", "三种协议后端可配置，均由自研适配器实现（Function Calling、流式输出、"
+                                 "json_schema 结构化输出），经 AI_BACKEND 一键切换；超时 60 秒；未配置模型时"
+                                 "统一报 4001（风险 R1）"),
+            ("9", "流式输出", "SSE 逐字推送 delta 与收尾 done 事件；同一轮内“先叙述再调工具”的响应会把正文与工具"
+                           "调用一并还原，工具执行后继续流式出结论（NFR-02）"),
             ("10", "对话审计与工具留痕", "用户 / 助手 / 工具三类消息全量落库；每次工具调用记录工具名、入参、返回与耗时，"
                                      "助手回复记录 token 用量；工具留痕由 HousingToolProvider 以工具提供器方式自动完成"
                                      "（新增 @Tool 自动覆盖），客服回答的结构化来源引用取自 searchKnowledge 返回体；"
@@ -310,9 +324,11 @@ MODULES_CONTENT = [
             ("10", "AI 智能体服务", "searchKnowledge(String question)", "RAG 知识库检索（工具 / 客服入口）"),
         ],
         cls_note="本模块类图如图 3-8 所示。ChatService 负责会话生命周期与 SSE 发送，KbService 负责知识库切片与"
-                 "检索，AnalysisService 负责四项 AI 分析能力、经 AiJsonClient 完成“模型 JSON + 结果校验”，"
+                 "检索，AnalysisService 负责四项 AI 分析能力、经 AiJsonClient 完成结构化输出（优先 "
+                 "response_format=json_schema，Schema 由 JsonSchemas 按目标类型生成），"
                  "提示词集中在 AiPrompts；对话能力经 AgentEngine（唯一实现 LlmAgent）编排，"
-                 "由 LlmGateway 完成协议适配与后端选择。工具调用留痕由 ToolTraceService 统一落库："
+                 "由 LlmGateway 完成协议适配与后端选择（三种协议各有一个自研适配器，"
+                 "均支持正文与工具调用同轮并存）。工具调用留痕由 ToolTraceService 统一落库："
                  "HousingToolProvider 以工具提供器方式包装每个 @Tool 方法的执行（新增工具自动获得留痕，NFR-09），"
                  "并缓存 searchKnowledge 的返回体作为助手消息的来源引用（NFR-05）。",
     ),

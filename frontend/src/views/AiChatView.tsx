@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Input, message, Radio, Tag } from 'antd'
 import http, { ssePost } from '../api'
 import { fmtTime } from '../constants'
@@ -13,9 +13,10 @@ export default function AiChatView() {
   const [streaming, setStreaming] = useState(false)
   const msgsEl = useRef<HTMLDivElement | null>(null)
 
-  const quickPrompts = scene === 1
-    ? ['预算2500以内，要一居室，近地铁', '3000元两居室，沙河口区', '再便宜一点']
-    : ['押金怎么退？', '提前退租有什么责任？', '房子东西坏了谁修？']
+  const quickPrompts =
+    scene === 1
+      ? ['预算2500以内，要一居室，近地铁', '3000元两居室，沙河口区', '再便宜一点']
+      : ['押金怎么退？', '提前退租有什么责任？', '房子东西坏了谁修？']
   const placeholder = scene === 1 ? '例：预算2500以内，要一居室，近地铁' : '例：押金怎么退？'
 
   const scrollBottom = () => {
@@ -39,7 +40,9 @@ export default function AiChatView() {
   async function switchSession(id: number) {
     setCurrent(id)
     const history = await http.get(`/ai/sessions/${id}/history`)
-    setMessages(history.map((m: any) => ({ role: m.role, content: m.content, citations: m.citations || [] })))
+    setMessages(
+      history.map((m: any) => ({ role: m.role, content: m.content, citations: m.citations || [] }))
+    )
     scrollBottom()
   }
 
@@ -61,30 +64,42 @@ export default function AiChatView() {
       setCurrent(sessionId)
     }
     setInput('')
-    setMessages(prev => [...prev, { role: 1, content }, { role: 2, content: '', citations: [], typing: true }])
+    setMessages(prev => [
+      ...prev,
+      { role: 1, content },
+      { role: 2, content: '', citations: [], typing: true }
+    ])
     setStreaming(true)
     scrollBottom()
-    await ssePost(`/ai/sessions/${sessionId}/messages`, { content }, {
-      onDelta(d) {
-        updateLast(m => ({ ...m, content: m.content + d }))
-        scrollBottom()
-      },
-      onDone(d) {
-        updateLast(m => ({
-          ...m,
-          typing: false,
-          citations: (d.citations || []).map((c: any) => ({ title: c.title, snippet: c.snippet }))
-        }))
-        if (d.transferred) message.info('未命中知识库，已提示转人工')
-        setStreaming(false)
-        loadSessions()
-        scrollBottom()
-      },
-      onError(msg) {
-        updateLast(m => ({ ...m, typing: false, content: m.content || (msg || '抱歉，出了点问题，请稍后再试。') }))
-        setStreaming(false)
+    await ssePost(
+      `/ai/sessions/${sessionId}/messages`,
+      { content },
+      {
+        onDelta(d) {
+          updateLast(m => ({ ...m, content: m.content + d }))
+          scrollBottom()
+        },
+        onDone(d) {
+          updateLast(m => ({
+            ...m,
+            typing: false,
+            citations: (d.citations || []).map((c: any) => ({ title: c.title, snippet: c.snippet }))
+          }))
+          if (d.transferred) message.info('未命中知识库，已提示转人工')
+          setStreaming(false)
+          loadSessions()
+          scrollBottom()
+        },
+        onError(msg) {
+          updateLast(m => ({
+            ...m,
+            typing: false,
+            content: m.content || msg || '抱歉，出了点问题，请稍后再试。'
+          }))
+          setStreaming(false)
+        }
       }
-    })
+    )
   }
 
   useEffect(() => {
@@ -94,21 +109,38 @@ export default function AiChatView() {
         else newSession()
       })
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在进入页面时定位到最近一个会话
   }, [])
 
   return (
     <div className="page">
       <div className="chat-wrap">
         <div className="chat-side">
-          <Radio.Group value={scene} style={{ width: '100%', marginBottom: 10, display: 'flex' }}
-            buttonStyle="solid" onChange={e => { setScene(e.target.value); newSession(e.target.value) }}>
-            <Radio.Button value={1} style={{ width: '50%', textAlign: 'center' }}>找房助手</Radio.Button>
-            <Radio.Button value={2} style={{ width: '50%', textAlign: 'center' }}>智能客服</Radio.Button>
+          <Radio.Group
+            value={scene}
+            style={{ width: '100%', marginBottom: 10, display: 'flex' }}
+            buttonStyle="solid"
+            onChange={e => {
+              setScene(e.target.value)
+              newSession(e.target.value)
+            }}
+          >
+            <Radio.Button value={1} style={{ width: '50%', textAlign: 'center' }}>
+              找房助手
+            </Radio.Button>
+            <Radio.Button value={2} style={{ width: '50%', textAlign: 'center' }}>
+              智能客服
+            </Radio.Button>
           </Radio.Group>
-          <Button style={{ width: '100%' }} onClick={() => newSession()}>＋ 新会话</Button>
+          <Button style={{ width: '100%' }} onClick={() => newSession()}>
+            ＋ 新会话
+          </Button>
           {sessions.map(s => (
-            <div key={s.id} className={'session-item' + (s.id === current ? ' active' : '')}
-              onClick={() => switchSession(s.id)}>
+            <div
+              key={s.id}
+              className={'session-item' + (s.id === current ? ' active' : '')}
+              onClick={() => switchSession(s.id)}
+            >
               <div className="session-title">{s.title || '新会话'}</div>
               <div className="session-time">{fmtTime(s.updatedAt)}</div>
             </div>
@@ -121,10 +153,18 @@ export default function AiChatView() {
               <div className="chat-empty">
                 <div style={{ fontSize: 40 }}>🤖</div>
                 <div style={{ color: '#8492a6', margin: '8px 0 16px' }}>
-                  {scene === 1 ? '用一句话描述你的租房需求，我来帮你找' : '押金、退租、维修、违约……有问题尽管问'}
+                  {scene === 1
+                    ? '用一句话描述你的租房需求，我来帮你找'
+                    : '押金、退租、维修、违约……有问题尽管问'}
                 </div>
                 {quickPrompts.map(p => (
-                  <Button key={p} size="small" shape="round" style={{ margin: '0 6px 8px' }} onClick={() => send(p)}>
+                  <Button
+                    key={p}
+                    size="small"
+                    shape="round"
+                    style={{ margin: '0 6px 8px' }}
+                    onClick={() => send(p)}
+                  >
                     {p}
                   </Button>
                 ))}
@@ -133,11 +173,14 @@ export default function AiChatView() {
             {messages.map((m, i) => (
               <div key={i} className={'msg-row ' + (m.role === 1 ? 'me' : 'ai')}>
                 <div className="bubble">
-                  {m.content}{m.typing ? '▌' : ''}
+                  {m.content}
+                  {m.typing ? '▌' : ''}
                   {m.citations && m.citations.length > 0 && (
                     <div className="cite-tags">
                       {m.citations.map((c, ci) => (
-                        <Tag key={ci} color="green" style={{ marginBottom: 4 }}>来源：{c.title}</Tag>
+                        <Tag key={ci} color="green" style={{ marginBottom: 4 }}>
+                          来源：{c.title}
+                        </Tag>
                       ))}
                     </div>
                   )}
@@ -159,7 +202,12 @@ export default function AiChatView() {
                 }
               }}
             />
-            <Button type="primary" style={{ marginLeft: 10 }} disabled={streaming || !input.trim()} onClick={() => send()}>
+            <Button
+              type="primary"
+              style={{ marginLeft: 10 }}
+              disabled={streaming || !input.trim()}
+              onClick={() => send()}
+            >
               {streaming ? '回复中…' : '发送'}
             </Button>
           </div>

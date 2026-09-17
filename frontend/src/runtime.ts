@@ -14,7 +14,10 @@ interface RuntimeBridge {
 const bridge: RuntimeBridge = (window as unknown as { RentAgent?: RuntimeBridge }).RentAgent ?? {}
 
 /** 后端服务基址（协议 + 域名 + 端口），浏览器版为空串表示同源相对路径 */
-export const API_BASE: string = (bridge.apiBase ?? import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '')
+export const API_BASE: string = (bridge.apiBase ?? import.meta.env.VITE_API_BASE ?? '').replace(
+  /\/+$/,
+  ''
+)
 
 /** 后端接口绝对地址：`apiUrl('/houses')` → `/api/v1/houses`（浏览器版）或 `http://host:8080/api/v1/houses`（桌面版） */
 export function apiUrl(path: string): string {

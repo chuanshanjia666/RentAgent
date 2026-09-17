@@ -63,12 +63,6 @@ export interface ChatMsg {
   [key: string]: any
 }
 
-/** 会话场景：1 找房助手 2 智能客服 3 合同解读（与 ai_chat_session.scene 对应） */
-export const SCENE_NAME: Record<number, string> = { 1: '找房助手', 2: '智能客服', 3: '合同解读' }
-export const SCENE_COLOR: Record<number, string> = { 1: 'blue', 2: 'green', 3: 'purple' }
-/** 用户角色：1 租客 2 房东 3 管理员 */
-export const USER_ROLE: Record<number, string> = { 1: '租客', 2: '房东', 3: '管理员' }
-
 /** 后台会话审计列表行：GET /admin/chats */
 export interface AdminChatSession {
   id: number

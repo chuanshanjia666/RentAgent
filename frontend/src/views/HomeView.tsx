@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button, Empty, Input, Pagination, Select, Switch } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import http from '../api'
@@ -28,7 +28,13 @@ interface MapPoint {
 
 export default function HomeView() {
   const nav = useNavigate()
-  const [q, setQ] = useState<HouseQuery>({ keyword: '', district: undefined, layout: undefined, rentMax: '', sort: 'new' })
+  const [q, setQ] = useState<HouseQuery>({
+    keyword: '',
+    district: undefined,
+    layout: undefined,
+    rentMax: '',
+    sort: 'new'
+  })
   const [list, setList] = useState<House[]>([])
   const [recommend, setRecommend] = useState<House[]>([])
   const [total, setTotal] = useState(0)
@@ -64,7 +70,13 @@ export default function HomeView() {
 
   useEffect(() => {
     load()
-    http.get<House[]>('/recommendations', { params: { limit: 6 } }).then(setRecommend).catch(() => {})
+    http
+      .get<House[]>('/recommendations', { params: { limit: 6 } })
+      .then(setRecommend)
+      .catch(() => {
+        /* 推荐位失败不影响列表 */
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 首屏只跑一次；筛选条件变化由「搜索」按钮显式触发 load
   }, [])
 
   const mapPoints = useMemo<MapPoint[]>(() => {
@@ -98,36 +110,71 @@ export default function HomeView() {
           onChange={e => set('keyword', e.target.value)}
           onPressEnter={search}
         />
-        <Select size="large" allowClear placeholder="区域" style={{ width: 130 }} value={q.district}
+        <Select
+          size="large"
+          allowClear
+          placeholder="区域"
+          style={{ width: 130 }}
+          value={q.district}
           options={DISTRICTS.map(d => ({ value: d, label: d }))}
-          onChange={v => set('district', v)} />
-        <Select size="large" allowClear placeholder="户型" style={{ width: 120 }} value={q.layout}
+          onChange={v => set('district', v)}
+        />
+        <Select
+          size="large"
+          allowClear
+          placeholder="户型"
+          style={{ width: 120 }}
+          value={q.layout}
           options={LAYOUTS.map(l => ({ value: l, label: l }))}
-          onChange={v => set('layout', v)} />
-        <Input size="large" style={{ width: 110 }} type="number" placeholder="租金上限"
-          value={q.rentMax} onChange={e => set('rentMax', e.target.value)} />
-        <Select size="large" style={{ width: 140 }} value={q.sort}
+          onChange={v => set('layout', v)}
+        />
+        <Input
+          size="large"
+          style={{ width: 110 }}
+          type="number"
+          placeholder="租金上限"
+          value={q.rentMax}
+          onChange={e => set('rentMax', e.target.value)}
+        />
+        <Select
+          size="large"
+          style={{ width: 140 }}
+          value={q.sort}
           onChange={v => set('sort', v)}
           options={[
             { value: 'new', label: '默认排序' },
             { value: 'rent_asc', label: '租金从低到高' },
             { value: 'rent_desc', label: '租金从高到低' },
             { value: 'hot', label: '最热优先' }
-          ]} />
-        <Button type="primary" size="large" onClick={search}>搜索</Button>
-        <Button size="large" onClick={() => nav('/app/ai')}>🤖 AI 找房</Button>
+          ]}
+        />
+        <Button type="primary" size="large" onClick={search}>
+          搜索
+        </Button>
+        <Button size="large" onClick={() => nav('/app/ai')}>
+          🤖 AI 找房
+        </Button>
       </div>
 
       {!searched && recommend.length > 0 && (
         <>
           <h3 className="sec-title">
             ✨ 为你推荐
-            <span style={{ fontSize: 12, color: '#909399', marginLeft: 8 }}>基于你的收藏与看房记录（FR-11）</span>
-            <Switch style={{ float: 'right' }} checked={mapMode} onChange={setMapMode}
-              checkedChildren="地图" unCheckedChildren="列表" />
+            <span style={{ fontSize: 12, color: '#909399', marginLeft: 8 }}>
+              基于你的收藏与看房记录（FR-11）
+            </span>
+            <Switch
+              style={{ float: 'right' }}
+              checked={mapMode}
+              onChange={setMapMode}
+              checkedChildren="地图"
+              unCheckedChildren="列表"
+            />
           </h3>
           <div className="house-grid" style={{ marginBottom: 24 }}>
-            {recommend.map(h => <HouseCard key={'r' + h.id} house={h} />)}
+            {recommend.map(h => (
+              <HouseCard key={`rec-${h.id}`} house={h} />
+            ))}
           </div>
         </>
       )}
@@ -136,15 +183,27 @@ export default function HomeView() {
         <div className="map-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <b>地图找房（FR-10 · 演示版按经纬度散点展示）</b>
-            <span style={{ color: '#909399', fontSize: 12 }}>共 {list.length} 套在租房源，点击圆点查看详情</span>
+            <span style={{ color: '#909399', fontSize: 12 }}>
+              共 {list.length} 套在租房源，点击圆点查看详情
+            </span>
           </div>
-          <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} width="100%" height={460}
-            style={{ background: 'linear-gradient(160deg,#eaf2fc,#f7fbff)', borderRadius: 8 }}>
+          <svg
+            viewBox={`0 0 ${MAP_W} ${MAP_H}`}
+            width="100%"
+            height={460}
+            style={{ background: 'linear-gradient(160deg,#eaf2fc,#f7fbff)', borderRadius: 8 }}
+          >
             {mapPoints.map(p => (
-              <g key={p.id} style={{ cursor: 'pointer' }} onClick={() => nav('/app/houses/' + p.id)}>
+              <g
+                key={p.id}
+                style={{ cursor: 'pointer' }}
+                onClick={() => nav(`/app/houses/${p.id}`)}
+              >
                 <circle cx={p.x} cy={p.y} r="10" fill="rgba(31,111,235,.18)" />
                 <circle cx={p.x} cy={p.y} r="5" fill="#1f6feb" />
-                <text x={p.x + 11} y={p.y + 4} fontSize="12" fill="#303133">{p.rent}元</text>
+                <text x={p.x + 11} y={p.y + 4} fontSize="12" fill="#303133">
+                  {p.rent}元
+                </text>
               </g>
             ))}
           </svg>
@@ -153,21 +212,34 @@ export default function HomeView() {
         <>
           <h3 className="sec-title">
             在租房源 <span style={{ color: '#909399', fontSize: 13 }}>共 {total} 套</span>
-            {searched || recommend.length === 0 ? null : null}
-            <Switch style={{ float: 'right' }} checked={mapMode} onChange={setMapMode}
-              checkedChildren="地图" unCheckedChildren="列表" />
+            <Switch
+              style={{ float: 'right' }}
+              checked={mapMode}
+              onChange={setMapMode}
+              checkedChildren="地图"
+              unCheckedChildren="列表"
+            />
           </h3>
           {list.length > 0 ? (
             <div className="house-grid">
-              {list.map(h => <HouseCard key={h.id} house={h} />)}
+              {list.map(h => (
+                <HouseCard key={h.id} house={h} />
+              ))}
             </div>
           ) : (
             <Empty description="没有符合条件的房源，换个条件试试～" />
           )}
           {total > size && (
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 20 }}>
-              <Pagination total={total} pageSize={size} current={page}
-                onChange={p => { setPage(p); load(p) }} />
+              <Pagination
+                total={total}
+                pageSize={size}
+                current={page}
+                onChange={p => {
+                  setPage(p)
+                  load(p)
+                }}
+              />
             </div>
           )}
         </>

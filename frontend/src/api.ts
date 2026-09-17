@@ -29,7 +29,9 @@ http.interceptors.response.use(
       localStorage.removeItem('ra_token')
       if (!location.hash.startsWith('#/login')) location.hash = '#/login'
     }
-    message.error((err.response && err.response.data && err.response.data.message) || '网络异常，请稍后再试')
+    message.error(
+      (err.response && err.response.data && err.response.data.message) || '网络异常，请稍后再试'
+    )
     return Promise.reject(err)
   }
 )
@@ -56,8 +58,8 @@ export async function ssePost(
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
       body: JSON.stringify(body)
     })
-  } catch (e) {
-    cbs.onError && cbs.onError('网络连接失败')
+  } catch {
+    cbs.onError?.('网络连接失败')
     return
   }
   const contentType = resp.headers ? resp.headers.get('content-type') || '' : ''
@@ -66,8 +68,10 @@ export async function ssePost(
     try {
       const payload = await resp.json()
       reason = payload.message || payload.error || reason
-    } catch (e) { /* 响应体不是 JSON，保留状态码提示 */ }
-    cbs.onError && cbs.onError(reason)
+    } catch {
+      /* 响应体不是 JSON，保留状态码提示 */
+    }
+    cbs.onError?.(reason)
     return
   }
   const reader = resp.body.getReader()
@@ -83,10 +87,12 @@ export async function ssePost(
       if (!line.startsWith('data:')) continue
       try {
         const d = JSON.parse(line.slice(5))
-        if (d.error) cbs.onError && cbs.onError(d.error)
-        else if (d.delta !== undefined) cbs.onDelta && cbs.onDelta(d.delta)
-        else cbs.onDone && cbs.onDone(d)
-      } catch (e) { /* 忽略不完整行 */ }
+        if (d.error) cbs.onError?.(d.error)
+        else if (d.delta !== undefined) cbs.onDelta?.(d.delta)
+        else cbs.onDone?.(d)
+      } catch {
+        /* 忽略不完整行 */
+      }
     }
   }
 }
@@ -94,8 +100,11 @@ export async function ssePost(
 /** 统一请求入口：返回值即后端 data 字段（拦截器已解包） */
 export default {
   get: <T = any>(url: string, config?: AxiosRequestConfig) => http.get<T, T>(url, config),
-  post: <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig) => http.post<T, T>(url, data, config),
-  put: <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig) => http.put<T, T>(url, data, config),
-  patch: <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig) => http.patch<T, T>(url, data, config),
+  post: <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+    http.post<T, T>(url, data, config),
+  put: <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+    http.put<T, T>(url, data, config),
+  patch: <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+    http.patch<T, T>(url, data, config),
   delete: <T = any>(url: string, config?: AxiosRequestConfig) => http.delete<T, T>(url, config)
 }

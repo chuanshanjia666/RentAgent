@@ -1,0 +1,11 @@
+# Prettier 不处理的路径：构建产物、桌面端打包产物与依赖
+dist/
+release/
+build/
+node_modules/
+
+# 非源码资产
+*.png
+*.ico
+*.icns
+package-lock.json

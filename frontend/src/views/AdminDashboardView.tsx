@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, Col, Radio, Row, Statistic } from 'antd'
 import * as echarts from 'echarts'
 import http from '../api'
@@ -12,7 +12,10 @@ export default function AdminDashboardView() {
     setData(await http.get('/admin/dashboard', { params: { granularity: g } }))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 首屏按默认粒度加载；切粒度由 Radio.Group 的 onChange 显式触发 load
+  }, [])
 
   useEffect(() => {
     if (!data || !chartEl.current) return
@@ -42,7 +45,10 @@ export default function AdminDashboardView() {
       xAxis: { type: 'category', data: periods },
       yAxis: { type: 'value', minInterval: 1 },
       series: series.map(([key, name, color]) => ({
-        name, type: 'line', smooth: true, itemStyle: { color },
+        name,
+        type: 'line',
+        smooth: true,
+        itemStyle: { color },
         data: periods.map(p => byKey[key].get(p) ?? 0)
       }))
     })
@@ -58,31 +64,79 @@ export default function AdminDashboardView() {
     <div className="page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 className="page-title">数据统计看板（FR-24）</h2>
-        <Radio.Group value={granularity} buttonStyle="solid"
-          onChange={e => { setGranularity(e.target.value); load(e.target.value) }}
-          options={[{ value: 'day', label: '按日' }, { value: 'week', label: '按周' }, { value: 'month', label: '按月' }]} />
+        <Radio.Group
+          value={granularity}
+          buttonStyle="solid"
+          onChange={e => {
+            setGranularity(e.target.value)
+            load(e.target.value)
+          }}
+          options={[
+            { value: 'day', label: '按日' },
+            { value: 'week', label: '按周' },
+            { value: 'month', label: '按月' }
+          ]}
+        />
       </div>
 
       <Row gutter={16}>
-        <Col span={6}><Card><Statistic title="租客数" value={data ? data.userCount : '-'} /></Card></Col>
-        <Col span={6}><Card><Statistic title="房东数" value={data ? data.landlordCount : '-'} /></Card></Col>
-        <Col span={6}><Card><Statistic title="房源总数" value={data ? data.houseCount : '-'} suffix={`/ 在租 ${data ? data.onlineCount : '-'}`} /></Card></Col>
-        <Col span={6}><Card><Statistic title="订单总数" value={data ? data.orderCount : '-'} suffix={`/ 在租 ${data ? data.rentedCount : '-'}`} /></Card></Col>
+        <Col span={6}>
+          <Card>
+            <Statistic title="租客数" value={data ? data.userCount : '-'} />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic title="房东数" value={data ? data.landlordCount : '-'} />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="房源总数"
+              value={data ? data.houseCount : '-'}
+              suffix={`/ 在租 ${data ? data.onlineCount : '-'}`}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="订单总数"
+              value={data ? data.orderCount : '-'}
+              suffix={`/ 在租 ${data ? data.rentedCount : '-'}`}
+            />
+          </Card>
+        </Col>
       </Row>
 
       <Row gutter={16} style={{ marginTop: 16 }}>
-        <Col span={6}><Card><Statistic title="AI 会话总数" value={data ? data.chatCount : '-'} /></Card></Col>
         <Col span={6}>
           <Card>
-            <Statistic title="AI 消息 / 工具调用" value={data ? data.chatMessageCount : '-'}
-              suffix={`/ ${data ? data.toolCallCount : '-'}`} />
+            <Statistic title="AI 会话总数" value={data ? data.chatCount : '-'} />
           </Card>
         </Col>
-        <Col span={6}><Card><Statistic title="待审核房源" value={data ? data.pendingCount : '-'} /></Card></Col>
         <Col span={6}>
           <Card>
-            <Statistic title="转人工会话" value={data ? data.transferredCount : '-'}
-              suffix={data && data.transferredCount > 0 ? '（知识库未命中）' : ''} />
+            <Statistic
+              title="AI 消息 / 工具调用"
+              value={data ? data.chatMessageCount : '-'}
+              suffix={`/ ${data ? data.toolCallCount : '-'}`}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic title="待审核房源" value={data ? data.pendingCount : '-'} />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="转人工会话"
+              value={data ? data.transferredCount : '-'}
+              suffix={data && data.transferredCount > 0 ? '（知识库未命中）' : ''}
+            />
           </Card>
         </Col>
       </Row>

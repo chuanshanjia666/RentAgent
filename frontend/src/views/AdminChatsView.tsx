@@ -1,9 +1,20 @@
-import React, { useEffect, useState } from 'react'
-import { Button, Collapse, Descriptions, Drawer, Empty, Input, Select, Space, Table, Tag, Tooltip } from 'antd'
+import { useEffect, useState } from 'react'
+import {
+  Button,
+  Collapse,
+  Descriptions,
+  Drawer,
+  Empty,
+  Input,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip
+} from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
-import { fmtTime } from '../constants'
-import { SCENE_COLOR, USER_ROLE } from '../types'
+import { fmtTime, SCENE_COLOR, USER_ROLE } from '../constants'
 import type { AdminChatDetail, AdminChatMessage, AdminChatSession } from '../types'
 
 /**
@@ -41,11 +52,15 @@ export default function AdminChatsView() {
     setDetail(await http.get(`/admin/chats/${row.id}`))
   }
 
-  useEffect(() => { load(1) }, [])
+  useEffect(() => {
+    load(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 首屏加载第 1 页；筛选/翻页由控件显式触发 load
+  }, [])
 
   const columns: ColumnsType<AdminChatSession> = [
     {
-      title: '会话', minWidth: 240,
+      title: '会话',
+      minWidth: 240,
       render: (_, r) => (
         <>
           <div style={{ fontWeight: 600, marginBottom: 2 }}>
@@ -61,12 +76,15 @@ export default function AdminChatsView() {
       )
     },
     {
-      title: '人物', width: 190,
+      title: '人物',
+      width: 190,
       render: (_, r) => (
         <>
           <div>
             {r.nickname || '-'}
-            {r.userRole != null && <Tag style={{ marginLeft: 6 }}>{USER_ROLE[r.userRole] || r.userRole}</Tag>}
+            {r.userRole != null && (
+              <Tag style={{ marginLeft: 6 }}>{USER_ROLE[r.userRole] || r.userRole}</Tag>
+            )}
           </div>
           <div style={{ color: '#909399', fontSize: 12 }}>
             {r.username} · {r.phone} · uid={r.userId}
@@ -75,7 +93,8 @@ export default function AdminChatsView() {
       )
     },
     {
-      title: '对话规模', width: 168,
+      title: '对话规模',
+      width: 168,
       render: (_, r) => (
         <Space size={4} wrap>
           <Tooltip title="用户提问轮数">
@@ -90,15 +109,26 @@ export default function AdminChatsView() {
     },
     { title: 'Tokens', width: 90, render: (_, r) => (r.totalTokens ? r.totalTokens : '-') },
     {
-      title: '最后一条', width: 240,
+      title: '最后一条',
+      width: 240,
       render: (_, r) => (
         <span style={{ color: '#606266', fontSize: 12 }}>{r.lastMessage || '（暂无消息）'}</span>
       )
     },
-    { title: '更新时间', width: 140, render: (_, r) => <span style={{ fontSize: 12 }}>{fmtTime(r.updatedAt)}</span> },
     {
-      title: '操作', width: 100, fixed: 'right',
-      render: (_, r) => <Button size="small" type="primary" ghost onClick={() => openTrace(r)}>查看轨迹</Button>
+      title: '更新时间',
+      width: 140,
+      render: (_, r) => <span style={{ fontSize: 12 }}>{fmtTime(r.updatedAt)}</span>
+    },
+    {
+      title: '操作',
+      width: 100,
+      fixed: 'right',
+      render: (_, r) => (
+        <Button size="small" type="primary" ghost onClick={() => openTrace(r)}>
+          查看轨迹
+        </Button>
+      )
     }
   ]
 
@@ -110,16 +140,56 @@ export default function AdminChatsView() {
       </div>
 
       <div className="trace-filter">
-        <Select style={{ width: 150 }} placeholder="全部场景" allowClear value={scene}
-          onChange={v => { setScene(v); load(1) }}
-          options={[{ value: 1, label: '找房助手' }, { value: 2, label: '智能客服' }, { value: 3, label: '合同解读' }]} />
-        <Select style={{ width: 150 }} placeholder="全部状态" allowClear value={transferred}
-          onChange={v => { setTransferred(v); load(1) }}
-          options={[{ value: true, label: '含转人工' }, { value: false, label: '未转人工' }]} />
-        <Input style={{ width: 280 }} placeholder="会话标题 / 用户昵称 / 账号 / 手机号" value={keyword}
-          onChange={e => setKeyword(e.target.value)} onPressEnter={() => load(1)} allowClear />
-        <Button type="primary" onClick={() => load(1)}>查询</Button>
-        <Button onClick={() => { setKeyword(''); setScene(undefined); setTransferred(undefined); load(1) }}>重置</Button>
+        <Select
+          style={{ width: 150 }}
+          placeholder="全部场景"
+          allowClear
+          value={scene}
+          onChange={v => {
+            setScene(v)
+            load(1)
+          }}
+          options={[
+            { value: 1, label: '找房助手' },
+            { value: 2, label: '智能客服' },
+            { value: 3, label: '合同解读' }
+          ]}
+        />
+        <Select
+          style={{ width: 150 }}
+          placeholder="全部状态"
+          allowClear
+          value={transferred}
+          onChange={v => {
+            setTransferred(v)
+            load(1)
+          }}
+          options={[
+            { value: true, label: '含转人工' },
+            { value: false, label: '未转人工' }
+          ]}
+        />
+        <Input
+          style={{ width: 280 }}
+          placeholder="会话标题 / 用户昵称 / 账号 / 手机号"
+          value={keyword}
+          onChange={e => setKeyword(e.target.value)}
+          onPressEnter={() => load(1)}
+          allowClear
+        />
+        <Button type="primary" onClick={() => load(1)}>
+          查询
+        </Button>
+        <Button
+          onClick={() => {
+            setKeyword('')
+            setScene(undefined)
+            setTransferred(undefined)
+            load(1)
+          }}
+        >
+          重置
+        </Button>
       </div>
 
       <Table
@@ -131,7 +201,10 @@ export default function AdminChatsView() {
         scroll={{ x: 1120 }}
         locale={{ emptyText: <Empty description="暂无 AI 会话" /> }}
         pagination={{
-          current: page, pageSize: size, total, showSizeChanger: true,
+          current: page,
+          pageSize: size,
+          total,
+          showSizeChanger: true,
           onChange: (p, s) => load(p, s)
         }}
       />
@@ -157,19 +230,29 @@ function TracePanel({ detail }: { detail: AdminChatDetail }) {
       <div className="trace-meta">
         <Descriptions title="会话与人物" size="small" column={2} bordered>
           <Descriptions.Item label="会话 ID">#{s.id}</Descriptions.Item>
-          <Descriptions.Item label="场景"><Tag color={SCENE_COLOR[s.scene]}>{s.sceneName}</Tag></Descriptions.Item>
-          <Descriptions.Item label="标题" span={2}>{s.title || '（无标题）'}</Descriptions.Item>
+          <Descriptions.Item label="场景">
+            <Tag color={SCENE_COLOR[s.scene]}>{s.sceneName}</Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="标题" span={2}>
+            {s.title || '（无标题）'}
+          </Descriptions.Item>
           <Descriptions.Item label="用户">
             {s.nickname || '（用户已注销）'}
-            {s.userRole != null && <Tag style={{ marginLeft: 6 }}>{USER_ROLE[s.userRole] || s.userRole}</Tag>}
+            {s.userRole != null && (
+              <Tag style={{ marginLeft: 6 }}>{USER_ROLE[s.userRole] || s.userRole}</Tag>
+            )}
           </Descriptions.Item>
-          <Descriptions.Item label="账号 / 手机">{s.username} · {s.phone}</Descriptions.Item>
+          <Descriptions.Item label="账号 / 手机">
+            {s.username} · {s.phone}
+          </Descriptions.Item>
           <Descriptions.Item label="创建时间">{fmtTime(s.createdAt)}</Descriptions.Item>
           <Descriptions.Item label="更新时间">{fmtTime(s.updatedAt)}</Descriptions.Item>
           <Descriptions.Item label="客服转人工" span={2}>
-            {s.isTransferred === 1
-              ? <Tag color="volcano">已转人工（知识库未命中）</Tag>
-              : <Tag>未触发</Tag>}
+            {s.isTransferred === 1 ? (
+              <Tag color="volcano">已转人工（知识库未命中）</Tag>
+            ) : (
+              <Tag>未触发</Tag>
+            )}
           </Descriptions.Item>
         </Descriptions>
       </div>
@@ -183,10 +266,17 @@ function TracePanel({ detail }: { detail: AdminChatDetail }) {
             </span>
           </Descriptions.Item>
           <Descriptions.Item label="角色设定">
-            <Collapse ghost size="small" items={[{
-              key: 'prompt', label: '展开 System Prompt',
-              children: <pre className="trace-json">{detail.systemPrompt}</pre>
-            }]} />
+            <Collapse
+              ghost
+              size="small"
+              items={[
+                {
+                  key: 'prompt',
+                  label: '展开 System Prompt',
+                  children: <pre className="trace-json">{detail.systemPrompt}</pre>
+                }
+              ]}
+            />
           </Descriptions.Item>
         </Descriptions>
       </div>
@@ -201,24 +291,26 @@ function TracePanel({ detail }: { detail: AdminChatDetail }) {
         </Space>
         <div>
           <span style={{ color: '#8492a6', fontSize: 12, marginRight: 8 }}>工具使用：</span>
-          {stats.tools.length === 0
-            ? <span style={{ color: '#909399', fontSize: 12 }}>本会话未调用工具</span>
-            : stats.tools.map(t => (
+          {stats.tools.length === 0 ? (
+            <span style={{ color: '#909399', fontSize: 12 }}>本会话未调用工具</span>
+          ) : (
+            stats.tools.map(t => (
               <Tooltip key={t.name} title={`调用 ${t.count} 次 · 平均耗时 ${t.avgLatencyMs} ms`}>
                 <Tag color="orange" style={{ marginBottom: 4 }}>
                   🔧 {t.name} ×{t.count}
                 </Tag>
               </Tooltip>
-            ))}
+            ))
+          )}
         </div>
       </div>
 
-      <h4 style={{ margin: '16px 0 10px', color: '#303133' }}>
-        多轮对话与工具调用（按时间顺序）
-      </h4>
-      {detail.messages.length === 0
-        ? <Empty description="该会话尚无消息" />
-        : detail.messages.map(m => <TraceStep key={m.id} m={m} />)}
+      <h4 style={{ margin: '16px 0 10px', color: '#303133' }}>多轮对话与工具调用（按时间顺序）</h4>
+      {detail.messages.length === 0 ? (
+        <Empty description="该会话尚无消息" />
+      ) : (
+        detail.messages.map(m => <TraceStep key={m.id} m={m} />)
+      )}
     </>
   )
 }
@@ -245,16 +337,23 @@ function TraceStep({ m }: { m: AdminChatMessage }) {
           <span>#{m.id}</span>
         </div>
         <div className="trace-tool">
-          <Collapse ghost size="small" defaultActiveKey={['result']} items={[
-            {
-              key: 'args', label: `入参（tool_args）`,
-              children: <pre className="trace-json">{pretty(m.toolArgs)}</pre>
-            },
-            {
-              key: 'result', label: `返回（tool_result）`,
-              children: <pre className="trace-json">{pretty(m.toolResult)}</pre>
-            }
-          ]} />
+          <Collapse
+            ghost
+            size="small"
+            defaultActiveKey={['result']}
+            items={[
+              {
+                key: 'args',
+                label: `入参（tool_args）`,
+                children: <pre className="trace-json">{pretty(m.toolArgs)}</pre>
+              },
+              {
+                key: 'result',
+                label: `返回（tool_result）`,
+                children: <pre className="trace-json">{pretty(m.toolResult)}</pre>
+              }
+            ]}
+          />
         </div>
       </div>
     )
