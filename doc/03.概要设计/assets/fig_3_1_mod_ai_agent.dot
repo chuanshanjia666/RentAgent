@@ -1,0 +1,104 @@
+digraph agent {
+  rankdir=TB; nodesep=0.40; ranksep=0.42;
+  graph [fontname="Microsoft YaHei", bgcolor="white", margin=0.15];
+  node  [fontname="Microsoft YaHei", fontsize=14, shape=box, style="filled,rounded", margin="0.16,0.10"];
+  edge  [fontname="Microsoft YaHei", fontsize=13, color="#5c5c5c", penwidth=1.2];
+
+  ui [label="前端对话界面 / 内嵌入口
+（定价 · 检测 · 解读 · 辅助填充）", fillcolor="#dceaf8", color="#4a7ebb", width=3.6];
+  ctrl [label="AiController
+POST /ai/sessions　　　　　　　· GET /ai/engine
+POST /ai/sessions/<built-in function id>/messages（SSE 流式）
+GET /ai/sessions/<built-in function id>/history
+POST /ai/houses/<built-in function id>/pricing-suggestion
+POST /ai/assist-fill",
+        fillcolor="#fdf3dc", color="#d1a542", width=4.6];
+
+  subgraph cluster_svc {
+    label="应用服务层"; fontsize=13; fontcolor="#2f6b2f"; style="rounded,filled";
+    fillcolor="#f4fbf4"; color="#5c9c5c"; margin=10;
+    chat [label="ChatService
+会话 CRUD
+SSE 流式发送
+消息异步落库", fillcolor="#eaf6ea", color="#5c9c5c"];
+    kb   [label="KbService
+文档切片入库
+关键词检索 topK
+命中判定", fillcolor="#eaf6ea", color="#5c9c5c"];
+    ana  [label="AnalysisService
+定价建议
+虚假检测
+合同解读 · 识别", fillcolor="#eaf6ea", color="#5c9c5c"];
+    {rank=same; chat; kb; ana;}
+  }
+
+  subgraph cluster_engine {
+    label="智能体编排层（AgentEngine 接口，可插拔）"; fontsize=13; fontcolor="#5c4478";
+    style="rounded,filled"; fillcolor="#f8f5fc"; color="#8a6fb0"; margin=10;
+    api [label="AgentEngine（接口）
+available() · describe()
+stream(sessionId, userId,
+　　　 scene, msg, callback)",
+         fillcolor="#efe9f7", color="#8a6fb0", width=4.0];
+    llm [label="LlmAgent
+LangChain4j AiServices 编排
+按 scene 路由角色设定
+工具注册表（@Tool 扫描）
+记忆窗口 + 摘要压缩",
+         fillcolor="#f3e2f7", color="#9b6fb0"];
+    mck [label="MockAgent（降级）
+无有效 Key 时启用
+意图解析 + 状态化话术
+仍调用真实房源检索工具",
+         fillcolor="#f3e2f7", color="#9b6fb0"];
+    {rank=same; llm; mck;}
+  }
+
+  subgraph cluster_gw {
+    label="模型接入层（LLM 网关，三协议可切换）"; fontsize=13; fontcolor="#7a5a30";
+    style="rounded,filled"; fillcolor="#fdfaf6"; color="#b08a5c"; margin=10;
+    gw [label="LlmGateway
+按 AI_BACKEND 选择后端 → available() / chat()
+　　　　　　　　　　/ streaming() / chatOnce()
+超时 60 秒 · 异常降级 · describe() 上报后端",
+        fillcolor="#f7f0e6", color="#b08a5c", width=4.6];
+    p1 [label="openai-chat-completions
+GLM / DeepSeek / 通义", fillcolor="#f7e7e7", color="#c07070"];
+    p2 [label="anthropic-messages
+自研适配器 · 兼容端点", fillcolor="#f7e7e7", color="#c07070"];
+    p3 [label="openai-responses
+自研适配器 · 新接口", fillcolor="#f7e7e7", color="#c07070"];
+    {rank=same; p1; p2; p3;}
+  }
+
+  subgraph cluster_tools {
+    label="工具与知识层"; fontsize=13; fontcolor="#31527a"; style="rounded,filled";
+    fillcolor="#eef4fb"; color="#4a7ebb"; margin=10;
+    tools [label="HousingTools（业务工具，@Tool 注册）
+searchHouses(maxRent, layoutKeyword,
+　　　　　　　district, keyword, subway)
+getHouseDetail · createAppointment
+suggestPrice · detectFakeHouse · analyzeContract",
+           fillcolor="#eef4fb", color="#4a7ebb", width=4.8];
+    rag [label="RAG 检索
+searchKnowledge(question) → 切片 + 来源引用
+首版关键词命中 + 计分；向量升级位已预留",
+         fillcolor="#eef4fb", color="#4a7ebb", width=4.8];
+  }
+
+  data [label="数据与外部资源
+MySQL：house · contract · ai_chat_session / message
+　　　　　 ai_analysis · kb_document / chunk
+Redis：会话缓存　|　外部：大模型服务 HTTPS 出网",
+        fillcolor="#e7f2e7", color="#5c9c5c", width=5.0];
+
+  ui -> ctrl;
+  ctrl -> chat; ctrl -> kb; ctrl -> ana;
+  chat -> api; kb -> api; ana -> api;
+  api -> llm [label="启用"]; api -> mck [label="降级"];
+  llm -> gw [label="模型调用"]; llm -> tools [label="Function Calling"];
+  mck -> tools [label="规则引擎"];
+  tools -> rag [style=dotted, label="客服意图"];
+  gw -> p1; gw -> p2; gw -> p3;
+  tools -> data; ana -> data; chat -> data; kb -> data;
+}

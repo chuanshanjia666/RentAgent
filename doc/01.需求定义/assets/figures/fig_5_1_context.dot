@@ -1,0 +1,51 @@
+digraph {
+
+  graph [fontname="Microsoft YaHei", bgcolor="white", margin=0.15];
+  node  [fontname="Microsoft YaHei", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.14,0.09"];
+  edge  [fontname="Microsoft YaHei", fontsize=9, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+
+  rankdir=LR;
+  splines=polyline;
+  nodesep=0.25;
+  ranksep=0.55;
+  node [fontsize=10];
+
+  subgraph cluster_role {
+    label="系统用户";
+    fontsize=12;
+    style="dashed,rounded";
+    color="#c0c0c0";
+    fontcolor="#666666";
+    node [fillcolor="#dbe7f6"];
+    u1 [label="租客（含游客）", fillcolor="#dbe7f6"];
+    u2 [label="房东", fillcolor="#dbe7f6"];
+    u3 [label="平台管理员", fillcolor="#dbe7f6"];
+    { rank=same; u1; u2; u3; }
+  }
+
+  sys [label="RentAgent 系统\n基于 AI 智能体的房屋租赁系统", fillcolor="#dbe7f6",
+       color="#2f5f9e", penwidth=2.0, fontsize=12, margin="0.24,0.3"];
+
+  subgraph cluster_ext {
+    label="外部系统 / 服务";
+    fontsize=12;
+    style="dashed,rounded";
+    color="#c0c0c0";
+    fontcolor="#666666";
+    node [fillcolor="#f3e8d8", color="#b08a52"];
+    x1 [label="大模型服务\n智谱 GLM-5.3-flash"];
+    x2 [label="通知通道\n站内消息 / 邮件短信"];
+    x3 [label="图片存储\n服务器本地目录"];
+    x4 [label="地图底图服务"];
+    { rank=same; x1; x2; x3; x4; }
+  }
+
+  u1 -> sys [label="业务使用", dir=both];
+  u2 -> sys [label="业务使用", dir=both];
+  u3 -> sys [label="管理与审核", dir=both];
+  sys -> x1 [label="模型调用", dir=both];
+  sys -> x2 [label="通知下发"];
+  sys -> x3 [label="图片读写"];
+  sys -> x4 [label="底图请求"];
+}

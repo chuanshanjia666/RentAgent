@@ -1,0 +1,43 @@
+digraph {
+
+  graph [fontname="Microsoft YaHei", bgcolor="white", margin=0.15];
+  node  [fontname="Microsoft YaHei", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.14,0.09"];
+  edge  [fontname="Microsoft YaHei", fontsize=9, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+
+  rankdir=TB;
+  ranksep=0.5;
+  node [shape=plaintext, fontname="Microsoft YaHei", fontsize=11];
+
+  arch [label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6"
+           COLOR="#4a7ebb" BGCOLOR="white">
+      <TR>
+        <TD COLSPAN="2" ALIGN="LEFT" BGCOLOR="#dbe7f6">
+          <B>表现层</B>　React 18 + TypeScript + Vite + Ant Design 5 + ECharts<br/>
+          租客端（找房 / 预约 / 签约 / AI 对话）　·　房东端（发布 / 管理 / 定价）<br/>
+          管理端（审核 / 看板 / 知识库维护）
+        </TD>
+      </TR>
+      <TR>
+        <TD COLSPAN="2" ALIGN="LEFT" BGCOLOR="#eef4fb">
+          <B>业务层</B>　Spring Boot 3 RESTful API（MyBatis-Plus + JWT / RBAC）<br/>
+          用户与权限　·　房源管理　·　检索与推荐　·　交易与合同<br/>
+          评价与消息　·　后台管理
+        </TD>
+      </TR>
+      <TR>
+        <TD COLSPAN="2" ALIGN="LEFT" BGCOLOR="#f6f0e4">
+          <B>智能体层（Agent Layer）</B>　LLM 网关（三协议可切换）· 意图识别与提示词编排 · 多轮对话记忆<br/>
+          工具集：房源检索 / 预约 / 合同生成 / 定价分析　·　RAG：房源知识库 · 租赁政策 FAQ<br/>
+          <FONT COLOR="#8a6a3a">外部依赖：智谱 GLM-5.3-flash（Anthropic 兼容协议接入，可一键切换备用模型）</FONT>
+        </TD>
+      </TR>
+      <TR>
+        <TD COLSPAN="2" ALIGN="LEFT" BGCOLOR="#eaf3ea">
+          <B>数据层</B>　MySQL 8（18 张业务表，utf8mb4 / InnoDB）　·　Redis 7（缓存、会话）<br/>
+          向量检索（Embedding，Redis Stack / PGVector 演进预留）　·　图片文件目录
+        </TD>
+      </TR>
+    </TABLE>>];
+}

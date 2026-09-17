@@ -1,0 +1,74 @@
+digraph er {
+  rankdir=TB; newrank=true; nodesep=0.30; ranksep=0.62; splines=spline;
+  graph [fontname="Microsoft YaHei", bgcolor="white", margin=0.15];
+  node  [shape=box, style="filled,rounded", fontname="Microsoft YaHei", fontsize=15, margin="0.16,0.10"];
+  edge  [fontname="Microsoft YaHei", fontsize=12, penwidth=1.3];
+  legend [fillcolor="#fafafa", color="#888888"];
+  {rank=same; sys_user; realname_auth; notification;}
+  {rank=same; house; house_image; favorite;}
+  {rank=same; viewing_appointment; contract; lease_order;}
+  {rank=same; rent_bill; review; report;}
+  {rank=same; audit_log; ai_chat_session; ai_chat_message;}
+  {rank=same; ai_analysis; kb_document; kb_chunk;}
+  sys_user -> house [style=invis, weight=10];
+  house -> viewing_appointment [style=invis, weight=10];
+  viewing_appointment -> rent_bill [style=invis, weight=10];
+  rent_bill -> audit_log [style=invis, weight=10];
+  audit_log -> ai_analysis [style=invis, weight=10];
+  sys_user [label="sys_user
+用户", fillcolor="#dceaf8", color="#4a7ebb", penwidth=1.4, width=2.5];
+  realname_auth [label="realname_auth
+实名认证", fillcolor="#dceaf8", color="#4a7ebb", penwidth=1.4, width=2.5];
+  notification [label="notification
+站内通知", fillcolor="#dceaf8", color="#4a7ebb", penwidth=1.4, width=2.5];
+  house [label="house
+房源", fillcolor="#eaf6ea", color="#5c9c5c", penwidth=1.4, width=2.5];
+  house_image [label="house_image
+房源图片", fillcolor="#eaf6ea", color="#5c9c5c", penwidth=1.4, width=2.5];
+  favorite [label="favorite
+收藏", fillcolor="#eaf6ea", color="#5c9c5c", penwidth=1.4, width=2.5];
+  viewing_appointment [label="viewing_appointment
+看房预约", fillcolor="#fdf3dc", color="#d1a542", penwidth=1.4, width=2.5];
+  contract [label="contract
+电子合同", fillcolor="#fdf3dc", color="#d1a542", penwidth=1.4, width=2.5];
+  lease_order [label="lease_order
+租赁订单", fillcolor="#fdf3dc", color="#d1a542", penwidth=1.4, width=2.5];
+  rent_bill [label="rent_bill
+租金账单", fillcolor="#fdf3dc", color="#d1a542", penwidth=1.4, width=2.5];
+  review [label="review
+评价", fillcolor="#fdf3dc", color="#d1a542", penwidth=1.4, width=2.5];
+  report [label="report
+举报", fillcolor="#fdf3dc", color="#d1a542", penwidth=1.4, width=2.5];
+  audit_log [label="audit_log
+审计日志", fillcolor="#fdf3dc", color="#d1a542", penwidth=1.4, width=2.5];
+  ai_chat_session [label="ai_chat_session
+AI 会话", fillcolor="#f3e2f7", color="#9b6fb0", penwidth=1.4, width=2.5];
+  ai_chat_message [label="ai_chat_message
+对话消息", fillcolor="#f3e2f7", color="#9b6fb0", penwidth=1.4, width=2.5];
+  ai_analysis [label="ai_analysis
+AI 分析结果", fillcolor="#f3e2f7", color="#9b6fb0", penwidth=1.4, width=2.5];
+  kb_document [label="kb_document
+知识库文档", fillcolor="#f3e2f7", color="#9b6fb0", penwidth=1.4, width=2.5];
+  kb_chunk [label="kb_chunk
+知识库切片", fillcolor="#f3e2f7", color="#9b6fb0", penwidth=1.4, width=2.5];
+
+  sys_user -> realname_auth [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="提交 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  sys_user -> notification [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="接收 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  sys_user -> house [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="发布 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  house -> house_image [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="包含 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  sys_user -> favorite [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="收藏 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  house -> favorite [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="被收藏 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  house -> viewing_appointment [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="被预约 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  sys_user -> viewing_appointment [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="发起 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  house -> contract [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="签约标的 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  sys_user -> contract [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="双方签署 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  contract -> lease_order [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="派生 1:1", fontcolor="#a06a1f", color="#a06a1f"];
+  lease_order -> rent_bill [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="生成账单 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  lease_order -> review [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="被评价 1:0..1", fontcolor="#3f6b3f", color="#3f6b3f"];
+  sys_user -> report [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="提交 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  sys_user -> audit_log [dir=both, arrowtail=none, arrowhead=crow, style=dashed, constraint=false, label="留痕 1:n", fontcolor="#8c8c8c", color="#8c8c8c"];
+  sys_user -> ai_chat_session [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="发起 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  ai_chat_session -> ai_chat_message [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="包含 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+  sys_user -> ai_analysis [dir=both, arrowtail=none, arrowhead=crow, style=dashed, constraint=false, label="触发 1:n", fontcolor="#8c8c8c", color="#8c8c8c"];
+  kb_document -> kb_chunk [dir=both, arrowtail=none, arrowhead=crow, style=solid, constraint=false, label="切片 1:n", fontcolor="#3f6b3f", color="#3f6b3f"];
+}

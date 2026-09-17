@@ -1,0 +1,52 @@
+digraph {
+
+  graph [fontname="Microsoft YaHei", bgcolor="white", margin=0.15];
+  node  [fontname="Microsoft YaHei", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.14,0.09"];
+  edge  [fontname="Microsoft YaHei", fontsize=9, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+
+  rankdir=TB;
+  splines=polyline;
+  nodesep=0.22;
+  ranksep=0.26;
+  node [fontsize=9.5, margin="0.1,0.05"];
+  edge [fontsize=8.5];
+
+  a  [label="房东提交房源信息（FR-05）"];
+  d1 [label="已实名认证？", shape=diamond, fillcolor="#fdf3e3", color="#c9a86b"];
+  b  [label="房东实名认证（FR-03）"];
+  c  [label="进入待审核队列"];
+  d2 [label="管理员审核
+（AI 风险分辅助 FR-16）", shape=diamond, fillcolor="#fdf3e3", color="#c9a86b"];
+  e  [label="驳回并通知房东，
+修改后重新提交（FR-06/07/21）", fillcolor="#fdeeee", color="#c98b8b"];
+  g  [label="审核通过，房源上架（FR-07）"];
+  h  [label="租客检索 / AI 找房 → 查看详情并预约（FR-09~12/25/17）"];
+  d3 [label="房东确认预约？", shape=diamond, fillcolor="#fdf3e3", color="#c9a86b"];
+  l  [label="拒绝并通知租客，可另约时段", fillcolor="#fdeeee", color="#c98b8b"];
+  k  [label="看房完成，确认租赁意向"];
+  m  [label="生成电子合同，双方在线确认签署生效（FR-18 / FR-14）"];
+  o  [label="租金计划与履约管理，合同完成后评价（FR-19/20）"];
+  q  [label="业务闭环达成", shape=ellipse, fillcolor="#dbe7f6", color="#4a7ebb"];
+
+  a -> d1;
+  d1 -> b [label="否"];
+  d1 -> c [label="是"];
+  b -> c [label="认证通过"];
+  c -> d2;
+  d2 -> e [label="驳回"];
+  e -> c [label="重新提交"];
+  d2 -> g [label="通过"];
+  g -> h;
+  h -> d3;
+  d3 -> l [label="拒绝"];
+  l -> d3 [label="另约时段"];
+  d3 -> k [label="确认"];
+  k -> m;
+  m -> o;
+  o -> q;
+
+  { rank=same; b; c; }
+  { rank=same; e; g; }
+  { rank=same; l; k; }
+}

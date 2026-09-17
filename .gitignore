@@ -7,3 +7,10 @@ uploads/
 *.iml
 .DS_Store
 server/run-dev.sh
+
+__pycache__/
+*.pyc
+
+# 文档生成脚本的中间产物（页码校准时临时落盘）
+doc/*/assets/_pass1.docx
+doc/*/assets/_pdf/

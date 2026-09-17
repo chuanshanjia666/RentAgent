@@ -1,0 +1,87 @@
+digraph {
+
+  graph [fontname="Microsoft YaHei", bgcolor="white", margin=0.15];
+  node  [fontname="Microsoft YaHei", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.14,0.09"];
+  edge  [fontname="Microsoft YaHei", fontsize=9, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+  rankdir=TB;
+  node [shape=plaintext, fontname="Microsoft YaHei", fontsize=10];
+  uc [label=<
+    <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5" COLOR="#4a7ebb" BGCOLOR="white">
+      <TR>
+        <TD ALIGN="CENTER" BGCOLOR="#dbe7f6"><B>游客 / 租客</B></TD>
+        <TD ALIGN="CENTER" BGCOLOR="#dbe7f6"><B>房东</B></TD>
+        <TD ALIGN="CENTER" BGCOLOR="#dbe7f6"><B>平台管理员</B></TD>
+        <TD ALIGN="CENTER" BGCOLOR="#f3e8d8"><B>AI 智能体（内置服务角色）</B></TD>
+      </TR>
+      <TR>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">注册与登录　<FONT COLOR="#7a7a7a">FR-01/02</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">实名认证　<FONT COLOR="#7a7a7a">FR-03</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">房源审核　<FONT COLOR="#7a7a7a">FR-07</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">AI 找房助手　<FONT COLOR="#7a7a7a">FR-12</FONT></TD>
+      </TR>
+      <TR>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">实名与个人信息　<FONT COLOR="#7a7a7a">FR-03/04</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">发布房源　<FONT COLOR="#7a7a7a">FR-05</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">虚假房源检测　<FONT COLOR="#7a7a7a">FR-16</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">智能客服问答　<FONT COLOR="#7a7a7a">FR-13</FONT></TD>
+      </TR>
+      <TR>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">检索与关键词搜索　<FONT COLOR="#7a7a7a">FR-09</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">房源智能填充　<FONT COLOR="#7a7a7a">FR-08</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">用户管理　<FONT COLOR="#7a7a7a">FR-22</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">合同智能解读　<FONT COLOR="#7a7a7a">FR-14</FONT></TD>
+      </TR>
+      <TR>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">地图找房　<FONT COLOR="#7a7a7a">FR-10</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">编辑与上下架　<FONT COLOR="#7a7a7a">FR-06</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">评价举报处理　<FONT COLOR="#7a7a7a">FR-23</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">智能定价分析　<FONT COLOR="#7a7a7a">FR-15</FONT></TD>
+      </TR>
+      <TR>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">个性化推荐　<FONT COLOR="#7a7a7a">FR-11</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">智能定价建议　<FONT COLOR="#7a7a7a">FR-15</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">知识库维护　<FONT COLOR="#7a7a7a">FR-13</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">虚假房源风险分析　<FONT COLOR="#7a7a7a">FR-16</FONT></TD>
+      </TR>
+      <TR>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">收藏房源　<FONT COLOR="#7a7a7a">FR-25</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">处理看房预约　<FONT COLOR="#7a7a7a">FR-17</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">数据统计看板　<FONT COLOR="#7a7a7a">FR-24</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+      </TR>
+      <TR>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">预约看房　<FONT COLOR="#7a7a7a">FR-17</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">订单与退续租　<FONT COLOR="#7a7a7a">FR-19</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+      </TR>
+      <TR>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">在线签约　<FONT COLOR="#7a7a7a">FR-18</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">查看评价　<FONT COLOR="#7a7a7a">FR-20</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+      </TR>
+      <TR>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">租金账单查看　<FONT COLOR="#7a7a7a">FR-19</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+      </TR>
+      <TR>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">提交评价　<FONT COLOR="#7a7a7a">FR-20</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+      </TR>
+      <TR>
+        <TD ALIGN="LEFT" BGCOLOR="#eef4fb">消息通知　<FONT COLOR="#7a7a7a">FR-21</FONT></TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+        <TD ALIGN="LEFT" BGCOLOR="#fafafa"> </TD>
+      </TR>
+      <TR>
+        <TD COLSPAN="4" ALIGN="LEFT" BGCOLOR="#fbf7ee"><FONT COLOR="#8a6a3a">注：AI 智能体列的用例以工具调用（Function Calling）方式为租客、房东、管理员三端提供服务，不独立面向用户入口。</FONT></TD>
+      </TR>
+    </TABLE>>];
+}

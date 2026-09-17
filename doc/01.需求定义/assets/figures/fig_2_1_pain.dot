@@ -1,0 +1,51 @@
+digraph {
+
+  graph [fontname="Microsoft YaHei", bgcolor="white", margin=0.15];
+  node  [fontname="Microsoft YaHei", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.14,0.09"];
+  edge  [fontname="Microsoft YaHei", fontsize=9, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+
+  rankdir=LR;
+  splines=polyline;
+  nodesep=0.18;
+  ranksep=1.1;
+
+  subgraph cluster_pain {
+    label="业务痛点（问题定义）";
+    fontsize=12;
+    style="dashed,rounded";
+    color="#c0c0c0";
+    fontcolor="#666666";
+    node [fillcolor="#fdeeee", color="#c98b8b"];
+    p1 [label="信息不对称：描述与实际不符"];
+    p2 [label="虚假房源泛滥：人工审核滞后"];
+    p3 [label="匹配效率低：模糊需求难表达"];
+    p4 [label="沟通成本高：高频问题反复咨询"];
+    p5 [label="合同门槛高：风险条款难识别"];
+    p6 [label="决策支持缺失：房东定价无依据"];
+    { rank=same; p1; p2; p3; p4; p5; p6; }
+  }
+
+  subgraph cluster_sol {
+    label="RentAgent 应对（本项目范围）";
+    fontsize=12;
+    style="dashed,rounded";
+    color="#c0c0c0";
+    fontcolor="#666666";
+    node [fillcolor="#eaf3ea", color="#7ba87b"];
+    s1 [label="全量审核 + 房东实名认证（FR-03/07）"];
+    s2 [label="AI 虚假房源检测，输出风险分（FR-16）"];
+    s3 [label="AI 找房助手，自然语言找房（FR-12）"];
+    s4 [label="RAG 智能客服，答案附来源（FR-13）"];
+    s5 [label="合同智能解读，风险条款标红（FR-14）"];
+    s6 [label="智能定价建议，给出区间与依据（FR-15）"];
+    { rank=same; s1; s2; s3; s4; s5; s6; }
+  }
+
+  p1 -> s1;
+  p2 -> s2;
+  p3 -> s3;
+  p4 -> s4;
+  p5 -> s5;
+  p6 -> s6;
+}

@@ -1,0 +1,85 @@
+digraph mod_interact {
+  rankdir=TB; nodesep=0.28; ranksep=0.50; compound=true;
+
+  graph [fontname="Microsoft YaHei", bgcolor="white", margin=0.15];
+  node  [fontname="Microsoft YaHei", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.14,0.09"];
+  edge  [fontname="Microsoft YaHei", fontsize=9, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+
+  node [width=2.3, height=0.52];
+
+  subgraph cluster_0 {
+    label="评价与消息模块　（FR-20、FR-21）"; fontsize=13; fontcolor="#1f3a5f";
+    style="rounded,filled"; fillcolor="#eef4fb"; color="#4a7ebb"; penwidth=1.4; margin=12;
+    root [label="模块入口（Controller 层）", style="filled,rounded", fillcolor="#cfe0f5",
+          color="#31527a", penwidth=1.6, width=3.0];
+  c0 [label="ReviewController", fillcolor="#fdf3dc", color="#d1a542"];
+  c1 [label="NotificationController", fillcolor="#fdf3dc", color="#d1a542"];
+  c2 [label="ReportController\n(举报入口)", fillcolor="#fdf3dc", color="#d1a542"];
+  {rank=same; c0; c1; c2;}
+
+    root -> c0 [style=invis];
+  root -> c0 [style=bold];
+  root -> c1 [style=bold];
+  root -> c2 [style=bold];
+  }
+
+  subgraph cluster_1 {
+    label="Service 业务层"; fontsize=11; fontcolor="#2f6b2f";
+    style="rounded,filled"; fillcolor="#f4fbf4"; color="#5c9c5c"; margin=10;
+  s0 [label="ReviewService", fillcolor="#eaf6ea", color="#5c9c5c"];
+  s1 [label="NotificationService", fillcolor="#eaf6ea", color="#5c9c5c"];
+  s2 [label="ReportService", fillcolor="#eaf6ea", color="#5c9c5c"];
+  {rank=same; s0; s1; s2;}
+
+  }
+
+  subgraph cluster_2 {
+    label="Mapper 持久化层"; fontsize=11; fontcolor="#5c4478";
+    style="rounded,filled"; fillcolor="#f8f5fc"; color="#8a6fb0"; margin=10;
+  p0 [label="ReviewMapper", fillcolor="#efe9f7", color="#8a6fb0"];
+  p1 [label="NotificationMapper", fillcolor="#efe9f7", color="#8a6fb0"];
+  p2 [label="ReportMapper", fillcolor="#efe9f7", color="#8a6fb0"];
+  {rank=same; p0; p1; p2;}
+
+  }
+
+  subgraph cluster_3 {
+    label="实体 / 数据载体"; fontsize=11; fontcolor="#7a5a30";
+    style="rounded,filled"; fillcolor="#fdfaf6"; color="#b08a5c"; margin=10;
+  e0 [label="Review", fillcolor="#f7f0e6", color="#b08a5c", shape=box, style=filled];
+  e1 [label="Notification", fillcolor="#f7f0e6", color="#b08a5c", shape=box, style=filled];
+  e2 [label="Report", fillcolor="#f7f0e6", color="#b08a5c", shape=box, style=filled];
+  {rank=same; e0; e1; e2;}
+
+  }
+
+  c0 -> s0 [style=invis];
+  c0 -> s0;
+  c0 -> s1;
+  c0 -> s2;
+  c1 -> s0;
+  c1 -> s1;
+  c1 -> s2;
+  c2 -> s0;
+  c2 -> s1;
+  c2 -> s2;
+  s0 -> p0;
+  s0 -> p1;
+  s0 -> p2;
+  s1 -> p0;
+  s1 -> p1;
+  s1 -> p2;
+  s2 -> p0;
+  s2 -> p1;
+  s2 -> p2;
+  p0 -> e0 [style=dotted, arrowhead=none, color="#8c8c8c"];
+  p0 -> e1 [style=dotted, arrowhead=none, color="#8c8c8c"];
+  p0 -> e2 [style=dotted, arrowhead=none, color="#8c8c8c"];
+  p1 -> e0 [style=dotted, arrowhead=none, color="#8c8c8c"];
+  p1 -> e1 [style=dotted, arrowhead=none, color="#8c8c8c"];
+  p1 -> e2 [style=dotted, arrowhead=none, color="#8c8c8c"];
+  p2 -> e0 [style=dotted, arrowhead=none, color="#8c8c8c"];
+  p2 -> e1 [style=dotted, arrowhead=none, color="#8c8c8c"];
+  p2 -> e2 [style=dotted, arrowhead=none, color="#8c8c8c"];
+}
