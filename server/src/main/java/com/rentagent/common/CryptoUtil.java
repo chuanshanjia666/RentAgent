@@ -9,6 +9,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.Base64;
 
 /** 敏感字段加密（NFR-04）：身份证号 AES-GCM 加密存储 + SHA-256 哈希比对 */
@@ -46,9 +47,11 @@ public class CryptoUtil {
     public String decrypt(String base64) {
         try {
             byte[] all = Base64.getDecoder().decode(base64);
+            // 前 12 字节为随机 IV，其余为密文（含 GCM 认证标签）
+            byte[] iv = Arrays.copyOf(all, GCM_IV_LEN);
             Cipher cipher = Cipher.getInstance(AES_TRANSFORMATION);
-            cipher.init(Cipher.DECRYPT_MODE, keySpec, new GCMParameterSpec(GCM_TAG_BITS, all, GCM_IV_LEN, all.length - GCM_IV_LEN));
-            return new String(cipher.doFinal(all), StandardCharsets.UTF_8);
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, new GCMParameterSpec(GCM_TAG_BITS, iv));
+            return new String(cipher.doFinal(all, GCM_IV_LEN, all.length - GCM_IV_LEN), StandardCharsets.UTF_8);
         } catch (Exception e) {
             throw new IllegalStateException("AES 解密失败", e);
         }

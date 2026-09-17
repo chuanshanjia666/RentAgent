@@ -1,0 +1,186 @@
+name: CI
+
+# 触发：主干推送、PR、手动重跑
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 只读权限：流水线不写回仓库，仅做构建与验证
+permissions:
+  contents: read
+
+# 同一分支的新提交自动取消上一次未完成的流水线
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 全流程统一时区：冒烟脚本的 date 计算与后端 LocalDate.now() 必须落在同一天
+  TZ: Asia/Shanghai
+
+jobs:
+  # ── 1. 后端单元测试（无需 MySQL/Redis，Mockito 打桩） ───────────────
+  backend-test:
+    name: 后端单测（JUnit 5 + Mockito）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: 运行单元测试
+        run: mvn -B -ntp test
+
+      - name: 归档测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-reports
+          path: server/target/surefire-reports/
+          if-no-files-found: ignore
+
+  # ── 2. 前端单测 + 类型检查 + 生产构建 ─────────────────────────────
+  frontend-test:
+    name: 前端单测与构建（vitest + tsc + vite）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      # 桌面端打包不在 CI 范围，跳过 Electron 二进制下载以缩短流水线
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖（严格按 lockfile）
+        run: npm ci --no-audit --no-fund
+
+      - name: 运行前端单元测试
+        run: npm test
+
+      - name: 类型检查 + 生产构建（Web 版，桌面端共用同一份 dist）
+        run: npm run build:web
+
+      - name: 归档 Web 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          if-no-files-found: error
+
+  # ── 3. 集成冒烟（真实 MySQL 8 + Redis + 运行中的后端） ─────────────
+  integration-smoke:
+    name: 集成冒烟（真实 MySQL/Redis）
+    runs-on: ubuntu-latest
+
+    # 服务容器：与 docker-compose.yml 同版本同账号，保证 CI 与本地一致
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root123456
+          MYSQL_DATABASE: rentagent
+          MYSQL_USER: rentagent
+          MYSQL_PASSWORD: rentagent123
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot123456"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_USER: rentagent
+      MYSQL_PASSWORD: rentagent123
+      REDIS_HOST: 127.0.0.1
+      JWT_SECRET: rentagent-ci-secret-key-0123456789abcdef0123456789abcdef
+      AES_KEY: cmVudGFnZW50LWNpLWtleS0zMi1ieXRlcy1hYmNkZWY=
+      BASE_URL: http://localhost:8080
+      # 本作业不注入任何 AI Key：验证「无 Key 时降级规则引擎」这一演示必备路径
+      # 注：UPLOAD_DIR 依赖 runner 上下文，只能写在步骤级 env（job 级 env 不提供 runner 上下文）
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: 初始化数据库结构
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y mysql-client
+          for i in $(seq 1 60); do
+            mysqladmin ping -h 127.0.0.1 -uroot -proot123456 --silent && break
+            sleep 2
+          done
+          mysql -h 127.0.0.1 -uroot -proot123456 rentagent < docker/mysql-init/01_schema.sql
+          mysql -h 127.0.0.1 -uroot -proot123456 -N -e \
+            "select concat('表数量=', count(*)) from information_schema.tables where table_schema='rentagent'"
+
+      - name: 构建后端可执行 jar
+        run: mvn -B -ntp -DskipTests package
+        working-directory: server
+
+      - name: 启动后端并等待就绪
+        env:
+          UPLOAD_DIR: ${{ runner.temp }}/rentagent-uploads
+        run: |
+          JAR=$(ls server/target/rentagent-server-*.jar | head -1)
+          echo "启动 $JAR"
+          nohup java -jar "$JAR" >/tmp/backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf "$BASE_URL/api/v1/ai/engine" >/dev/null; then
+              echo "后端就绪（等待 ${i} 次）"
+              curl -s "$BASE_URL/api/v1/ai/engine"; echo
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "后端启动超时，日志尾部："
+          tail -80 /tmp/backend.log
+          exit 1
+
+      - name: 运行集成冒烟断言（scripts/ci-smoke.sh）
+        run: bash scripts/ci-smoke.sh
+
+      - name: 失败时归档后端日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-runtime-log
+          path: |
+            /tmp/backend.log
+            /tmp/ci_smoke_sse.txt
+          if-no-files-found: ignore
