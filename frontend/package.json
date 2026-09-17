@@ -2,11 +2,21 @@
   "name": "rentagent-frontend",
   "version": "1.0.0",
   "private": true,
+  "description": "RentAgent 前端：一套代码两种分发形态（浏览器 Web 版 / Electron 桌面端）",
+  "author": "RentAgent 项目组 <chuanshanjia666@users.noreply.github.com>",
+  "homepage": "https://github.com/chuanshanjia666/RentAgent",
+  "desktopName": "RentAgent",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "build": "npm run build:web",
+    "build:web": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "dev:desktop": "electron . --dev",
+    "start:desktop": "npm run build:web && electron .",
+    "dist:desktop": "npm run build:web && electron-builder --linux",
+    "dist:desktop:dir": "npm run build:web && electron-builder --linux --dir"
   },
   "dependencies": {
     "antd": "^5.21.6",
@@ -21,6 +31,8 @@
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.3.3",
+    "electron": "40.10.2",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.9.3",
     "vite": "^5.4.10"
   }

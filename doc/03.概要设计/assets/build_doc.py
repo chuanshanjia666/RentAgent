@@ -12,6 +12,7 @@
 import copy
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 
@@ -40,6 +41,10 @@ def ensure_tpl():
     subprocess.run(["soffice", "--headless", "--convert-to", "docx",
                     "--outdir", str(BASE), str(TPL_SRC)], check=True,
                    capture_output=True, timeout=300)
+    # soffice 以源文件名输出（概要设计模板.docx），改名为本脚本约定的 tpl.docx
+    converted = BASE / (TPL_SRC.stem + ".docx")
+    if converted.exists():
+        converted.replace(TPL)
     if not TPL.exists():
         raise SystemExit(f"模板转换失败：{TPL_SRC}")
 
@@ -762,3 +767,28 @@ def measure_pages(docx_path, toc):
                     break
         pages[(level, number)] = found or 1
     return pages, len(d)
+
+
+# ── 入口：两遍生成，第二遍写入实测页码，并另存交付用 PDF ─────────────────────
+OUT = BASE.parent / "概要设计.docx"
+
+
+def main():
+    tmp = BASE / "_pass1.docx"
+    toc = build(tmp)
+    pages, total = measure_pages(tmp, toc)
+    print(f"pass1: {total} pages")
+    build(OUT, toc_pages=pages, total_pages=total)
+
+    # 校验第二遍页码是否漂移
+    pages2, total2 = measure_pages(OUT, toc)
+    drift = {k: (pages[k], pages2[k]) for k in pages if pages[k] != pages2.get(k)}
+    print(f"pass2: {total2} pages | 页码漂移: {drift if drift else '无'}")
+
+    # 交付用 PDF：直接复用校准过程中转出的 PDF，避免重复转换
+    shutil.copyfile(BASE / "_pdf" / f"{OUT.stem}.pdf", OUT.with_suffix(".pdf"))
+    print("输出:", OUT, "与", OUT.with_suffix(".pdf"))
+
+
+if __name__ == "__main__":
+    main()

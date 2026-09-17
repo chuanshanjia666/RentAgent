@@ -25,7 +25,7 @@ import java.util.Map;
 
 /**
  * AI 会话服务（FR-12/13）：SSE 流式对话编排，
- * 消息全量落库（NFR-05 可追溯），引擎按 Key 有无自动选择 GlmAgent / MockAgent。
+ * 消息全量落库（NFR-05 可追溯），引擎按 Key 有无自动选择 LlmAgent（真模型）/ MockAgent（规则引擎）。
  */
 @Slf4j
 @Service

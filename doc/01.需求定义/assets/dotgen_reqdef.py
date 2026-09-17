@@ -227,7 +227,7 @@ fig_5_1_context = """
     color="#c0c0c0";
     fontcolor="#666666";
     node [fillcolor="#f3e8d8", color="#b08a52"];
-    x1 [label="大模型服务\\n智谱 GLM-5.3-flash"];
+    x1 [label="大模型服务\\n任意兼容模型 API"];
     x2 [label="通知通道\\n站内消息 / 邮件短信"];
     x3 [label="图片存储\\n服务器本地目录"];
     x4 [label="地图底图服务"];
@@ -257,7 +257,8 @@ fig_5_2_arch = """
         <TD COLSPAN="2" ALIGN="LEFT" BGCOLOR="#dbe7f6">
           <B>表现层</B>　React 18 + TypeScript + Vite + Ant Design 5 + ECharts<br/>
           租客端（找房 / 预约 / 签约 / AI 对话）　·　房东端（发布 / 管理 / 定价）<br/>
-          管理端（审核 / 看板 / 知识库维护）
+          管理端（审核 / 看板 / 知识库维护）<br/>
+          <FONT COLOR="#31527a">分发形态：浏览器 Web 版　·　Electron 桌面端（同一份构建产物，桌面端不新增功能）</FONT>
         </TD>
       </TR>
       <TR>
@@ -271,7 +272,7 @@ fig_5_2_arch = """
         <TD COLSPAN="2" ALIGN="LEFT" BGCOLOR="#f6f0e4">
           <B>智能体层（Agent Layer）</B>　LLM 网关（三协议可切换）· 意图识别与提示词编排 · 多轮对话记忆<br/>
           工具集：房源检索 / 预约 / 合同生成 / 定价分析　·　RAG：房源知识库 · 租赁政策 FAQ<br/>
-          <FONT COLOR="#8a6a3a">外部依赖：智谱 GLM-5.3-flash（Anthropic 兼容协议接入，可一键切换备用模型）</FONT>
+          <FONT COLOR="#8a6a3a">外部依赖：LLM API（网关按协议适配，端点与模型可配置、可一键切换，系统不绑定厂商）</FONT>
         </TD>
       </TR>
       <TR>

@@ -1,12 +1,13 @@
 import axios, { type AxiosRequestConfig } from 'axios'
 import { message } from 'antd'
+import { API_BASE, apiUrl } from './runtime'
 
 /**
  * axios 实例：统一携带 JWT、解包 {code,message,data}、401 踢回登录。
  * 响应拦截器已把 AxiosResponse 解包为业务 data，因此这里用
  * `http.get<T, T>` 的第二个泛型把返回值直接声明为业务数据类型。
  */
-const http = axios.create({ baseURL: '/api/v1', timeout: 20000 })
+const http = axios.create({ baseURL: API_BASE + '/api/v1', timeout: 20000 })
 
 http.interceptors.request.use(cfg => {
   const t = localStorage.getItem('ra_token')
@@ -46,7 +47,7 @@ export async function ssePost(
   const token = localStorage.getItem('ra_token')
   let resp: Response
   try {
-    resp = await fetch('/api/v1' + path, {
+    resp = await fetch(apiUrl(path), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
       body: JSON.stringify(body)

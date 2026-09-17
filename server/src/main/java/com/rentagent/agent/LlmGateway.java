@@ -13,14 +13,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * LLM 网关（风险 R1 应对）：多后端（协议）适配层。
  * 依据 ai 配置构建对应协议的模型客户端，端点 / API Key / 模型均可配置，三种协议对应业界三类接口：
  * <ul>
  *   <li>anthropic-messages —— Anthropic Messages API 原生协议（Claude 官方及兼容中转）；</li>
- *   <li>openai-chat-completions —— OpenAI Chat Completions 协议（GLM / DeepSeek / 通义等均兼容）；</li>
+ *   <li>openai-chat-completions —— OpenAI Chat Completions 协议（最通用，厂商端点与聚合网关多兼容）；</li>
  *   <li>openai-responses —— OpenAI Responses API 新接口（本网关内置适配器实现）。</li>
  * </ul>
  * 兼容旧别名：openai → openai-chat-completions，anthropic → anthropic-messages。
@@ -55,7 +57,7 @@ public class LlmGateway {
         return streamingModel;
     }
 
-    /** 当前生效后端描述，如 "openai-chat-completions:glm-4-flash"、"anthropic-messages:claude-sonnet-4-5"；未启用为 "rule-engine" */
+    /** 当前生效后端描述，如 "openai-chat-completions:deepseek/deepseek-v4.1-flash"；未启用为 "rule-engine" */
     public String describe() {
         AiProps.Backend b = backend();
         return b == null ? "rule-engine" : normalizeProtocol(b.getProtocol()) + ":" + b.getModel();
@@ -103,14 +105,20 @@ public class LlmGateway {
                 streamingModel = model;
             }
             default -> {
-                // openai-chat-completions：GLM / DeepSeek / 通义 / OpenAI 经典协议
+                // openai-chat-completions：最通用的经典协议（OpenAI / DeepSeek / 通义 / 自建 / 聚合网关等均可）
                 String base = orDefault(b.getBaseUrl(), "https://api.openai.com/v1");
+                Map<String, String> headers = new LinkedHashMap<>();
+                // 部分网关/WAF 按 User-Agent 过滤（如只放行常见客户端），需要时按后端配置覆盖
+                if (b.getUserAgent() != null && !b.getUserAgent().isBlank()) {
+                    headers.put("User-Agent", b.getUserAgent());
+                }
                 chatModel = OpenAiChatModel.builder()
                         .apiKey(b.getApiKey())
                         .baseUrl(base)
                         .modelName(b.getModel())
                         .temperature(b.getTemperature())
                         .timeout(timeout)
+                        .customHeaders(headers)
                         .build();
                 streamingModel = OpenAiStreamingChatModel.builder()
                         .apiKey(b.getApiKey())
@@ -118,6 +126,7 @@ public class LlmGateway {
                         .modelName(b.getModel())
                         .temperature(b.getTemperature())
                         .timeout(timeout)
+                        .customHeaders(headers)
                         .build();
             }
         }

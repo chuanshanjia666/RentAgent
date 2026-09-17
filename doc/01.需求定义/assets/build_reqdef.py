@@ -11,6 +11,7 @@
 运行：python3 build_reqdef.py            （需 libreoffice、python-docx、pymupdf、Pillow）
 """
 import pathlib
+import shutil
 import sys
 
 BASE = pathlib.Path(__file__).resolve().parent
@@ -343,7 +344,10 @@ def main():
     pages2, total2 = BD.measure_pages(OUT, toc)
     drift = {k: (pages[k], pages2[k]) for k in pages if pages[k] != pages2.get(k)}
     print(f"pass2: {total2} pages | 页码漂移: {drift if drift else '无'}")
-    print("输出:", OUT)
+
+    # 交付用 PDF：直接复用校准过程中转出的 PDF，避免重复转换
+    shutil.copyfile(BASE / "_pdf" / f"{OUT.stem}.pdf", OUT.with_suffix(".pdf"))
+    print("输出:", OUT, "与", OUT.with_suffix(".pdf"))
 
 
 if __name__ == "__main__":

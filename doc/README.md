@@ -8,8 +8,8 @@
 | -------- | ---- | -------- | -------------- |
 | `01.需求定义/` | 一、需求定义 | `项目技术背景介绍.md`、`项目最终确认书.md`、`项目企划书.md`；`assets/`（说明书生成脚本与图源） | **《需求定义说明书》.docx / .pdf** ✅ |
 | `02.需求分析/` | 二、需求分析 | `需求分析矩阵.md`、`原型工具使用方法.md`、`需求分析评审报告.md`、`原型设计评审报告.md`、`需求跟踪矩阵.md` + `RentAgent_需求跟踪矩阵.xlsx`；`images/rtm/`（原型截图）、`prototype/`（可运行原型源码） | 需求分析矩阵与原型（已成稿） |
-| `03.概要设计/` | 三、概要设计 | `概要设计说明.md`、`数据库设计简介.md`、`概要设计.docx / .pdf`、`数据库表.xlsx / .xls`、`er.svg / er.pdf`（Workbench 逆向 ER 图）、模板与参考示例、`assets/`（生成脚本与图源） | **《概要设计》.docx** + **《数据库表》.xlsx / .xls** ✅ |
-| `04.编码/` | 四、编码 | 代码位于仓库根目录 `frontend/`、`server/`、`docker/` 与 `docker-compose.yml`，本目录待补编码阶段说明 | 待补 |
+| `03.概要设计/` | 三、概要设计 | `概要设计说明.md`、`数据库设计简介.md`、`概要设计.docx / .pdf`、`数据库表.xlsx / .xls`、`er.svg / er.pdf`（Workbench 逆向 ER 图）、模板与参考示例、`assets/`（生成脚本与图源） | **《概要设计》.docx / .pdf** + **《数据库表》.xlsx / .xls** ✅ |
+| `04.编码/` | 四、编码 | 代码位于仓库根目录 `frontend/`、`server/`、`docker/` 与 `docker-compose.yml`；前端一套代码两种分发（Web 版 + Electron 桌面端，见 `frontend/electron/`）。本目录待补编码阶段说明 | 待补 |
 | `05.集成测试/` | 五、集成测试 | 待补 | 《集成测试报告》待补 |
 | `06.技术调查/` | 六、技术调查 | 待补 | 《技术调查技术报告》待补 |
 | `最终答辩成果物/` | 答辩 | 待补 | 待补 |
@@ -21,9 +21,12 @@
 
 | 交付物 | 生成脚本 | 依赖 |
 | ------ | -------- | ---- |
-| `01.需求定义/需求定义说明书.docx` | `01.需求定义/assets/build_reqdef.py` | graphviz、libreoffice、python-docx、pymupdf、Pillow |
-| `03.概要设计/概要设计.docx` | `03.概要设计/assets/build_doc.py` | 同上 |
+| `01.需求定义/需求定义说明书.docx / .pdf` | `01.需求定义/assets/build_reqdef.py` | graphviz、libreoffice、python-docx、pymupdf、Pillow |
+| `03.概要设计/概要设计.docx / .pdf` | `03.概要设计/assets/build_doc.py` | 同上 |
 | `03.概要设计/数据库表.xlsx` | `03.概要设计/assets/gen_db_dict.py` | openpyxl（数据源 `docker/mysql-init/01_schema.sql`） |
 
 两阶段的 Word 交付物共用 `03.概要设计/assets/build_doc.py` 中的版式构件，
 因此都以学校模板（`03.概要设计/概要设计模板.doc`）的封面、页眉、目录域与标题/表格样式为基础。
+两个脚本都是一条命令重建交付物：先生成一版占位页码，转 PDF 实测每个标题的物理页码后再出终版，
+最后把校准用的 PDF 复制为交付用 `.pdf`（因此**无需**在 Word 里按 F9 更新目录）；
+运行结束会打印页码漂移检查结果（应显示"无"）。

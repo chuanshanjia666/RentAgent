@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import http from '../api'
 import { useAuth } from '../auth'
 import { fmtMoney, fmtTime, HOUSE_STATUS, HOUSE_STATUS_TYPE } from '../constants'
+import { assetUrl } from '../runtime'
 import type { HouseDetail, Review } from '../types'
 
 const { Title, Paragraph } = Typography
@@ -110,7 +111,7 @@ export default function HouseDetailView() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="detail-cover">
             {item.images && item.images.length
-              ? <img src={item.images[0].url} alt="" />
+              ? <img src={assetUrl(item.images[0].url)} alt="" />
               : <span style={{ fontSize: 90 }}>🏠</span>}
           </div>
           <Title level={3} style={{ marginTop: 16 }}>

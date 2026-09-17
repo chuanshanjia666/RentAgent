@@ -25,7 +25,8 @@ import java.util.Map;
 
 /**
  * AI 分析服务（FR-08/14/15/16）：
- * 有 GLM Key 时走大模型增强解释，无 Key 时全部降级为内置规则引擎（风险 R1 应对，保证可演示）。
+ * 定价建议与虚假检测为可解释的启发式实现（结果标注 rule-engine）；合同解读在模型可用时走大模型增强，
+ * 模型不可用时全部降级为内置规则引擎（风险 R1 应对，保证可演示）。
  * 全部结果落 ai_analysis 表，输入带快照可复现（NFR-05）。
  */
 @Slf4j
@@ -34,6 +35,9 @@ import java.util.Map;
 public class AnalysisService {
 
     private static final String MOCK_MODEL = "rule-engine";
+
+    /** ai_analysis.model 列宽（超出截断） */
+    private static final int MODEL_COLUMN_MAX = 100;
 
     private final AiAnalysisMapper analysisMapper;
     private final HouseMapper houseMapper;
@@ -215,10 +219,16 @@ public class AnalysisService {
             a.setTargetId(targetId);
             a.setInputSnapshot(objectMapper.writeValueAsString(input));
             a.setResult(objectMapper.writeValueAsString(result));
-            a.setModel(llmGateway.available() ? llmGateway.describe() : MOCK_MODEL);
+            a.setModel(engineLabel());
             analysisMapper.insert(a);
         } catch (Exception e) {
             log.warn("AI 分析结果落库失败: {}", e.getMessage());
         }
+    }
+
+    /** 落库用的引擎标识（协议:模型）；列宽有限，超出即截断，避免自定义模型名过长导致整条记录写不进去 */
+    private String engineLabel() {
+        String label = llmGateway.available() ? llmGateway.describe() : MOCK_MODEL;
+        return label.length() > MODEL_COLUMN_MAX ? label.substring(0, MODEL_COLUMN_MAX) : label;
     }
 }

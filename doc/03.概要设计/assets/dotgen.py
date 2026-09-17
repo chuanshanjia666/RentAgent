@@ -44,7 +44,7 @@ def fig_system():
   node [width=2.05, height=0.5];
 
   subgraph cluster_pres {{
-    label="表现层（三端单仓单应用：React 18 + TypeScript + Vite + Ant Design 5 + ECharts · hash 路由按角色分区）";
+    label="表现层（三端单仓单应用：React 18 + TypeScript + Vite + Ant Design 5 + ECharts · hash 路由按角色分区）\\n分发形态：浏览器 Web 版 / Electron 桌面端（共用同一份构建产物，桌面端不新增功能）";
     fontsize=11; fontcolor="#31527a"; style="rounded,dashed"; color="#a8c4e0"; margin=10;
     t1 [label="租客端\\n找房 / AI 对话 / 预约 / 签约", fillcolor="#dceaf8", width=2.6];
     t2 [label="房东端\\n发布 / 定价 / 预约处理 / 订单", fillcolor="#dceaf8", width=2.6];
@@ -96,7 +96,7 @@ def fig_system():
     d2 [label="Redis 7\\n验证码 / 限流 / 热度", fillcolor="#e7f2e7", color="#5c9c5c", width=1.9];
     d3 [label="Redis Stack\\n向量索引（RAG 升级位）", fillcolor="#e7f2e7", color="#5c9c5c", width=1.9];
     d4 [label="文件存储\\n房源图片本地卷", fillcolor="#e7f2e7", color="#5c9c5c", width=1.9];
-    ex [label="大模型服务（HTTPS 出网）\\n智谱 GLM / DeepSeek / Claude / OpenAI\\n三协议适配 · 超时降级 · 无 Key 降级规则引擎",
+    ex [label="大模型服务（HTTPS 出网）\\n任意兼容模型（DeepSeek / Claude / GPT / GLM …）\\n三协议适配 · 模型无关 · 超时降级 · 无 Key 降级规则引擎",
         fillcolor="#f7e7e7", color="#c07070", width=3.1];
     {{rank=same; d1; d2; d3; d4; ex;}}
   }}
@@ -730,7 +730,7 @@ def fig_agent_structure():
     style="rounded,filled"; fillcolor="#fdfaf6"; color="#b08a5c"; margin=10;
     gw [label="LlmGateway\n按 AI_BACKEND 选择后端 → available() / chat()\n　　　　　　　　　　/ streaming() / chatOnce()\n超时 60 秒 · 异常降级 · describe() 上报后端",
         fillcolor="#f7f0e6", color="#b08a5c", width=4.6];
-    p1 [label="openai-chat-completions\nGLM / DeepSeek / 通义", fillcolor="#f7e7e7", color="#c07070"];
+    p1 [label="openai-chat-completions\n通用协议（多厂商/网关兼容）", fillcolor="#f7e7e7", color="#c07070"];
     p2 [label="anthropic-messages\n自研适配器 · 兼容端点", fillcolor="#f7e7e7", color="#c07070"];
     p3 [label="openai-responses\n自研适配器 · 新接口", fillcolor="#f7e7e7", color="#c07070"];
     {{rank=same; p1; p2; p3;}}

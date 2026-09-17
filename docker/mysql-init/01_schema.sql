@@ -284,7 +284,7 @@ CREATE TABLE IF NOT EXISTS ai_analysis (
   target_id      BIGINT UNSIGNED NOT NULL,
   input_snapshot JSON NULL,
   result         JSON NOT NULL,
-  model          VARCHAR(50) NULL,
+  model          VARCHAR(100) NULL,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_target (target_type, target_id),

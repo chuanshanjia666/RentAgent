@@ -26,17 +26,17 @@ class AiPropsTest {
     void 快捷单后端生效并补默认协议() {
         AiProps p = new AiProps();
         p.setApiKey("k1");
-        p.setModel("glm-4-flash");
+        p.setModel("demo-flash");
         AiProps.Backend b = p.activeBackend();
         assertEquals("openai-chat-completions", b.getProtocol());
-        assertEquals("glm-4-flash", b.getModel());
+        assertEquals("demo-flash", b.getModel());
     }
 
     @Test
     void 指定active的命名后端优先() {
         AiProps p = new AiProps();
         p.setApiKey("flat-key");
-        p.getBackends().put("glm", backend("openai-chat-completions", "glm-key", "glm-4"));
+        p.getBackends().put("demo", backend("openai-chat-completions", "demo-key", "demo-large"));
         p.getBackends().put("claude", backend("anthropic-messages", "claude-key", "claude-sonnet-4-5"));
         p.setActive("claude");
         AiProps.Backend b = p.activeBackend();
@@ -49,18 +49,18 @@ class AiPropsTest {
         AiProps p = new AiProps();
         p.setApiKey("flat-key");
         p.setProtocol("openai-chat-completions");
-        p.setModel("glm-4-flash");
+        p.setModel("demo-flash");
         p.getBackends().put("claude", backend("anthropic-messages", "", "claude-sonnet-4-5"));
         p.setActive("claude");
-        assertEquals("glm-4-flash", p.activeBackend().getModel());
+        assertEquals("demo-flash", p.activeBackend().getModel());
     }
 
     @Test
     void 未指定active时取第一个有Key的命名后端() {
         AiProps p = new AiProps();
         p.getBackends().put("empty", backend("openai-chat-completions", "", "m0"));
-        p.getBackends().put("glm", backend("openai-chat-completions", "k", "glm-4"));
-        assertEquals("glm-4", p.activeBackend().getModel());
+        p.getBackends().put("demo", backend("openai-chat-completions", "k", "demo-large"));
+        assertEquals("demo-large", p.activeBackend().getModel());
     }
 
     @Test

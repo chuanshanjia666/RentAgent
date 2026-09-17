@@ -204,7 +204,7 @@ public class AnthropicMessagesChatModel implements ChatLanguageModel, StreamingC
         if (temperature != null) {
             body.put("temperature", temperature);
         }
-        // GLM-5 的 Anthropic 兼容层默认输出 thinking 思维链块（拖慢首字且挤占 max_tokens），
+        // 部分兼容端点（如 GLM）的 Anthropic 兼容层默认输出 thinking 思维链块（拖慢首字且挤占 max_tokens），
         // 实测传 thinking=disabled 可关闭且不影响 Function Calling
         body.putObject("thinking").put("type", "disabled");
         ArrayNode msgArr = body.putArray("messages");

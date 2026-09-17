@@ -48,37 +48,39 @@ rentagent:
   captcha-dev-code: "246810"
   # 身份证号加密密钥（Base64 的 16/24/32 字节），生产由环境变量注入
   aes-key: ${AES_KEY:cmVudGFnZW50LWRldi1rZXktMzItYnl0ZXMtYWJjZCE=}
-  cors-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:4173}
+  # 允许的跨域来源（开发期为本机前端：Vite 开发服务器 5173 / 预览服务器 4173）。
+  # 环回地址的 localhost 与 127.0.0.1 在浏览器里是两个来源，POST 会带 Origin 头，
+  # 只写 localhost 时用 127.0.0.1 打开前端会被 CORS 拒绝，故两者都列出。
+  # 桌面端（Electron）以 file:// 加载，不发 Origin 头，无需在此放行。
+  cors-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:4173,http://127.0.0.1:5173,http://127.0.0.1:4173}
 
 ai:
-  # ── LLM 网关：三协议后端适配（与主流平台接口对应）─────────────────
-  #   anthropic-messages       Anthropic Messages 原生协议（默认快捷通道：智谱 GLM 兼容端点）
-  #   openai-chat-completions  OpenAI Chat Completions（GLM/DeepSeek/通义 等兼容此协议）
+  # ── LLM 网关：协议适配层，系统不绑定任何模型厂商 ─────────────────────
+  # 只要端点兼容下列任一协议即可接入，模型由配置指定（换模型＝改配置，不改代码）：
+  #   openai-chat-completions  OpenAI Chat Completions（最通用：自建/厂商/聚合网关多兼容此协议）
+  #   anthropic-messages       Anthropic Messages 原生协议
   #   openai-responses         OpenAI Responses API 新接口（内置适配器）
   # 生效顺序：AI_BACKEND 指定的命名后端 → backends 中第一个有 Key 的 → 快捷单后端 → 都没有则降级规则引擎
   active: ${AI_BACKEND:}
-  protocol: ${AI_PROTOCOL:anthropic-messages}
-  base-url: ${AI_BASE_URL:https://open.bigmodel.cn/api/anthropic}
+  protocol: ${AI_PROTOCOL:openai-chat-completions}
+  base-url: ${AI_BASE_URL:https://api.openai.com/v1}
   api-key: ${AI_API_KEY:}
-  model: ${AI_MODEL:glm-5.3-flash}
+  model: ${AI_MODEL:gpt-4.1-mini}
   temperature: 0.7
   max-tokens: 2048
   timeout-seconds: 60
-  # 命名多后端：配好 Key 后用 AI_BACKEND=<name> 一键切换；
-  # 智谱 GLM 不单独设命名后端——快捷单后端（AI_API_KEY + 默认 base-url/model）即 GLM 通道
+  # 命名多后端：配好 Key 后用 AI_BACKEND=<name> 一键切换（一个名字＝一套"协议+端点+模型"组合）：
+  #   AI_BACKEND=commandcode-chat AGGREGATOR_API_KEY=<key> mvn spring-boot:run
   backends:
-    deepseek-chat:            # DeepSeek（走 Chat Completions 兼容协议）
+    commandcode-chat: # 聚合网关通道：同一端点下可指定任意模型（模型名形如 <厂商>/<模型>）
       protocol: openai-chat-completions
-      base-url: https://api.deepseek.com/v1
-      api-key: ${AI_DEEPSEEK_KEY:}
-      model: deepseek-chat
-    claude-messages:          # Claude（Anthropic Messages 原生协议）
+      base-url: ${AGGREGATOR_BASE_URL:https://api.commandcode.ai/provider/v1}
+      api-key: ${AGGREGATOR_API_KEY:}
+      model: ${AGGREGATOR_MODEL:deepseek/deepseek-v4.1-flash}
+      # 该网关的边缘按 UA 放行，默认客户端 UA（okhttp/java）会被限流或截断流式响应，故显式覆盖
+      user-agent: ${AGGREGATOR_USER_AGENT:curl/8.5.0}
+    claude-messages: # Claude 官方端点（Anthropic Messages 原生协议）
       protocol: anthropic-messages
       base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
       api-key: ${ANTHROPIC_API_KEY:}
       model: ${ANTHROPIC_MODEL:claude-sonnet-4-5}
-    openai-responses:         # OpenAI 新接口（Responses API）
-      protocol: openai-responses
-      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
-      api-key: ${OPENAI_API_KEY:}
-      model: ${OPENAI_MODEL:gpt-4.1-mini}

@@ -2,6 +2,7 @@ import React from 'react'
 import { Tag } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { fmtMoney } from '../constants'
+import { assetUrl } from '../runtime'
 import type { House } from '../types'
 
 function parseFacilities(f: string | string[] | undefined): string[] {
@@ -19,7 +20,7 @@ export default function HouseCard({ house }: { house: House }) {
   return (
     <div className="house-card" onClick={() => nav('/app/houses/' + house.id)}>
       <div className="house-cover">
-        {house.coverUrl ? <img src={house.coverUrl} alt="" /> : <span>🏠</span>}
+        {house.coverUrl ? <img src={assetUrl(house.coverUrl)} alt="" /> : <span>🏠</span>}
       </div>
       <div className="house-body">
         <div className="house-title">{house.title}</div>

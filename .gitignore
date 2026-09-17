@@ -14,3 +14,6 @@ __pycache__/
 # 文档生成脚本的中间产物（页码校准时临时落盘）
 doc/*/assets/_pass1.docx
 doc/*/assets/_pdf/
+
+# 桌面端打包产物（electron-builder；用 npm run dist:desktop 重新生成）
+frontend/release/

@@ -6,11 +6,11 @@
 
 | 文件 | 说明 |
 | ---- | ---- |
-| `fig_*.dot` | Graphviz 图源文件（纯文本，可直接改文字/连线） |
-| `fig_*.png` | 由 dot 渲染出的插图（已嵌入 docx，平铺在本目录） |
-| `dotgen.py` | 出图脚本：从 `fig_*.dot` 生成全部 `fig_*.png` |
+| `figures/fig_*.dot` | Graphviz 图源文件（纯文本，可直接改文字/连线；`dotgen.py` 的输出目录） |
+| `figures/fig_*.png` | 由 dot 渲染出的插图（`build_doc.py` 从这里取图嵌入 docx） |
+| `dotgen.py` | 出图脚本：从内置模板生成全部 `fig_*.dot` 并渲染 `fig_*.png` |
 | `content.py` | 文档正文内容（第 1~5 章的文字、表格数据、接口规约） |
-| `build_doc.py` | 文档生成脚本：以模板为基底生成 docx，并用 PDF 两遍校准目录页码 |
+| `build_doc.py` | 文档生成脚本：以模板为基底生成 docx，用 PDF 两遍校准目录页码，并输出交付用 PDF |
 | `gen_db_dict.py` | 数据库表结构字典生成脚本：按 `数据库参考示例.xls` 体例生成 `../数据库表.xlsx` |
 
 ## 配图清单（对应文档中的图号）
@@ -33,7 +33,8 @@ python3 build_doc.py
 ```
 
 重建文档时 `build_doc.py` 依赖版式底版 `tpl.docx`（学校《概要设计模板》转出的 docx）；
-该文件缺失时会自动用 `soffice --headless --convert-to docx ../概要设计模板.doc` 生成。
+该文件缺失时会自动用 `soffice --headless --convert-to docx ../概要设计模板.doc` 生成并改名为 `tpl.docx`。
+脚本输出两份交付文件：`../概要设计.docx` 与 `../概要设计.pdf`（后者复用页码校准过程中转出的 PDF）。
 
 > 本目录的版式构件（`Builder`、目录域重建、页码校准）同时被
 > `doc/01.需求定义/assets/build_reqdef.py` 复用，两份 Word 交付物因此共用一套版式实现；
@@ -41,8 +42,10 @@ python3 build_doc.py
 
 ## 修改配图的两种方式
 
-1. **只改文字**：直接编辑对应的 `fig_*.dot` 中的 `label="..."`，再执行 `dot -Tpng -Gdpi=170 -o fig_x.png fig_x.dot`。
-2. **换工具重画**：本目录的 `fig_*.png` 可整体替换为任意绘图工具（Visio、draw.io、ProcessOn、StarUML 等）导出的图片，
+1. **只改文字**：直接编辑 `figures/` 下对应的 `fig_*.dot` 中的 `label="..."`，再执行
+   `dot -Tpng -Gdpi=170 -o figures/fig_x.png figures/fig_x.dot`。
+   注意：`dotgen.py` 会按内置模板整体重写该目录，因此结构性改动应改 `dotgen.py` 中的模板并重跑它。
+2. **换工具重画**：本目录的 `figures/fig_*.png` 可整体替换为任意绘图工具（Visio、draw.io、ProcessOn、StarUML 等）导出的图片，
    只要保持文件名不变，再重新运行 `build_doc.py` 即可。
 
 ## 数据库表结构字典（doc/03.概要设计/数据库表.xlsx）

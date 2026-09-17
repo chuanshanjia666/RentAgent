@@ -1,0 +1,54 @@
+# 桌面端（Electron 外壳）打包配置。
+#
+# 产物只包含窗口壳与 Web 版构建产物 frontend/dist：
+# 前端依赖已被 Vite 打进 dist，因此不从 node_modules 复制任何依赖。
+#
+#   npm run dist:desktop             # 本机平台默认目标（Linux → AppImage + deb）
+#   npx electron-builder --linux     # 仅 Linux
+#   npx electron-builder --win       # 需在 Windows 上执行（或 Linux + wine）
+#   npx electron-builder --mac       # 需在 macOS 上执行
+appId: com.rentagent.desktop
+productName: RentAgent
+copyright: RentAgent 项目组（课程设计）
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+  - '!node_modules/**'
+
+asar: true
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Office
+  icon: build/icon.png
+  synopsis: 基于 AI 智能体的房屋租赁系统
+  # 让运行中的窗口能与 .desktop 图标关联（WM_CLASS）
+  syncDesktopName: true
+  desktop:
+    entry:
+      Name: RentAgent
+      Comment: AI 智能租房平台
+
+win:
+  target:
+    - nsis
+  icon: build/icon.png
+
+nsis:
+  oneClick: false                      # 允许选择安装目录
+  allowToChangeInstallationDirectory: true
+  shortcutName: RentAgent
+
+mac:
+  target:
+    - dmg
+  icon: build/icon.png
+  category: public.app-category.business

@@ -11,7 +11,7 @@ import java.util.Map;
  * LLM 网关配置：多后端（协议）适配。protocol 取值（支持旧别名 openai/anthropic）：
  * <ul>
  *   <li>anthropic-messages —— Anthropic Messages API 原生（Claude 官方及兼容中转）；</li>
- *   <li>openai-chat-completions —— OpenAI Chat Completions（GLM / DeepSeek / 通义 等兼容此协议）；</li>
+ *   <li>openai-chat-completions —— OpenAI Chat Completions（最通用，厂商端点与聚合网关多兼容）；</li>
  *   <li>openai-responses —— OpenAI Responses API 新接口（内置适配器）。</li>
  * </ul>
  * 两种配置方式：
@@ -53,6 +53,8 @@ public class AiProps {
         private Double temperature;
         private Integer maxTokens;
         private Integer timeoutSeconds;
+        /** 自定义 User-Agent（留空用客户端默认；部分网关/WAF 只放行常见 UA，需按需覆盖） */
+        private String userAgent;
     }
 
     /**

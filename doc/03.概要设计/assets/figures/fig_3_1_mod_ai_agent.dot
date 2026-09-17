@@ -63,7 +63,7 @@ LangChain4j AiServices 编排
 超时 60 秒 · 异常降级 · describe() 上报后端",
         fillcolor="#f7f0e6", color="#b08a5c", width=4.6];
     p1 [label="openai-chat-completions
-GLM / DeepSeek / 通义", fillcolor="#f7e7e7", color="#c07070"];
+通用协议（多厂商/网关兼容）", fillcolor="#f7e7e7", color="#c07070"];
     p2 [label="anthropic-messages
 自研适配器 · 兼容端点", fillcolor="#f7e7e7", color="#c07070"];
     p3 [label="openai-responses

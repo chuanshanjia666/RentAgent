@@ -19,7 +19,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 规则引擎智能体（无 GLM Key 时的降级实现，风险 R1 应对）：
+ * 规则引擎智能体（无可用模型 Key 时的降级实现，风险 R1 应对）：
  * 找房场景解析预算/户型/区域/地铁后调用真实检索；客服场景走知识库命中，未命中礼貌转人工。
  * 模拟流式输出以保证前端体验一致。
  */

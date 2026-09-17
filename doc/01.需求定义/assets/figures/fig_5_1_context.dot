@@ -34,7 +34,7 @@ digraph {
     color="#c0c0c0";
     fontcolor="#666666";
     node [fillcolor="#f3e8d8", color="#b08a52"];
-    x1 [label="大模型服务\n智谱 GLM-5.3-flash"];
+    x1 [label="大模型服务\n任意兼容模型 API"];
     x2 [label="通知通道\n站内消息 / 邮件短信"];
     x3 [label="图片存储\n服务器本地目录"];
     x4 [label="地图底图服务"];

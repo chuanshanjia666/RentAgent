@@ -346,7 +346,7 @@ TABLES.append(dict(
         F("BIGINT", 20, "target_id", "Y", "", "KEY idx_target（多态关联）", "分析对象主键", "number", "Y"),
         F("JSON", "", "input_snapshot", "", "", "JSON 对象", "输入快照（复现依据）"),
         F("JSON", "", "result", "Y", "", "JSON 对象", "结构化结果（区间/依据/样本量、风险分/疑点、条款解读）"),
-        F("VARCHAR", 50, "model", "", "", "", "生成模型标识（切换可追溯）", "input", "Y"),
+        F("VARCHAR", 100, "model", "", "", "", "生成模型标识（协议:模型，换模型/换供应商可追溯）", "input", "Y"),
         F("DATETIME", "", "created_at", "Y", "CURRENT_TIMESTAMP", "", "生成时间", "datetime", "Y"),
     ]))
 
