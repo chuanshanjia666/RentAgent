@@ -154,18 +154,21 @@ TABLES.append(dict(
 
 TABLES.append(dict(
     name="viewing_appointment", desc="看房预约表",
-    remark="FR-17 预约看房；UNIQUE(house_id, appointment_time) 防同时段重复预约；landlord_id 为查询冗余列（源于房源）",
+    remark="FR-17 预约看房；UNIQUE(active_slot) 防同时段重复预约——仅待确认/已确认持有占位键，"
+           "终态置 NULL 释放时段；landlord_id 为查询冗余列（源于房源）",
     fields=[
         F("BIGINT", 20, "id", "Y", "", "主键 自增 UNSIGNED", "主键"),
-        F("BIGINT", 20, "house_id", "Y", "", "FK fk_appt_house → house.id；UNIQUE uk_house_time",
+        F("BIGINT", 20, "house_id", "Y", "", "FK fk_appt_house → house.id",
           "预约房源", "select", "Y"),
         F("BIGINT", 20, "tenant_id", "Y", "", "FK fk_appt_tenant → sys_user.id；KEY idx_tenant",
           "发起租客", "select", "Y"),
         F("BIGINT", 20, "landlord_id", "Y", "", "FK fk_appt_landlord → sys_user.id；KEY idx_landlord",
           "房东（查询冗余列）", "select"),
-        F("DATETIME", "", "appointment_time", "Y", "", "UNIQUE uk_house_time", "预约时段（起点）", "datetime", "Y"),
+        F("DATETIME", "", "appointment_time", "Y", "", "", "预约时段（起点）", "datetime", "Y"),
         F("TINYINT", 1, "status", "Y", 0, "", "预约状态", "select", "Y",
           "0：待确认，1：已确认，2：已拒绝，3：已完成，4：已取消"),
+        F("VARCHAR", 64, "active_slot", "", "", "UNIQUE uk_active_slot", "时段占位键", "input", "",
+          "值形如 house_id:appointment_time，仅待确认/已确认非空，终态置 NULL 释放时段"),
         F("VARCHAR", 200, "reject_reason", "", "", "", "拒绝理由", "textarea"),
         F("VARCHAR", 200, "remark", "", "", "", "租客留言", "input"),
         F("DATETIME", "", "created_at", "Y", "CURRENT_TIMESTAMP", "", "创建时间", "datetime", "Y"),

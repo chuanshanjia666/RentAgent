@@ -13,6 +13,7 @@ import com.rentagent.mapper.HouseMapper;
 import com.rentagent.mapper.ReviewMapper;
 import com.rentagent.mapper.SysUserMapper;
 import com.rentagent.security.UserContext;
+import com.rentagent.support.EntityMetadataHelper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -64,6 +65,9 @@ class HouseServiceTest {
 
     @BeforeEach
     void setUp() {
+        // saveImages 回写 house.cover_url 走 LambdaUpdateWrapper.set(...)，需要渲染 lambda 列名。
+        // 必须在本类内注册：同一 JVM 里靠别的测试类先注册会随执行顺序时灵时不灵。
+        EntityMetadataHelper.init(House.class);
         service = new HouseService(houseMapper, imageMapper, userMapper, favoriteMapper,
                 reviewMapper, authService, new ObjectMapper());
     }

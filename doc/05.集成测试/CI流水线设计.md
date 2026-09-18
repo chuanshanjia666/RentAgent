@@ -1,11 +1,16 @@
 # RentAgent CI 流水线设计
 
 > 项目名称：RentAgent —— 基于 AI 智能体的房屋租赁系统
+> 文档版本：v1.3（v1.3 于 2026-09-18 补记前端静态检查门禁与断言计数更新：`frontend-test` 作业新增 ESLint 与 Prettier 两步；集成冒烟断言数随代码评审由 125 条增至 127 条，§一/§二/§四 描述与流程图同步）
 > 文档版本：v1.2（v1.2 于 2026-09-17 修正 BUG-02 根因：流式工具调用丢失是客户端解析问题（langchain4j 0.35 组装器在正文非空时丢弃 tool_calls），非网关截断；排障口径与断言口径相应更新）
 > 编制日期：2026-09-17
 > 编制：项目组测试担当（陈玄晔）
 > 关联文档：《单元测试用例设计》、《测试用例设计》（集成层）、`.github/workflows/ci.yml`、`scripts/ci-smoke.sh`
 > 适用阶段：五、集成测试（持续集成）
+> 变更记录（v1.3，2026-09-18）：前端工程化评审后引入 ESLint（扁平配置 `frontend/eslint.config.js`）与 Prettier
+> （`frontend/prettier.config.js`），`frontend-test` 作业在 `npm ci` 与单测之间插入 `npm run lint` 与
+> `npm run format:check` 两步——前者管"写得对不对"（未使用变量、hook 依赖遗漏），后者管"长得齐不齐"，
+> 分开跑以便失败时一眼区分逻辑问题与格式问题；本地一次跑齐用 `npm run check`。作业结构、缓存与依赖安装方式未变。
 > 变更记录（v1.1，2026-09-17）：CI 日志出现 Node.js 20 运行时弃用告警（`actions/checkout@v4`、`actions/setup-java@v4`、
 > `actions/upload-artifact@v4` 以 Node 20 编译，已被强制改跑 Node 24）。四个官方 Action 统一升到**已切换 Node 24 运行时的大版本**：
 > `checkout` v4→v5、`setup-java` v4→v5、`setup-node` v4→v5、`upload-artifact` v4→v6（其 v5 仍默认 Node 20，必须跨到 v6）。
@@ -24,11 +29,11 @@
 
 | 门禁 | 命令 | 拦截什么 |
 | ---- | ---- | -------- |
-| 后端单元测试 | `mvn -B -ntp test`（148 条） | 业务状态机、权限、金额/日期计算、加解密回归 |
+| 后端单元测试 | `mvn -B -ntp test`（182 条） | 业务状态机、权限、金额/日期计算、加解密回归 |
 | 前端静态检查与格式 | `npm run lint` + `npm run format:check`（ESLint + Prettier） | 死导入与未使用变量、hook 依赖数组遗漏、缩进引号等风格漂移 |
 | 前端单测 | `npm test`（vitest，20 条） | 运行时地址解析、状态字典、SSE 流式解析 |
 | 前端类型与构建 | `npm run build:web`（`tsc --noEmit` + vite） | TS 严格模式下的类型错误、构建失败 |
-| 集成冒烟 | `bash scripts/ci-smoke.sh`（125 条断言） | 跨模块业务闭环、真实 MySQL/Redis 语义、鉴权链路、**真实模型**的工具调用与引用来源 |
+| 集成冒烟 | `bash scripts/ci-smoke.sh`（127 条断言） | 跨模块业务闭环、真实 MySQL/Redis 语义、鉴权链路、**真实模型**的工具调用与引用来源 |
 | 反向门禁 | `bash scripts/ci-no-model-check.sh`（6 条断言） | "未配置模型时 AI 能力必须硬报错"——防止模拟/规则兜底被重新引入 |
 
 ---
@@ -76,7 +81,7 @@
 | 初始化库 | 安装 `mysql-client` → 等 MySQL 就绪 → 执行 `docker/mysql-init/01_schema.sql` → 打印表数量（应 18） |
 | 构建 | `mvn -B -ntp -DskipTests package`（产出可执行 jar） |
 | 启动 | 后台启动 jar（注入 `MYSQL_*`/`REDIS_*`/`JWT_SECRET`/`AES_KEY`），轮询直到**接口可用且种子数据已提交**（先探 `/api/v1/ai/engine`，再探查库的 `/api/v1/houses?size=1` 且 `total ≥ 1`，最多 3 分钟），超时打印后端日志尾部 |
-| 冒烟 | `bash scripts/ci-smoke.sh`（125 条断言，失败即非 0 退出） |
+| 冒烟 | `bash scripts/ci-smoke.sh`（127 条断言，失败即非 0 退出） |
 | 无模型校验 | 另起一个不注入模型凭据的实例（`SERVER_PORT=8081`），执行 `scripts/ci-no-model-check.sh`，校验 AI 能力全部返回 4001 |
 | 归档 | 失败时上传 `/tmp/backend.log` 与 SSE 原始输出 |
 
@@ -116,10 +121,10 @@
 ```
 push / PR / 手动
         │
-        ├── backend-test      JDK17 ── mvn test（148 条）────────────────────────────────────────┐
+        ├── backend-test      JDK17 ── mvn test（182 条）────────────────────────────────────────┐
         ├── frontend-test     Node20 ── npm ci → lint → format:check → vitest → build:web ───────┤ 并行
         └── integration-smoke JDK17 + mysql:8.0 + redis:7                                        │
-                              └─ 建表 → 打包 → 启动 → ci-smoke.sh（121 条）                      ┘
+                              └─ 建表 → 打包 → 启动 → ci-smoke.sh（127 条）                      ┘
                                         ↓
                           全部成功 = 门禁通过；任一失败 = 阻断合并
 ```
@@ -213,6 +218,7 @@ push / PR / 手动
 | 工作流结构校验 | `act -l -W .github/workflows/ci.yml` 通过（三个作业均可解析）；期间修正一处真实错误：`${{ runner.temp }}` 不能用于 job 级 `env`（`runner` 上下文在 job 级 env 不可用） |
 | 后端单测 | 本机 `mvn test` → **148 条全过** |
 | 前端单测与构建 | 本机 `npm test` → **20 条全过**；`npm run build:web` → 通过 |
+| 代码评审后复跑（v1.3） | 前端静态检查：`npm run lint`（ESLint 扁平配置）与 `npm run format:check`（Prettier）本机均零报错；单元与集成：后端 `mvn test` → **182 条全过**、前端 `npm test` → **26 条全过**、`ci-smoke.sh` → **127 条断言全过、退出码 0**（连续两轮均全绿） |
 | 集成冒烟 | 本机真实 MySQL 8 + Redis + 运行中后端 → **121 条断言全过，退出码 0**（连续 6 轮稳定） |
 | 失败路径 | `BASE_URL` 指向空端口 → 退出码 7 并提示后端未就绪，门禁有效 |
 | lockfile 一致性 | `npm ci --dry-run` 通过（新增测试依赖已同步进 `package-lock.json`） |

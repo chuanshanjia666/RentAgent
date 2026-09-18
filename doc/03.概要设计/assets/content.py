@@ -4,15 +4,15 @@
 
 结构严格对齐《概要设计模板》：
   1 文档概述 / 2 系统结构图 / 3 模块详细概述 / 4 数据库设计 / 5 接口设计
-内容以《概要设计说明》v1.3、《数据库设计简介》v1.1、docker/mysql-init/01_schema.sql
+内容以《概要设计说明》v1.9、《数据库设计简介》v1.5、docker/mysql-init/01_schema.sql
 与 server 端实际代码为唯一依据。
 """
 
 PROJECT = "RentAgent —— 基于 AI 智能体的房屋租赁系统"
 DOC_NO = "D0000-PPC-RA2026-PPD-2026"
 PROJ_NO = "RA2026"
-DOC_VER = "V1.4"
-DOC_DATE = "2026-09-17"
+DOC_VER = "V1.5"
+DOC_DATE = "2026-09-18"
 ORG = "大连理工大学创新实践基地"
 AUTHOR = "王硕"
 APPROVER = "姜厚云"
@@ -28,7 +28,7 @@ CHANGE_ROWS = [
      "桌面端外壳仅注入后端地址、不新增界面与功能；② 按《项目最终确认书》v1.5 与《概要设计说明》v1.5 "
      "明确大模型口径为模型无关：图 2-1 与 AI 智能体模块类图中的模型服务节点改为“任意兼容模型”表述，"
      "不再把系统与某一厂商绑定",
-     DOC_DATE),
+     "2026-09-17"),
     ("3", "V1.2",
      "新增 AI 对话审计与工具调用留痕设计，并按实现同步：① 第 3 章 AI 智能体服务模块新增“对话审计与工具留痕”"
      "功能项与 HousingToolProvider / ToolTraceService 两个类（图 3-8 同步），后台管理模块新增“AI 对话审计”"
@@ -37,14 +37,14 @@ CHANGE_ROWS = [
      "消息 / 规模统计），并修正业务状态字典中 ai_chat_message.role 的取值（1 用户 / 2 助手 / 3 工具，原记为 "
      "0/1/2）；③ 第 5 章接口函数清单补充 GET /admin/chats 与 GET /admin/chats/{id}，并在 5.2 节补两份"
      "对应接口规约（chats / chatDetail）",
-     DOC_DATE),
+     "2026-09-17"),
     ("4", "V1.3",
      "按《概要设计说明》v1.7“移除全部模拟数据、AI 全部调用真实模型”口径重构 AI 模块："
      "① 删除规则引擎实现 MockAgent 与“无 Key 自动降级”链路，未配置模型或调用失败统一返回 4001；"
      "② 新增结构化调用层 AiJsonClient 与提示词库 AiPrompts，定价 / 虚假检测 / 合同解读 / 识别填充"
      "改为“数据事实 → 模型 JSON → 校验 → 落 ai_analysis”；③ 客服来源引用改由 searchKnowledge 工具返回体捕获（NFR-05）；"
      "④ 新增流式工具调用兜底（丢失 tool_calls 时非流式重跑一次）；图 2-1、图 3-7、图 3-8 同步更新",
-     DOC_DATE),
+     "2026-09-17"),
     ("5", "V1.4",
      "按《概要设计说明》v1.8 修正流式工具调用链路并强化结构化输出：① openai-chat-completions 协议改由"
      "本项目自研适配器 OpenAiChatCompletionsModel 实现（三种协议全部自研，不再使用 langchain4j-open-ai），"
@@ -53,7 +53,17 @@ CHANGE_ROWS = [
      "response_format=json_schema（strict）强约束输出结构，Schema 由目标类型经 JsonSchemas 生成，"
      "端点不支持时自动退回提示词约束；③ 非流式兜底仅在本轮未执行任何工具时才启用（工具已执行的短回答不再重跑）；"
      "图 3-7、图 3-8 同步更新",
-     DOC_DATE),
+     "2026-09-17"),
+    ("6", "V1.5",
+     "按《概要设计说明》v1.9 与《数据库设计简介》v1.5 校正实现口径（需求基线不变）："
+     "① 预约表增 active_slot（时段占位键）列，唯一键由 (house_id, appointment_time) 改为 UNIQUE(active_slot)——"
+     "仅待确认/已确认持有占位键，终态置 NULL 释放时段，使已取消/已拒绝的时段可被重新预约；预约时间须晚于当前时间；"
+     "② 合同详情（detailContract）限合同双方与管理员可读，越权返回 1007；"
+     "③ 房源图片写入同步刷新 house.cover_url 冗余列（列表卡片只读该列），编辑请求未携带 images 字段视为"
+     "“本次不改动图片”；④ 合同解读回写 risk_flags 改为只更新该列，避免整行回写覆盖并发的合同状态变更；"
+     "⑤ 助手消息落库以终止事件正文兜底（部分协议流式 delta 全程为空）；"
+     "第 3 章交易与合同模块、第 4 章表 4-1/表 4-3、第 5 章对应接口规约同步更新",
+     "2026-09-18"),
 ]
 
 # ── 1 文档概述 ───────────────────────────────────────────────────────────────
@@ -290,7 +300,9 @@ MODULES_CONTENT = [
                              "回复；支持多轮追问增量修改条件；采用 SSE 流式输出（FR-12）"),
             ("2", "智能客服", "面向平台规则、租赁政策与流程 FAQ 的问答；先检索知识库再生成回答并强制附带来源引用；"
                            "未命中知识库时礼貌提示转人工（FR-13、NFR-05）"),
-            ("3", "合同智能解读", "逐条通俗化解释合同条款，对风险条款标红提示，输出附“AI 生成，仅供参考”声明（FR-14）"),
+            ("3", "合同智能解读", "逐条通俗化解释合同条款，对风险条款标红提示，输出附“AI 生成，仅供参考”声明；"
+                             "解读结果把风险条款下标回写 contract.risk_flags（只更新该列，避免整行回写覆盖"
+                             "并发发生的签约/终止状态）（FR-14）"),
             ("4", "智能定价建议", "按“同小区 → 同区域同户型”两级取样本并计算均价/中位/最值，"
                              "把房源字段与样本统计交由模型给出租金区间、依据与补充建议（结果校验含 low ≤ high），"
                              "样本不足时明确提示（FR-15）"),
@@ -343,8 +355,9 @@ MODULES_CONTENT = [
             "能力，金额仅作展示与统计用途。",
         ],
         funcs=[
-            ("1", "预约看房", "租客对已上架房源提交预约（预约时段 + 备注）；房东可确认或拒绝，租客可取消，"
-                           "房东可标记完成；UNIQUE(house_id, appointment_time) 防止同一时段重复预约（FR-17）"),
+            ("1", "预约看房", "租客对已上架房源提交预约（预约时段 + 备注，时段须晚于当前时间）；房东可确认或拒绝，"
+                           "租客可取消，房东可标记完成；时段互斥由 UNIQUE(active_slot) 唯一键兜底——占位键仅待确认/"
+                           "已确认持有，终态置 NULL 释放时段，故已取消/已拒绝的时段可被重新预约（FR-17）"),
             ("2", "预约通知", "预约创建与每次状态变更均经站内信通知相关方（FR-17、FR-21）"),
             ("3", "在线签约", "以合同模板与双方信息自动填充生成电子合同，条款集合以 clauses JSON 存储；"
                            "租客先签署 → 房东确认签署 → 合同生效；双方均可查看合同副本（FR-18）"),
@@ -355,7 +368,8 @@ MODULES_CONTENT = [
             ("6", "租金账单计划", "按租期逐月生成账单，UNIQUE(lease_order_id, period_no) 保证重复执行不产生重复"
                              "账单（幂等）；支持标记已支付并记录支付时间（FR-19）"),
             ("7", "状态机与并发控制", "预约与合同的状态更新一律带期望前态条件，配合唯一索引与事务，杜绝非法跳转"
-                                 "与并发冲突（NFR-08）"),
+                                 "与并发冲突；时段互斥随状态迁移维护——进入终态的预约释放 active_slot，"
+                                 "使同一时段可被重新预约（NFR-08）"),
             ("8", "房源状态联动", "合同生效后房源状态置为“已出租”，退出检索域；合同终止后可恢复（FR-18）"),
         ],
         apis=[
@@ -365,7 +379,7 @@ MODULES_CONTENT = [
             ("4", "交易与合同", "received(page, size)", "收到的预约列表（房东侧）"),
             ("5", "交易与合同", "createContract(ContractCreateReq)", "生成电子合同"),
             ("6", "交易与合同", "actContract(long id, ContractActionReq)", "合同签署 / 拒签 / 终止"),
-            ("7", "交易与合同", "detailContract(long id)", "合同详情与副本"),
+            ("7", "交易与合同", "detailContract(long id)", "合同详情与副本（仅合同双方与管理员可读）"),
             ("8", "交易与合同", "orders(page, size)", "租赁订单列表"),
             ("9", "交易与合同", "bills(long orderId)", "租金账单计划"),
             ("10", "交易与合同", "payBill(long billId)", "标记账单已支付（不对接真实支付）"),
@@ -513,7 +527,7 @@ TABLE_LIST = [
     ("5", "house_image", "房源图片", "id", "house_id", "url；sort；is_cover（随房源级联删除）"),
     ("6", "favorite", "收藏", "id", "user_id、house_id", "UNIQUE(user_id, house_id) 防重复收藏"),
     ("7", "viewing_appointment", "看房预约", "id", "house_id、tenant_id、landlord_id",
-     "appointment_time；status 状态机；UNIQUE(house_id, appointment_time) 防时段冲突"),
+     "appointment_time；status 状态机；active_slot 时段占位键（唯一键 uk_active_slot 防时段冲突，终态置 NULL 释放）"),
     ("8", "contract", "电子合同", "id", "house_id、tenant_id、landlord_id",
      "clauses(JSON 条款)；risk_flags(JSON)；租期；monthly_rent；deposit；status；双方签署时间"),
     ("9", "lease_order", "租赁订单", "id", "contract_id(唯一)、house_id、tenant_id、landlord_id",
@@ -547,7 +561,7 @@ INDEX_DESIGN = [
     ("house", "(status, district, rent)、(status, layout)", "普通", "检索域组合筛选的最左前缀（FR-09）"),
     ("house", "(lng, lat)、title", "普通 / 全文", "地图找房范围查询（FR-10）、关键词检索（FR-09）"),
     ("favorite", "(user_id, house_id)", "唯一", "防重复收藏（FR-25）"),
-    ("viewing_appointment", "(house_id, appointment_time)", "唯一", "预约时段防冲突（FR-17）"),
+    ("viewing_appointment", "active_slot", "唯一", "预约时段防冲突（FR-17）：占位键 house_id:appointment_time，仅待确认/已确认持有，终态置 NULL 释放时段"),
     ("lease_order", "contract_id", "唯一", "合同与订单一对一约束（FR-19）"),
     ("rent_bill", "(lease_order_id, period_no)", "唯一", "账单计划幂等（FR-19）"),
     ("review", "lease_order_id", "唯一", "一单一评（FR-20）"),
@@ -677,8 +691,9 @@ SPECS = [
          ret_type="R<House>", ret_vals=[("成功", "code = 0，data 为新建房源（status = 0 待审核）"),
                                        ("失败", "code = 1008 请先完成实名认证；code = 1000 参数校验失败（面积 / 租金 / 经纬度越界）")],
          detail="先调用 AuthService.realnamePassed 校验房东实名状态；通过后写入 house 主表并将图片列表逐条写入 "
-                "house_image（首图标记为封面），全部操作在同一事务内完成。",
+                "house_image（首图标记为封面），同时把首图同步写入 house.cover_url 冗余列，全部操作在同一事务内完成。",
          notes="发布后不可直接被租客检索到，必须先经管理员审核通过并上架；"
+               "封面冗余列供列表卡片与预约单直接读取，避免逐条回表取图；"
                "面积、租金、经纬度在 DTO 层以注解约束取值范围，避免异常数据入库。"),
     dict(module="房源管理模块", name="updateHouse", file="HouseController.java / HouseService.java",
          summary="房东编辑自有房源，编辑后状态回退为待审核",
@@ -688,9 +703,11 @@ SPECS = [
          ret_type="R<Void>", ret_vals=[("成功", "code = 0，房源状态回退为 0 待审核"),
                                       ("失败", "code = 2001 房源不存在；code = 2002 房源当前状态不允许该操作（非本人房源 / 已出租）")],
          detail="校验房源存在且 landlord_id 等于当前用户（属主校验防水平越权），并校验当前状态允许编辑；"
-                "随后更新主表字段，按“先删后插”方式重建图片记录，并将状态回退为待审核。",
+                "随后更新主表字段，并将状态回退为待审核。图片按“先删后插”方式重建并同步刷新 house.cover_url；"
+                "请求未携带 images 字段时视为“本次不改动图片”（保留既有图片与封面），传空数组才是显式清空。",
          notes="编辑即回退审核是保证信息可信度的关键约束：任何对外可见的房源内容都必须经过审核；"
-               "已出租状态的房源不允许编辑。"),
+               "已出租状态的房源不允许编辑；“不传即不改动”用于列表页等只改文本字段的场景，"
+               "避免这些请求把已有照片整体删空。"),
     dict(module="房源管理模块", name="changeStatus", file="HouseController.java / HouseService.java",
          summary="房东对已审核通过的房源执行上架或下架",
          params=[("long", "id", "IN", "房源 ID"),
@@ -788,7 +805,9 @@ SPECS = [
                    ("失败", "code = 4002 会话不存在；code = 4001 智能助手繁忙（降级话术）")],
          detail="组装角色设定、记忆窗口与工具表后交由 AgentEngine 编排；模型返回的文本增量以 delta 事件逐字推送，"
                 "工具调用（如房源检索）在服务端执行后回传模型继续生成；结束时推送 done 事件并携带消息 ID 与引用来源。"
-                "用户消息与助手回复及工具调用记录在异步回调中写入 ai_chat_message。",
+                "用户消息与助手回复及工具调用记录在异步回调中写入 ai_chat_message；助手消息正文取本轮 delta 的拼接，"
+                "并以终止事件携带的正文兜底——部分协议流式 delta 全程为空、只在终止事件给完整正文，"
+                "否则会落库一条空白助手消息。",
          notes="流式链路需关闭中间缓冲以压缩首字延迟（NFR-02）；单次模型调用超时 60 秒，"
                "超时或异常时推送降级话术而非直接断开连接；客服场景未命中知识库时在 done 事件中返回转人工提示。"),
     dict(module="AI 智能体服务模块", name="searchKnowledge", file="KbService.java / HousingTools.java",
@@ -829,15 +848,17 @@ SPECS = [
     # ── 5.2.5 交易与合同模块 ──────────────────────────────────────────────
     dict(module="交易与合同模块", name="createAppointment", file="AppointmentController.java / AppointmentService.java",
          summary="租客对已上架房源创建看房预约，唯一索引防时段冲突",
-         params=[("AppointmentCreateReq", "req", "IN", "houseId 房源 ID、appointmentTime 预约时段、remark 备注"),
+         params=[("AppointmentCreateReq", "req", "IN", "houseId 房源 ID、appointmentTime 预约时段（须晚于当前时间）、remark 备注"),
                  ("long", "tenantId", "IN", "当前登录租客 ID")],
          ret_type="R<ViewingAppointment>",
          ret_vals=[("成功", "code = 0，data 为新建预约（status = 0 待确认）"),
-                   ("失败", "code = 3001 该时段已被预约；code = 2002 房源当前状态不允许预约")],
-         detail="校验房源存在且处于已上架状态、租客非房源本人；写入预约记录（状态待确认），"
-                "并通知房东。时段冲突由 UNIQUE(house_id, appointment_time) 唯一索引兜底，"
-                "冲突时转换为 3001 错误码返回。",
-         notes="同一房源同一时段只允许一条预约，这是防止重复占用的硬约束；"
+                   ("失败", "code = 3001 该时段已被有效预约占用；code = 2002 房源当前状态不允许预约；"
+                          "code = 1000 预约时间不晚于当前时间")],
+         detail="校验房源存在且处于已上架状态、租客非房源本人、预约时间晚于当前时间（秒以下精度先对齐，"
+                "避免落库值与占位键不一致）；写入预约记录（状态待确认，同时写入时段占位键 active_slot），"
+                "并通知房东。时段冲突由唯一键 uk_active_slot（UNIQUE(active_slot)）兜底，冲突时转换为 3001 错误码返回。",
+         notes="同一房源同一时段只允许一条**仍占用时段**的预约（待确认或已确认）：预约进入终态"
+               "（已拒绝/已完成/已取消）时占位键置 NULL，该时段随之释放、可被重新预约，历史记录仍完整保留；"
                "预约本身不锁定房源，仍需房东确认后进入线下看房环节。"),
     dict(module="交易与合同模块", name="actAppointment", file="AppointmentController.java / AppointmentService.java",
          summary="预约状态流转：确认 / 拒绝 / 取消 / 完成",
