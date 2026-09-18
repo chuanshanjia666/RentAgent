@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
 
 /** 看房预约（FR-17） */
 @Tag(name = "appointment", description = "看房预约")
@@ -47,15 +46,15 @@ public class AppointmentController {
 
     @Operation(summary = "我的预约（租客视角）")
     @GetMapping("/appointments/mine")
-    public R<PageVO<Map<String, Object>>> mine(@RequestParam(defaultValue = "1") long page,
-                                               @RequestParam(defaultValue = "10") long size) {
-        return R.ok(PageVO.of(appointmentService.pageFor(UserContext.userId(), false, page, size)));
+    public R<PageVO<TradeDto.AppointmentVO>> mine(@RequestParam(defaultValue = "1") long page,
+                                                 @RequestParam(defaultValue = "10") long size) {
+        return R.ok(appointmentService.pageFor(UserContext.userId(), false, page, size));
     }
 
     @Operation(summary = "收到的预约（房东视角）")
     @GetMapping("/landlord/appointments")
-    public R<PageVO<Map<String, Object>>> received(@RequestParam(defaultValue = "1") long page,
-                                                   @RequestParam(defaultValue = "10") long size) {
-        return R.ok(PageVO.of(appointmentService.pageFor(UserContext.userId(), true, page, size)));
+    public R<PageVO<TradeDto.AppointmentVO>> received(@RequestParam(defaultValue = "1") long page,
+                                                     @RequestParam(defaultValue = "10") long size) {
+        return R.ok(appointmentService.pageFor(UserContext.userId(), true, page, size));
     }
 }

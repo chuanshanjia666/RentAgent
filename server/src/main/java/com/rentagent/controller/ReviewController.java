@@ -1,6 +1,5 @@
 package com.rentagent.controller;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.R;
 import com.rentagent.dto.PageVO;
 import com.rentagent.dto.TradeDto;
@@ -19,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
 
 /** 评价（FR-20） */
 @Tag(name = "review", description = "评价体系")
@@ -39,10 +37,9 @@ public class ReviewController {
 
     @Operation(summary = "房源评价列表")
     @GetMapping("/houses/{id}/reviews")
-    public R<PageVO<Map<String, Object>>> list(@PathVariable long id,
-                                               @RequestParam(defaultValue = "1") long page,
-                                               @RequestParam(defaultValue = "10") long size) {
-        Page<Map<String, Object>> p = reviewService.listByHouse(id, page, size);
-        return R.ok(new PageVO<>(p.getRecords(), p.getTotal(), p.getCurrent(), p.getSize()));
+    public R<PageVO<TradeDto.ReviewVO>> list(@PathVariable long id,
+                                             @RequestParam(defaultValue = "1") long page,
+                                             @RequestParam(defaultValue = "10") long size) {
+        return R.ok(reviewService.listByHouse(id, page, size));
     }
 }

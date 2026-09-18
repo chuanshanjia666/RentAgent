@@ -1,35 +1,28 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button, Input, message, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
 import { USER_ROLE } from '../constants'
+import type { AdminUserRow } from '../types'
+import { usePagedList } from '../usePagedList'
 
 export default function AdminUsersView() {
-  const [list, setList] = useState<any[]>([])
   const [keyword, setKeyword] = useState('')
+  // 查询条件进 params：关键词变化时 hook 自动回到第 1 页重新拉取
+  const list = usePagedList<AdminUserRow>('/admin/users', { keyword: keyword || undefined })
 
-  async function load(kw = keyword) {
-    const p = await http.get('/admin/users', { params: { keyword: kw || undefined, size: 50 } })
-    setList(p.list.map((u: any) => ({ ...u, key: u.id })))
-  }
-
-  async function toggle(row: any) {
+  async function toggle(row: AdminUserRow) {
     await http.patch(`/admin/users/${row.id}/status?enabled=${row.status === 0}`)
     message.success(row.status === 0 ? '已启用' : '已禁用（该用户立即无法访问）')
-    load()
+    list.reload()
   }
 
-  useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 首屏进页面即列出全部用户，点「查询」再按关键词过滤
-  }, [])
-
-  const columns: ColumnsType<any> = [
+  const columns: ColumnsType<AdminUserRow> = [
     { title: 'ID', width: 70, dataIndex: 'id' },
     { title: '昵称', dataIndex: 'nickname' },
     { title: '账号', dataIndex: 'username' },
     { title: '手机号', dataIndex: 'phone' },
-    { title: '角色', width: 90, render: (_, u) => <Tag>{USER_ROLE[u.role]}</Tag> },
+    { title: '角色', width: 90, render: (_, u) => <Tag>{USER_ROLE[u.role ?? 0]}</Tag> },
     {
       title: '状态',
       width: 90,
@@ -60,13 +53,24 @@ export default function AdminUsersView() {
           placeholder="昵称 / 手机号 / 账号"
           value={keyword}
           onChange={e => setKeyword(e.target.value)}
-          onPressEnter={() => load()}
+          onPressEnter={() => list.reload(1)}
         />
-        <Button type="primary" onClick={() => load()}>
+        <Button type="primary" onClick={() => list.reload(1)}>
           查询
         </Button>
       </div>
-      <Table rowKey="id" dataSource={list} pagination={{ pageSize: 10 }} columns={columns} />
+      <Table
+        rowKey="id"
+        dataSource={list.rows}
+        loading={list.loading}
+        pagination={{
+          current: list.page,
+          pageSize: list.size,
+          total: list.total,
+          onChange: p => list.reload(p)
+        }}
+        columns={columns}
+      />
     </div>
   )
 }

@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
+import com.rentagent.dto.PageVO;
+import com.rentagent.dto.TradeDto;
 import com.rentagent.entity.House;
 import com.rentagent.entity.LeaseOrder;
 import com.rentagent.entity.Review;
@@ -20,8 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.HashMap;
-import java.util.Map;
 
 /** 评价体系（FR-20）：仅完成合同（订单已退租/到期）可评，一单一评 */
 @Service
@@ -63,24 +63,16 @@ public class ReviewService {
         return r;
     }
 
-    public Page<Map<String, Object>> listByHouse(long houseId, long page, long size) {
+    public PageVO<TradeDto.ReviewVO> listByHouse(long houseId, long page, long size) {
         Page<Review> p = reviewMapper.selectPage(new Page<>(page, size), new LambdaQueryWrapper<Review>()
                 .eq(Review::getHouseId, houseId).eq(Review::getStatus, 0).orderByDesc(Review::getId));
-        Page<Map<String, Object>> result = new Page<>(p.getCurrent(), p.getSize(), p.getTotal());
-        result.setRecords(p.getRecords().stream().map(this::toVO).toList());
-        return result;
+        return PageVO.map(p, this::toVO);
     }
 
-    private Map<String, Object> toVO(Review r) {
-        Map<String, Object> vo = new HashMap<>();
+    private TradeDto.ReviewVO toVO(Review r) {
         SysUser tenant = userMapper.selectById(r.getTenantId());
-        vo.put("id", r.getId());
-        vo.put("houseScore", r.getHouseScore());
-        vo.put("landlordScore", r.getLandlordScore());
-        vo.put("content", r.getContent());
-        vo.put("createdAt", r.getCreatedAt());
-        vo.put("tenantName", tenant == null ? "租客" : "租客" + tenant.getNickname());
-        return vo;
+        return new TradeDto.ReviewVO(r.getId(), r.getHouseScore(), r.getLandlordScore(), r.getContent(),
+                r.getCreatedAt(), tenant == null ? "租客" : "租客" + tenant.getNickname());
     }
 
     /** 房源均评分冗余刷新（house.avg_score，展示与推荐用） */

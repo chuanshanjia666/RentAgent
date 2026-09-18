@@ -23,6 +23,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -203,16 +204,31 @@ class OpenAiChatCompletionsModelTest {
         assertEquals("您好", capture.text.toString());
     }
 
+    /**
+     * 回归（2026-09-18 CI 客服场景三条断言失败根因）：推理内容占满 max_tokens 时正文与工具调用可能全空。
+     * 此时模型并没有给出任何结论，必须按调用失败上报——早先的实现会伪造一句
+     * "抱歉，这次没有生成有效回答"并只放在终止消息里（不发 delta），
+     * 界面因此停在空白气泡，CI 也查不出原因。
+     */
     @Test
-    @DisplayName("UT-OPENAI-10 空返回（思维链耗尽等）不抛异常，给出可读提示")
-    void fallsBackOnEmptyResponse() {
-        StreamCapture capture = stream(String.join("\n",
-                chunk("{\"reasoning\":\"思考中\"}"),
-                chunk("{}", "length"),
-                "data: [DONE]"));
+    @DisplayName("UT-OPENAI-10 空返回（思维链耗尽预算）必须报错，不得伪造回答")
+    void failsOnEmptyResponse() {
+        LlmEmptyResponseException ex = assertThrows(LlmEmptyResponseException.class,
+                () -> stream(String.join("\n",
+                        chunk("{\"reasoning\":\"思考中\"}"),
+                        chunk("{}", "length"),
+                        "data: [DONE]")));
 
-        assertTrue(capture.message.text().contains("请换个说法"), capture.message.text());
-        assertTrue(capture.requests.isEmpty());
+        assertTrue(ex.getMessage().contains("length"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("max-tokens"), ex.getMessage());
+    }
+
+    /** 同步通道同一口径：既无 content 也无 tool_calls 的响应同样是失败 */
+    @Test
+    @DisplayName("UT-OPENAI-12 同步响应为空时同样报错")
+    void failsOnEmptySyncResponse() throws Exception {
+        JsonNode message = new ObjectMapper().readTree("{\"content\":null}");
+        assertThrows(LlmEmptyResponseException.class, () -> model.parseMessage(message));
     }
 
     /**
@@ -299,7 +315,7 @@ class OpenAiChatCompletionsModelTest {
             model.consumeSseLine(line, capture.text, capture.buffers, capture.usage, capture.finishReason, handler);
         }
         capture.streamed.append(String.join("", forwarded));
-        capture.message = model.assemble(capture.text, capture.buffers, capture.finishReason);
+        capture.message = model.assemble(capture.text, capture.buffers, capture.finishReason, capture.usage[0]);
         if (capture.message.toolExecutionRequests() != null) {
             capture.requests.addAll(capture.message.toolExecutionRequests());
         }

@@ -60,6 +60,10 @@ class HouseServiceTest {
     private ReviewMapper reviewMapper;
     @Mock
     private AuthService authService;
+    @Mock
+    private NotificationService notificationService;
+    @Mock
+    private AuditLogService auditLogService;
 
     private HouseService service;
 
@@ -69,7 +73,7 @@ class HouseServiceTest {
         // 必须在本类内注册：同一 JVM 里靠别的测试类先注册会随执行顺序时灵时不灵。
         EntityMetadataHelper.init(House.class);
         service = new HouseService(houseMapper, imageMapper, userMapper, favoriteMapper,
-                reviewMapper, authService, new ObjectMapper());
+                reviewMapper, authService, notificationService, auditLogService);
     }
 
     @AfterEach
@@ -139,7 +143,7 @@ class HouseServiceTest {
         assertEquals(0, created.getViewCount());
         assertEquals(7L, created.getLandlordId());
         assertEquals(new BigDecimal("2100"), created.getRent());
-        assertEquals("[\"近地铁\",\"精装修\"]", created.getFacilities());
+        assertEquals(List.of("近地铁", "精装修"), created.getFacilities());
         // 图片按顺序落库，首图为封面（列表卡片只读 cover_url）
         verify(imageMapper, times(2)).insert(any(HouseImage.class));
         assertEquals("/uploads/a.jpg", created.getCoverUrl());
@@ -368,16 +372,6 @@ class HouseServiceTest {
         assertEquals(3L, item.reviewCount());
         // 浏览计数走 SQL 自增，不读改写
         verify(houseMapper).update(any(), any());
-    }
-
-    @Test
-    @DisplayName("UT-HOUSE-17 facilities JSON 序列化与容错解析")
-    void serializesFacilitiesJson() {
-        assertEquals("[\"近地铁\"]", service.toJson(List.of("近地铁")));
-        assertNull(service.toJson(null));
-        assertEquals(List.of("近地铁"), service.toList("[\"近地铁\"]"));
-        assertEquals(List.of(), service.toList(null));
-        assertEquals(List.of(), service.toList("{不是合法JSON"));
     }
 
     @Test

@@ -53,7 +53,7 @@ public class HousingTools {
             card.put("community", h.getCommunity());
             card.put("layout", h.getLayout());
             card.put("rent", h.getRent());
-            card.put("facilities", houseService.toList(h.getFacilities()));
+            card.put("facilities", h.getFacilities());
             return card;
         }).toList();
         try {

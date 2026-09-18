@@ -4,9 +4,9 @@ import { useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
 import http from '../api'
 import { useAuth } from '../auth'
-import { fmtMoney, fmtTime, HOUSE_STATUS, HOUSE_STATUS_TYPE, parseJsonList } from '../constants'
+import { fmtMoney, fmtTime, HOUSE_STATUS, HOUSE_STATUS_TYPE } from '../constants'
 import { assetUrl } from '../runtime'
-import type { HouseDetail, PageResult, Review } from '../types'
+import type { HouseDetail, PageResult, ReviewRow } from '../types'
 
 const { Title, Paragraph } = Typography
 
@@ -14,7 +14,7 @@ export default function HouseDetailView() {
   const { id } = useParams<{ id: string }>()
   const auth = useAuth()
   const [item, setItem] = useState<HouseDetail | null>(null)
-  const [reviews, setReviews] = useState<Review[]>([])
+  const [reviews, setReviews] = useState<ReviewRow[]>([])
   const [apptOpen, setApptOpen] = useState(false)
   const [apptTime, setApptTime] = useState<string | null>(null)
   const [apptRemark, setApptRemark] = useState('')
@@ -27,12 +27,12 @@ export default function HouseDetailView() {
 
   const isTenant = auth.role === 1
 
-  const facilities = useMemo(() => parseJsonList(item?.house.facilities), [item])
+  const facilities = useMemo(() => item?.house.facilities ?? [], [item])
 
   async function load() {
     const d = await http.get<HouseDetail>(`/houses/${id}`)
     setItem(d)
-    const p = await http.get<PageResult<Review>>(`/houses/${id}/reviews`, { params: { size: 20 } })
+    const p = await http.get<PageResult<ReviewRow>>(`/houses/${id}/reviews`, { params: { size: 20 } })
     setReviews(p.list)
   }
 

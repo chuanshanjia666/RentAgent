@@ -22,10 +22,24 @@ public class SearchService {
     private final FavoriteMapper favoriteMapper;
     private final HouseService houseService;
 
+    /** 地图找房一次最多返回的点数：地图是"看一眼分布"的场景，不做分页但要有硬上限 */
+    private static final int MAP_LIMIT = 300;
+
     /** FR-09：关键词 + 多条件组合筛选 + 排序，仅返回已上架房源 */
     public Page<House> search(HouseDto.SearchReq req) {
         long page = req.page() == null ? 1 : req.page();
         long size = Math.min(req.size() == null ? 10 : req.size(), 50);
+        return houseMapper.selectPage(new Page<>(page, size), filter(req));
+    }
+
+    /** FR-10：地图找房（指定经纬度范围内的已上架房源，不分页） */
+    public List<House> mapHouses(HouseDto.SearchReq req) {
+        // 早先直接复用 search() 取第一页，默认 size=10 且上限 50：地图上永远只有零星几个点
+        return houseMapper.selectList(filter(req).last("LIMIT " + MAP_LIMIT));
+    }
+
+    /** 搜索/地图共用的筛选与排序条件 */
+    private LambdaQueryWrapper<House> filter(HouseDto.SearchReq req) {
         LambdaQueryWrapper<House> w = new LambdaQueryWrapper<House>()
                 .eq(House::getStatus, HouseService.ST_ONLINE);
         if (notBlank(req.keyword())) {
@@ -55,12 +69,7 @@ public class SearchService {
             case "hot" -> w.orderByDesc(House::getViewCount);
             default -> w.orderByDesc(House::getId);
         }
-        return houseMapper.selectPage(new Page<>(page, size), w);
-    }
-
-    /** FR-10：地图找房（指定经纬度范围内的已上架房源，不分页） */
-    public List<House> mapHouses(HouseDto.SearchReq req) {
-        return search(req).getRecords();
+        return w;
     }
 
     /** FR-25：收藏/取消收藏 */

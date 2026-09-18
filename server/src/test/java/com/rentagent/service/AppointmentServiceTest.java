@@ -2,6 +2,8 @@ package com.rentagent.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.BizException;
+import com.rentagent.dto.PageVO;
+import com.rentagent.dto.TradeDto;
 import com.rentagent.entity.House;
 import com.rentagent.entity.SysUser;
 import com.rentagent.entity.ViewingAppointment;
@@ -294,13 +296,13 @@ class AppointmentServiceTest {
         doReturn(page).when(mapper).selectPage(any(), any());
         when(houseMapper.selectById(101L)).thenReturn(house(HouseService.ST_ONLINE));
 
-        Page<Map<String, Object>> tenantSide = service.pageFor(TENANT, false, 1, 10);
-        assertEquals(1, tenantSide.getRecords().size());
-        assertEquals("软件园公寓 1 室 1 厅", tenantSide.getRecords().get(0).get("houseTitle"));
-        assertEquals("小陈", tenantSide.getRecords().get(0).get("tenantName"));
+        PageVO<TradeDto.AppointmentVO> tenantSide = service.pageFor(TENANT, false, 1, 10);
+        assertEquals(1, tenantSide.list().size());
+        assertEquals("软件园公寓 1 室 1 厅", tenantSide.list().get(0).houseTitle());
+        assertEquals("小陈", tenantSide.list().get(0).tenantName());
 
-        Page<Map<String, Object>> landlordSide = service.pageFor(LANDLORD, true, 1, 10);
-        assertEquals(1, landlordSide.getRecords().size());
-        assertNull(landlordSide.getRecords().get(0).get("houseCover"));
+        PageVO<TradeDto.AppointmentVO> landlordSide = service.pageFor(LANDLORD, true, 1, 10);
+        assertEquals(1, landlordSide.list().size());
+        assertNull(landlordSide.list().get(0).houseCover());
     }
 }

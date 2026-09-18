@@ -1,33 +1,24 @@
-import { useEffect, useState } from 'react'
-import { Button, Empty, message } from 'antd'
+import { Button, Empty, message, Pagination } from 'antd'
 import http from '../api'
 import HouseCard from '../components/HouseCard'
 import type { House } from '../types'
+import { usePagedList } from '../usePagedList'
 
 export default function FavoritesView() {
-  const [list, setList] = useState<House[]>([])
-
-  async function load() {
-    const p = await http.get('/favorites', { params: { size: 50 } })
-    setList(p.list)
-  }
+  const { rows, total, page, size, loading, reload } = usePagedList<House>('/favorites', {}, 12)
 
   async function remove(id: number) {
     await http.delete(`/favorites/${id}`)
     message.success('已取消收藏')
-    load()
+    reload()
   }
-
-  useEffect(() => {
-    load()
-  }, [])
 
   return (
     <div className="page">
       <h2 className="page-title">我的收藏</h2>
-      {list.length > 0 ? (
-        <div className="house-grid">
-          {list.map(h => (
+      {rows.length > 0 ? (
+        <div className="house-grid" style={{ opacity: loading ? 0.6 : 1 }}>
+          {rows.map(h => (
             <div key={h.id} style={{ position: 'relative' }}>
               <HouseCard house={h} />
               <Button
@@ -45,6 +36,11 @@ export default function FavoritesView() {
         </div>
       ) : (
         <Empty description="还没有收藏房源，去首页逛逛吧" />
+      )}
+      {total > size && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
+          <Pagination total={total} pageSize={size} current={page} onChange={p => reload(p)} />
+        </div>
       )}
     </div>
   )

@@ -2,14 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { Card, Col, Radio, Row, Statistic } from 'antd'
 import * as echarts from 'echarts'
 import http from '../api'
+import type { DashboardData } from '../types'
+
+/** 看板里的四组趋势字段（与 /admin/dashboard 的返回同名） */
+type TrendKey = 'userTrend' | 'houseTrend' | 'orderTrend' | 'chatTrend'
 
 export default function AdminDashboardView() {
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<DashboardData | null>(null)
   const [granularity, setGranularity] = useState<string>('day')
   const chartEl = useRef<HTMLDivElement | null>(null)
 
   async function load(g: string = granularity) {
-    setData(await http.get('/admin/dashboard', { params: { granularity: g } }))
+    setData(await http.get<DashboardData>('/admin/dashboard', { params: { granularity: g } }))
   }
 
   useEffect(() => {
@@ -21,7 +25,8 @@ export default function AdminDashboardView() {
     if (!data || !chartEl.current) return
     const chart = echarts.init(chartEl.current)
     // AI 会话趋势的周期可能不与用户趋势完全重合，取并集后缺失补 0（FR-24）
-    const series: [string, string, string][] = [
+    // 只取趋势字段：keyof DashboardData 里还有一堆数值字段，收窄后 data[key] 才是数组
+    const series: [TrendKey, string, string][] = [
       ['userTrend', '新增用户', '#1f6feb'],
       ['houseTrend', '新增房源', '#52c41a'],
       ['orderTrend', '新增订单', '#fa8c16'],
@@ -31,7 +36,7 @@ export default function AdminDashboardView() {
     const periodSet = new Set<string>()
     for (const [key] of series) {
       const m = new Map<string, number>()
-      for (const t of data[key] || []) {
+      for (const t of data[key] ?? []) {
         m.set(t.period, Number(t.cnt))
         periodSet.add(t.period)
       }

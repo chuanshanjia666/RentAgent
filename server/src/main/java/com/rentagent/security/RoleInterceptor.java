@@ -26,7 +26,7 @@ public class RoleInterceptor implements HandlerInterceptor {
         }
         UserContext.User user = UserContext.get();
         if (user == null) {
-            throw new BizException(1002, "请先登录");
+            throw new BizException(ErrorCode.NOT_LOGIN);
         }
         for (int allowed : anno.value()) {
             if (allowed == user.getRole()) {

@@ -11,7 +11,7 @@
 PROJECT = "RentAgent —— 基于 AI 智能体的房屋租赁系统"
 DOC_NO = "D0000-PPC-RA2026-PPD-2026"
 PROJ_NO = "RA2026"
-DOC_VER = "V1.5"
+DOC_VER = "V1.6"
 DOC_DATE = "2026-09-18"
 ORG = "大连理工大学创新实践基地"
 AUTHOR = "王硕"
@@ -64,6 +64,27 @@ CHANGE_ROWS = [
      "⑤ 助手消息落库以终止事件正文兜底（部分协议流式 delta 全程为空）；"
      "第 3 章交易与合同模块、第 4 章表 4-1/表 4-3、第 5 章对应接口规约同步更新",
      "2026-09-18"),
+    ("7", "V1.6",
+     "按前后端协同代码评审结论统一契约与实现口径（需求基线 FR-01~25 / NFR-01~10 不变）："
+     "① **同一逻辑字段只保留一种形状**——`GET /houses` 搜索结果由 Item{house,images,landlordName…} 改为裸房源分页 "
+     "@code{R<PageVO<House>>}（列表卡片只读实体字段，原形状每行白做 4 次查询，前端还需按形状嗅探）；"
+     "house.facilities（JSON 列）由实体侧 typeHandler 统一映射为 List<String>，"
+     "消除“入参数组 / 出参字符串 / AI 填充数组”三种形状与随之而来的前后端兼容分支；"
+     "② **列表响应全面 record 化**：预约 / 评价 / 合同 / 订单 / 举报 / 账号 / 看板 / 当前用户等原以 "
+     "Map<String,Object> 返回的 VO 改为 record（OpenAPI 出 schema，前端类型可对齐），"
+     "合同列表直接携带 houseTitle，前端不再逐份合同回查 /houses/{id}；"
+     "③ **JSON 列读写收敛到 JsonColumns**，替换原先在四处各写一份的序列化与容错解析；"
+     "④ **控制器不再自造响应**：房源审核 / 举报处理入参改 DTO + 参数校验（缺 pass 字段不再被静默当成“驳回”），"
+     "通知与留痕下沉到 Service，错误码统一走 ErrorCode（新增 NOT_LOGIN / WRONG_PASSWORD / REPORT_NOT_FOUND 复用码说明）；"
+     "⑤ **AI 对话链路修四处**：推理内容占满 max_tokens 时正文与工具调用可能全空，适配器原会伪造一句“没有生成有效回答”"
+     "且不发 delta（界面空白气泡、CI 三条断言莫名其妙失败）——现改为如实报错并按可自愈传输层故障（空返回 / 限流 / 5xx / 超时）"
+     "非流式重跑一次，4xx 不重跑；流式分支增加 HTTP 状态码校验与异常解包；正文只在终止消息里给出时补走 delta 通道；"
+     "单轮 token 上限由 2048 提到 4096（实测一轮约 1.6k~2.0k tokens，余量不足 20% 即被 finish_reason=length 截断）；"
+     "⑥ 后台审计轨迹改用不抛错的引擎描述，未配置模型的实例也能查看留痕；新增“操作留痕”后台页面；"
+     "新增房源图片上传入口，补上 FR-05 的图片链路；地图找房改用 @code{GET /houses/map}（不再只画当前页 10 个点）；"
+     "⑦ 同步第 3/4/5 章与第 8/9 章、以及《单元测试用例设计》v1.3（后端 190 条）、《测试用例设计》v1.3（集成断言 130 条）",
+     "2026-09-18"),
+
 ]
 
 # ── 1 文档概述 ───────────────────────────────────────────────────────────────
@@ -745,11 +766,12 @@ SPECS = [
          summary="关键词与多条件组合筛选房源，强制分页，仅返回已上架房源",
          params=[("SearchReq", "req", "IN", "keyword 关键词；district 行政区；layout 户型；orientation 朝向；"
                                         "rentMin / rentMax 租金区间；facilities 设施多选；sort 排序（rent_asc / rent_desc / hot / new）；page / size 分页")],
-         ret_type="R<PageVO<Item>>",
-         ret_vals=[("成功", "code = 0，data = { list, total, page, size }"),
+         ret_type="R<PageVO<House>>",
+         ret_vals=[("成功", "code = 0，data = { list, total, page, size }，list 为房源实体（facilities 为数组）"),
                    ("失败", "code = 1000 参数校验失败（如 size 超过上限 50）")],
          detail="以 MyBatis-Plus 条件构造器动态拼装查询条件，固定附加 status = 已上架 与 deleted = 0 两个条件；"
-                "关键词对标题 / 小区 / 地址做匹配；结果按 sort 参数排序，默认按最新，并强制分页（默认 10 条、上限 50 条）。",
+                "关键词对标题 / 小区 / 地址做匹配；结果按 sort 参数排序，默认按最新，并强制分页（默认 10 条、上限 50 条）。"
+                "返回裸房源实体，与收藏 / 我的房源 / 推荐位保持同一形状（详情接口才返回带图片与房东名的 Item）。",
          notes="任何检索入口都不得返回非“已上架”房源，该约束在 Service 层统一施加而非依赖调用方；"
                "列表查询依赖 (status, district, rent) 与 (status, layout) 组合索引的最左前缀。"),
     dict(module="检索与推荐模块", name="mapHouses", file="HouseController.java / SearchService.java",
@@ -757,7 +779,7 @@ SPECS = [
          params=[("SearchReq", "req", "IN", "lngMin / lngMax、latMin / latMax 视窗边界（可为空），"
                                         "其余筛选条件同 searchHouses")],
          ret_type="R<List<House>>",
-         ret_vals=[("成功", "code = 0，data 为视窗内已上架房源列表（用于地图打点，仅含打点所需字段）"),
+         ret_vals=[("成功", "code = 0，data 为视窗内已上架房源列表（不分页，上限 300 个点）"),
                    ("失败", "code = 1000 经纬度范围参数非法")],
          detail="按 lng / lat 范围条件查询已上架房源并一次性返回，由前端地图组件打点渲染；"
                 "当视窗过大导致结果过多时按数量上限截断，避免单次响应过大。",
@@ -800,16 +822,22 @@ SPECS = [
          params=[("long", "id", "IN", "会话 ID"),
                  ("MessageSendReq", "req", "IN", "content 用户消息文本")],
          ret_type="SseEmitter（text/event-stream）",
-         ret_vals=[("delta 事件", "{\"type\":\"delta\",\"delta\":\"逐字文本片段\"}，可多次"),
-                   ("done 事件", "{\"type\":\"done\",\"messageId\":..,\"citations\":[..],\"suggestion\":\"..\"}"),
-                   ("失败", "code = 4002 会话不存在；code = 4001 智能助手繁忙（降级话术）")],
+         ret_vals=[("delta 事件", "{\"delta\":\"逐字文本片段\"}，可多次（按事件名 delta 区分，载荷内不带 type 字段）"),
+                   ("done 事件", "{\"messageId\":..,\"content\":\"完整正文\",\"citations\":[..],"
+                                "\"transferred\":true|false,\"latencyMs\":..}"),
+                   ("error 事件", "{\"error\":\"可读原因\"}，模型调用失败时推送，其后不再有 delta"),
+                   ("失败", "code = 4002 会话不存在；code = 4001 智能助手繁忙（未配置模型或调用失败，非流式响应）")],
          detail="组装角色设定、记忆窗口与工具表后交由 AgentEngine 编排；模型返回的文本增量以 delta 事件逐字推送，"
                 "工具调用（如房源检索）在服务端执行后回传模型继续生成；结束时推送 done 事件并携带消息 ID 与引用来源。"
                 "用户消息与助手回复及工具调用记录在异步回调中写入 ai_chat_message；助手消息正文取本轮 delta 的拼接，"
                 "并以终止事件携带的正文兜底——部分协议流式 delta 全程为空、只在终止事件给完整正文，"
-                "否则会落库一条空白助手消息。",
-         notes="流式链路需关闭中间缓冲以压缩首字延迟（NFR-02）；单次模型调用超时 60 秒，"
-               "超时或异常时推送降级话术而非直接断开连接；客服场景未命中知识库时在 done 事件中返回转人工提示。"),
+                "此时正文还会补走 delta 通道推给前端（否则界面停在空白气泡），落库与推送口径一致。"
+                "模型既没返回正文也没返回工具调用时（典型成因：推理内容占满 max_tokens、流被截断）按失败上报，"
+                "绝不伪造回答；限流 / 5xx / 超时 / 空返回等可自愈故障由编排层以非流式重跑一次，4xx 直接报错。",
+         notes="流式链路需关闭中间缓冲以压缩首字延迟（NFR-02）；单次模型调用超时 60 秒。"
+               "单轮 token 上限（ai.max-tokens，默认 4096）需给推理内容留足余量：实测一轮对话约 1.6k~2.0k tokens，"
+               "取值过紧会被 finish_reason=length 截断成“既无正文也无工具调用”。"
+               "客服场景未命中知识库时在 done 事件中返回转人工提示（transferred = true）。"),
     dict(module="AI 智能体服务模块", name="searchKnowledge", file="KbService.java / HousingTools.java",
          summary="RAG 知识库检索：返回最相关的知识切片与来源标识",
          params=[("String", "question", "IN", "用户问题文本"),
@@ -929,7 +957,7 @@ SPECS = [
          params=[("long", "houseId", "IN", "房源 ID"),
                  ("long", "page", "IN", "页码，默认 1"),
                  ("long", "size", "IN", "每页条数，默认 10")],
-         ret_type="R<PageVO<Map>>",
+         ret_type="R<PageVO<TradeDto.ReviewVO>>",
          ret_vals=[("成功", "code = 0，data = { list, total, page, size }，每项含评分、内容、评价人与时间"),
                    ("失败", "code = 1000 分页参数非法")],
          detail="按房屋 ID 分页查询评价记录，过滤状态为已隐藏的评价，组装评价人昵称与头像后返回；"
@@ -958,8 +986,8 @@ SPECS = [
          params=[("String", "keyword", "IN", "关键词（匹配用户名 / 昵称 / 手机号），可为空"),
                  ("long", "page", "IN", "页码，默认 1"),
                  ("long", "size", "IN", "每页条数，默认 10")],
-         ret_type="R<PageVO<SysUser>>",
-         ret_vals=[("成功", "code = 0，data = { list, total, page, size }"),
+         ret_type="R<PageVO<AdminDto.UserVO>>",
+         ret_vals=[("成功", "code = 0，data = { list, total, page, size }，清单只含展示字段"),
                    ("失败", "code = 1007 无权限执行该操作（非管理员）")],
          detail="按关键词对用户名、昵称与手机号做模糊匹配，结果按注册时间倒序分页返回；"
                 "响应中的密码字段不返回，手机号按需掩码。",
@@ -980,7 +1008,7 @@ SPECS = [
     dict(module="后台管理模块", name="dashboard", file="AdminController.java / AdminService.java",
          summary="数据统计看板：核心指标总量与按日 / 周 / 月分组的趋势",
          params=[("String", "granularity", "IN", "统计粒度：day / week / month，默认 day")],
-         ret_type="R<Map<String,Object>>",
+         ret_type="R<AdminDto.DashboardVO>",
          ret_vals=[("成功", "code = 0，data 含用户 / 房源 / 订单 / 预约的总量与趋势序列（含时间刻度与计数值）"),
                    ("失败", "code = 1000 granularity 取值非法；code = 1007 无权限执行该操作")],
          detail="对用户、房源、订单、预约等核心表执行分组聚合查询，按所选粒度对创建时间分组计数，"
@@ -1054,7 +1082,9 @@ SPECS = [
 SEC53_INTRO = [
     "本节定义跨模块共享的关键数据结构。所有对外接口的响应统一以 R<T> 包装；分页查询统一返回 PageVO<T>；"
     "入参以各模块的 DTO 记录（record）承载并配合 Bean Validation 注解做参数校验；出参中需要跨表拼装的"
-    "场景以 Map 或专用 VO 承载。以下按统一响应、分页结构、核心 DTO、核心 VO 四类列出。",
+    "场景同样以专用 VO 记录承载（不再使用 Map，以便 OpenAPI 生成 schema、前端类型可对齐）。"
+    "JSON 列的读写统一由 JsonColumns 承担，避免同一套“序列化 + 容错解析”在多个服务里各写一份。"
+    "以下按统一响应、分页结构、核心 DTO、核心 VO 四类列出。",
 ]
 CODE_RESPONSE = [
     "/** 统一响应体：code = 0 成功；非 0 按 1xxx 用户 / 2xxx 房源 / 3xxx 交易 / 4xxx AI / 5xxx 系统 分段 */",
@@ -1073,6 +1103,11 @@ CODE_PAGE = [
     "public record PageVO<T>(List<T> list, long total, long page, long size) {",
     "    public static <T> PageVO<T> of(IPage<T> p) {",
     "        return new PageVO<>(p.getRecords(), p.getTotal(), p.getCurrent(), p.getSize());",
+    "    }",
+    "    /** 实体页 → VO 页：保留分页元数据，省掉各处“重建 Page”的样板 */",
+    "    public static <E, V> PageVO<V> map(IPage<E> page, Function<E, V> mapper) {",
+    "        return new PageVO<>(page.getRecords().stream().map(mapper).toList(),",
+    "                page.getTotal(), page.getCurrent(), page.getSize());",
     "    }",
     "}",
 ]

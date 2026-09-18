@@ -3,7 +3,6 @@ package com.rentagent.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
 import com.rentagent.dto.HouseDto;
@@ -45,7 +44,8 @@ public class HouseService {
     private final FavoriteMapper favoriteMapper;
     private final ReviewMapper reviewMapper;
     private final AuthService authService;
-    private final ObjectMapper objectMapper;
+    private final NotificationService notificationService;
+    private final AuditLogService auditLogService;
 
     /** FR-05：发布房源，须已实名，初始状态待审核 */
     @Transactional
@@ -104,7 +104,10 @@ public class HouseService {
         houseMapper.updateById(house);
     }
 
-    /** FR-07：管理员审核（通过/驳回），留痕与通知在控制器层完成 */
+    /**
+     * FR-07：管理员审核（通过/驳回）。通知房东与审计留痕都在这里完成——
+     * 放在控制器层时，任何新增调用方（如批量审核）都会漏掉通知与留痕。
+     */
     @Transactional
     public void audit(long id, boolean pass, String reason, long adminId) {
         House house = houseMapper.selectById(id);
@@ -117,6 +120,15 @@ public class HouseService {
         house.setStatus(pass ? ST_PASSED : ST_REJECTED);
         house.setRejectReason(pass ? null : reason);
         houseMapper.updateById(house);
+        if (pass) {
+            notificationService.send(house.getLandlordId(), 2, "房源审核通过",
+                    "「" + house.getTitle() + "」已通过审核，可上架出租", "house", house.getId());
+        } else {
+            notificationService.send(house.getLandlordId(), 2, "房源审核未通过",
+                    "「" + house.getTitle() + "」未通过审核：" + reason, "house", house.getId());
+        }
+        auditLogService.log(adminId, "HOUSE_AUDIT", "house", id,
+                Map.of("pass", pass, "reason", reason == null ? "" : reason), null);
     }
 
     /** 房源详情：租客侧仅可见已上架；浏览计数（FR-11 推荐热度因子） */
@@ -131,8 +143,13 @@ public class HouseService {
                 throw new BizException(ErrorCode.HOUSE_NOT_FOUND);
             }
         }
-        houseMapper.update(null, new LambdaUpdateWrapper<House>()
-                .eq(House::getId, id).setSql("view_count = view_count + 1"));
+        // 只有"别人来看"才算浏览量：房东翻自己的房源、管理员审自己的台账都会走到这里，
+        // 一律累加会让房东/管理员的日常操作把房源热度刷上去（推荐位按 view_count 排序，直接受影响）。
+        boolean ownView = user != null && (user.getId().equals(house.getLandlordId()) || user.getRole() == 3);
+        if (!ownView) {
+            houseMapper.update(null, new LambdaUpdateWrapper<House>()
+                    .eq(House::getId, id).setSql("view_count = view_count + 1"));
+        }
         return toItem(house, user);
     }
 
@@ -164,7 +181,7 @@ public class HouseService {
         house.setFloorDesc(req.floorDesc());
         house.setRent(req.rent());
         house.setDepositType(req.depositType());
-        house.setFacilities(toJson(req.facilities()));
+        house.setFacilities(req.facilities());
         house.setDescription(req.description());
         house.setLng(req.lng());
         house.setLat(req.lat());
@@ -208,23 +225,6 @@ public class HouseService {
                 .eq(Review::getStatus, 0));
         return new HouseDto.Item(house, images, landlord == null ? null : landlord.getNickname(),
                 favorited, reviewCount);
-    }
-
-    public String toJson(List<String> list) {
-        try {
-            return list == null ? null : objectMapper.writeValueAsString(list);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    public List<String> toList(String json) {
-        try {
-            return json == null ? List.of() : objectMapper.readValue(json, objectMapper.getTypeFactory()
-                    .constructCollectionType(List.class, String.class));
-        } catch (Exception e) {
-            return List.of();
-        }
     }
 
     /** FR-11 个性化推荐：同区域/同户型偏好加权 + 热度兜底（返回已上架房源） */

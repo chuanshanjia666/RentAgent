@@ -1,39 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button, Descriptions, Empty, Input, message, Modal, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
 import { fmtMoney, HOUSE_STATUS, HOUSE_STATUS_TYPE } from '../constants'
+import type { House } from '../types'
+import { usePagedList } from '../usePagedList'
 
 export default function AdminAuditView() {
-  const [list, setList] = useState<any[]>([])
-  const [rejectRow, setRejectRow] = useState<any>(null)
+  const list = usePagedList<House>('/admin/houses/pending')
+  const [rejectRow, setRejectRow] = useState<House | null>(null)
   const [reason, setReason] = useState('房源信息不完整，请补充后重新提交')
   const [detect, setDetect] = useState<any>(null)
 
-  async function load() {
-    const p = await http.get('/admin/houses/pending', { params: { size: 50 } })
-    setList(p.list.map((h: any) => ({ ...h, key: h.id })))
-  }
-
-  async function audit(row: any, pass: boolean) {
+  async function audit(row: House, pass: boolean) {
     await http.patch(`/admin/houses/${row.id}/audit`, { pass, reason: pass ? '' : reason })
     message.success(pass ? '已通过审核' : '已驳回并通知房东')
     setRejectRow(null)
-    load()
+    list.reload()
   }
 
-  async function fakeDetect(row: any) {
+  async function fakeDetect(row: House) {
     const vo = await http.post(`/admin/houses/${row.id}/fake-detect`)
     setDetect(vo)
   }
 
-  useEffect(() => {
-    load()
-  }, [])
-
   const riskColor = (s: number) => (s >= 70 ? '#e6392f' : s >= 40 ? '#fa8c16' : '#52c41a')
 
-  const columns: ColumnsType<any> = [
+  const columns: ColumnsType<House> = [
     {
       title: '房源',
       render: (_, row) => (
@@ -53,7 +46,7 @@ export default function AdminAuditView() {
       title: '状态',
       width: 90,
       render: (_, row) => (
-        <Tag color={HOUSE_STATUS_TYPE[row.status]}>{HOUSE_STATUS[row.status]}</Tag>
+        <Tag color={HOUSE_STATUS_TYPE[row.status ?? 0]}>{HOUSE_STATUS[row.status ?? 0]}</Tag>
       )
     },
     {
@@ -88,8 +81,14 @@ export default function AdminAuditView() {
       <h2 className="page-title">审核工作台（FR-07 · AI 辅助 FR-16）</h2>
       <Table
         rowKey="id"
-        dataSource={list}
-        pagination={{ pageSize: 10 }}
+        dataSource={list.rows}
+        loading={list.loading}
+        pagination={{
+          current: list.page,
+          pageSize: list.size,
+          total: list.total,
+          onChange: p => list.reload(p)
+        }}
         locale={{ emptyText: <Empty description="没有待审核房源 🎉" /> }}
         columns={columns}
       />

@@ -85,9 +85,13 @@ public class LlmAgent implements AgentEngine {
 
     /**
      * 单轮对话（流式）。工具调用与正文由适配器一并还原（见 {@link OpenAiChatCompletionsModel}），
-     * 正常情况下本轮即可完成"调工具 → 出结论"。仅当本轮**一个工具都没执行**、回答又不像结论时，
-     * 才追加强化指令用非流式重跑一次——这是对传输异常/模型输出质量的最后一道网，
-     * 重跑拿到的仍是模型真实回答与真实工具结果，不生成任何本地虚构答案。
+     * 正常情况下本轮即可完成"调工具 → 出结论"。以下两种情况追加强化指令用非流式重跑一次：
+     * <ol>
+     *   <li>本轮**一个工具都没执行**、回答又不像结论——传输异常/模型输出质量的最后一道网；</li>
+     *   <li>本轮**可自愈的传输层故障**（限流/5xx/超时/断连，或模型既没正文也没工具调用）——
+     *       典型成因是推理内容占满 max_tokens，重跑一次即可恢复。</li>
+     * </ol>
+     * 重跑拿到的仍是模型真实回答与真实工具结果，不生成任何本地虚构答案（口径：零兜底）。
      */
     private void run(long sessionId, int scene, String userMessage, Callback callback) {
         Assistant a = assistant();
@@ -100,7 +104,10 @@ public class LlmAgent implements AgentEngine {
                 .onComplete((Response<AiMessage> resp) -> {
                     String streamed = buf.toString();
                     String text = resp.content() == null ? null : resp.content().text();
-                    String effective = streamed.isBlank() && text != null ? text : streamed;
+                    // 部分协议/网关只在终止消息里给正文（delta 全程为空）：此时正文仍要补走 delta 通道，
+                    // 否则前端气泡永远空白，而只按 delta 取正文的调用方会误判为"模型没回答"
+                    boolean deltaMissing = streamed.isBlank() && text != null && !text.isBlank();
+                    String effective = deltaMissing ? text : streamed;
                     // NFR-05 留痕：token 用量随回复落库（重试时上层累加）
                     if (resp.tokenUsage() != null) {
                         callback.onUsage(resp.tokenUsage().totalTokenCount());
@@ -112,8 +119,11 @@ public class LlmAgent implements AgentEngine {
                         log.warn("本轮未执行任何工具且回答疑似过程语（{} 字），改用非流式兜底重跑一次",
                                 effective.trim().length());
                         callback.onToken(effective.isBlank() ? "" : "\n\n");
-                        syncRun(sessionId, scene, userMessage + retryHint(scene), callback);
+                        syncRun(sessionId, userMessage + retryHint(scene), callback);
                         return;
+                    }
+                    if (deltaMissing) {
+                        emitAsDeltas(text, callback);
                     }
                     callback.onComplete(effective, citations, effective.contains(TRANSFER_MARK));
                 })
@@ -121,9 +131,43 @@ public class LlmAgent implements AgentEngine {
                     // 本轮中断时清掉会话标记，避免残留污染下一轮的工具链判定
                     housingToolProvider.takeKnowledgeCitations(sessionId);
                     housingToolProvider.takeRoundTools(sessionId);
-                    callback.onError(error);
+                    if (!retryable(error)) {
+                        callback.onError(error);
+                        return;
+                    }
+                    log.warn("模型调用失败（可重试）：{}；改用非流式重跑一次", String.valueOf(error.getMessage()));
+                    if (buf.length() > 0) {
+                        callback.onToken("\n\n");
+                    }
+                    syncRun(sessionId, userMessage + retryHint(scene), callback);
                 })
                 .start();
+    }
+
+    /**
+     * 是否属于可自愈的传输层故障：限流、5xx、超时、连接中断，以及"模型既没正文也没工具调用"。
+     * 鉴权失败、参数不被支持等 4xx 与调用被中断重跑没有意义，直接如实报错。
+     */
+    private static boolean retryable(Throwable error) {
+        for (Throwable t = error; t != null && t != t.getCause(); t = t.getCause()) {
+            if (t instanceof LlmEmptyResponseException) {
+                return true;
+            }
+            if (t instanceof LlmHttpException http) {
+                return http.retryable();
+            }
+            if (t instanceof java.io.IOException || t instanceof java.io.UncheckedIOException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 把整段文本按固定长度切片走 delta 通道：保证"delta 流 + done"契约在任意传输形态下都成立 */
+    private void emitAsDeltas(String text, Callback callback) {
+        for (int i = 0; i < text.length(); i += SYNC_CHUNK) {
+            callback.onToken(text.substring(i, Math.min(text.length(), i + SYNC_CHUNK)));
+        }
     }
 
     /**
@@ -161,15 +205,13 @@ public class LlmAgent implements AgentEngine {
      * 非流式兜底：AiServices 以同步方式执行（工具调用可靠），拿到完整回答后按固定长度切片回放为 delta。
      * 输出的仍然是模型的真实回答与真实工具结果，只是改变了传输方式。
      */
-    private void syncRun(long sessionId, int scene, String userMessage, Callback callback) {
+    private void syncRun(long sessionId, String userMessage, Callback callback) {
         try {
             String text = assistant().chatSync(sessionId, userMessage);
             if (text == null) {
                 text = "";
             }
-            for (int i = 0; i < text.length(); i += SYNC_CHUNK) {
-                callback.onToken(text.substring(i, Math.min(text.length(), i + SYNC_CHUNK)));
-            }
+            emitAsDeltas(text, callback);
             String citations = housingToolProvider.takeKnowledgeCitations(sessionId);
             // 与流式分支一样清掉本轮工具集：残留会让下一轮"未执行任何工具"的判定失效，兜底从此永不触发
             housingToolProvider.takeRoundTools(sessionId);

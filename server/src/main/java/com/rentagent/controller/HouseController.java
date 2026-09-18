@@ -1,11 +1,9 @@
 package com.rentagent.controller;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.R;
 import com.rentagent.dto.HouseDto;
 import com.rentagent.dto.PageVO;
 import com.rentagent.entity.House;
-import com.rentagent.mapper.HouseMapper;
 import com.rentagent.security.UserContext;
 import com.rentagent.service.HouseService;
 import com.rentagent.service.SearchService;
@@ -34,7 +32,6 @@ public class HouseController {
 
     private final HouseService houseService;
     private final SearchService searchService;
-    private final HouseMapper houseMapper;
 
     @Operation(summary = "发布房源（房东，须已实名）")
     @PostMapping("/houses")
@@ -63,14 +60,17 @@ public class HouseController {
         return R.ok(PageVO.of(houseService.myHouses(UserContext.userId(), page, size)));
     }
 
-    @Operation(summary = "多条件搜索（公开，仅已上架）")
+    /**
+     * 多条件搜索（公开，仅已上架）。
+     * <p>
+     * 返回裸实体页，与 /favorites、/landlord/houses、/recommendations 保持同一形状：
+     * 早先这里返回 Item{house, images, landlordName, favorited, reviewCount}，
+     * 而列表卡片只读实体字段，那 4 个附加字段等于每行白做 4 次查询（一页 12 行约 48 次），
+     * 前端还得写 `it.house || it` 之类的形状嗅探。详情接口仍返回 Item。
+     */
     @GetMapping("/houses")
-    public R<PageVO<HouseDto.Item>> search(HouseDto.SearchReq req) {
-        Page<House> p = searchService.search(req);
-        Page<HouseDto.Item> result = new Page<>(p.getCurrent(), p.getSize(), p.getTotal());
-        UserContext.User viewer = UserContext.get();
-        result.setRecords(p.getRecords().stream().map(h -> houseService.toItem(h, viewer)).toList());
-        return R.ok(PageVO.of(result));
+    public R<PageVO<House>> search(HouseDto.SearchReq req) {
+        return R.ok(PageVO.of(searchService.search(req)));
     }
 
     @Operation(summary = "地图找房（经纬度范围内房源点）")

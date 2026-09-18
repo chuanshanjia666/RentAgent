@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
+import com.rentagent.dto.PageVO;
+import com.rentagent.dto.TradeDto;
 import com.rentagent.entity.House;
 import com.rentagent.entity.SysUser;
 import com.rentagent.entity.ViewingAppointment;
@@ -16,7 +18,6 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -124,27 +125,22 @@ public class AppointmentService {
         return houseId + ":" + time;
     }
 
-    public Page<Map<String, Object>> pageFor(long uid, boolean landlordSide, long page, long size) {
+    public PageVO<TradeDto.AppointmentVO> pageFor(long uid, boolean landlordSide, long page, long size) {
         Page<ViewingAppointment> p = mapper.selectPage(new Page<>(page, size),
                 new LambdaQueryWrapper<ViewingAppointment>()
                         .eq(landlordSide, ViewingAppointment::getLandlordId, uid)
                         .eq(!landlordSide, ViewingAppointment::getTenantId, uid)
                         .orderByDesc(ViewingAppointment::getId));
-        Page<Map<String, Object>> result = new Page<>(p.getCurrent(), p.getSize(), p.getTotal());
-        result.setRecords(p.getRecords().stream().map(this::toVO).toList());
-        return result;
+        return PageVO.map(p, this::toVO);
     }
 
-    public Map<String, Object> toVO(ViewingAppointment a) {
+    public TradeDto.AppointmentVO toVO(ViewingAppointment a) {
         House house = houseMapper.selectById(a.getHouseId());
         SysUser tenant = userMapper.selectById(a.getTenantId());
-        Map<String, Object> vo = new HashMap<>();
-        vo.put("appointment", a);
-        vo.put("houseTitle", house == null ? null : house.getTitle());
-        vo.put("houseCover", house == null ? null : house.getCoverUrl());
-        vo.put("tenantName", tenant == null ? null : tenant.getNickname());
-        vo.put("rent", house == null ? null : house.getRent());
-        return vo;
+        return new TradeDto.AppointmentVO(a, house == null ? null : house.getTitle(),
+                house == null ? null : house.getCoverUrl(),
+                tenant == null ? null : tenant.getNickname(),
+                house == null ? null : house.getRent());
     }
 
     private void from(ViewingAppointment a, int expected) {

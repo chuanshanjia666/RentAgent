@@ -1,55 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Alert, Button, Descriptions, Empty, message, Modal, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
 import { useAuth } from '../auth'
 import { CONTRACT_STATUS, CONTRACT_STATUS_TYPE, fmtMoney, parseJsonList } from '../constants'
-
-/** 表格行：合同实体 + 房源标题 */
-interface ContractRow {
-  key: number
-  c: any
-  houseTitle: string
-}
+import type { ContractRow } from '../types'
+import { usePagedList } from '../usePagedList'
 
 export default function ContractsView() {
   const auth = useAuth()
-  const [rows, setRows] = useState<ContractRow[]>([])
+  const { rows, total, page, size, loading, reload } = usePagedList<ContractRow>('/contracts')
   const [current, setCurrent] = useState<ContractRow | null>(null)
   const [interp, setInterp] = useState<any>(null)
 
-  async function load() {
-    const p = await http.get('/contracts', { params: { size: 50 } })
-    // 同一房源可能有多份合同（续租/重签），先按 houseId 去重再并发取标题。
-    // 原来是逐行串行 await，N 份合同 = N 次串行往返，列表一长就是明显的白屏等待。
-    const houseIds = [...new Set<number>(p.list.map((c: any) => c.houseId))]
-    const titles = new Map<number, string>()
-    await Promise.all(
-      houseIds.map(async id => {
-        try {
-          const item = await http.get(`/houses/${id}`)
-          titles.set(id, item.house.title)
-        } catch {
-          /* 房源已删除或不可见时保留「房源 #id」占位 */
-        }
-      })
-    )
-    setRows(
-      p.list.map((c: any) => ({
-        key: c.id,
-        c,
-        houseTitle: titles.get(c.houseId) ?? `房源 #${c.houseId}`
-      }))
-    )
+  /**
+   * 打开合同时按 id 取一次详情（接口只返回合同本身，房源标题沿用列表里的）：
+   * 列表是进入页面时拉的，而「AI 解读」会把风险条款下标写回合同，
+   * 只读列表里的旧快照会出现"解读标了风险、合同里却没有红标"的不一致。
+   */
+  async function open(row: ContractRow) {
+    const detail = await http.get<ContractRow['contract']>(`/contracts/${row.contract.id}`)
+    setCurrent({ contract: detail, houseTitle: row.houseTitle })
   }
 
   async function act(row: ContractRow, action: string, tip: string) {
-    await http.patch(`/contracts/${row.c.id}`, { action })
+    await http.patch(`/contracts/${row.contract.id}`, { action })
     message.success(tip)
-    load()
+    reload()
   }
 
-  async function terminate(row: ContractRow) {
+  function terminate(row: ContractRow) {
     Modal.confirm({
       title: '申请退租',
       content: '退租后合同终止、房源重新上架（押金按合同条款处理）。确认退租？',
@@ -60,27 +40,25 @@ export default function ContractsView() {
   }
 
   async function interpret(row: ContractRow) {
-    const vo = await http.post(`/contracts/${row.c.id}/interpret`)
+    const vo = await http.post(`/contracts/${row.contract.id}/interpret`)
     setInterp(vo)
   }
 
-  function signable(c: any): boolean {
+  function signable(c: ContractRow['contract']): boolean {
     return (auth.role === 1 && c.status === 0) || (auth.role === 2 && c.status === 1)
   }
 
-  useEffect(() => {
-    load()
-  }, [])
-
   const columns: ColumnsType<ContractRow> = [
     { title: '房源', dataIndex: 'houseTitle', render: v => v },
-    { title: '租期', width: 200, render: (_, r) => `${r.c.startDate} ~ ${r.c.endDate}` },
-    { title: '月租', width: 110, render: (_, r) => fmtMoney(r.c.monthlyRent) },
+    { title: '租期', width: 200, render: (_, r) => `${r.contract.startDate} ~ ${r.contract.endDate}` },
+    { title: '月租', width: 110, render: (_, r) => fmtMoney(r.contract.monthlyRent) },
     {
       title: '状态',
       width: 120,
       render: (_, r) => (
-        <Tag color={CONTRACT_STATUS_TYPE[r.c.status]}>{CONTRACT_STATUS[r.c.status]}</Tag>
+        <Tag color={CONTRACT_STATUS_TYPE[r.contract.status]}>
+          {CONTRACT_STATUS[r.contract.status]}
+        </Tag>
       )
     },
     {
@@ -88,10 +66,10 @@ export default function ContractsView() {
       width: 340,
       render: (_, r) => (
         <>
-          <Button size="small" onClick={() => setCurrent(r)}>
+          <Button size="small" onClick={() => open(r)}>
             查看合同
           </Button>
-          {signable(r.c) && (
+          {signable(r.contract) && (
             <Button
               size="small"
               type="primary"
@@ -104,12 +82,12 @@ export default function ContractsView() {
           <Button size="small" style={{ marginLeft: 6 }} onClick={() => interpret(r)}>
             🤖 AI 解读
           </Button>
-          {r.c.status === 2 && (
+          {r.contract.status === 2 && (
             <Button size="small" style={{ marginLeft: 6 }} onClick={() => terminate(r)}>
               退租
             </Button>
           )}
-          {[0, 1].includes(r.c.status) && (
+          {[0, 1].includes(r.contract.status) && (
             <Button
               size="small"
               danger
@@ -124,17 +102,18 @@ export default function ContractsView() {
     }
   ]
 
-  const clauses = current ? parseJsonList<{ title: string; text: string }>(current.c.clauses) : []
-  const riskIdx = current ? parseJsonList<number>(current.c.riskFlags) : []
+  const clauses = current ? parseJsonList<{ title: string; text: string }>(current.contract.clauses) : []
+  const riskIdx = current ? parseJsonList<number>(current.contract.riskFlags) : []
 
   return (
     <div className="page">
       <h2 className="page-title">我的合同</h2>
       <Table
-        rowKey="key"
+        rowKey={r => r.contract.id}
         columns={columns}
         dataSource={rows}
-        pagination={{ pageSize: 10 }}
+        loading={loading}
+        pagination={{ current: page, pageSize: size, total, onChange: p => reload(p) }}
         scroll={{ x: 900 }}
         locale={{ emptyText: <Empty description="暂无合同，可在房源详情页发起签约" /> }}
       />
@@ -151,13 +130,13 @@ export default function ContractsView() {
             <Descriptions bordered size="small" column={2} style={{ marginBottom: 12 }}>
               <Descriptions.Item label="房源">{current.houseTitle}</Descriptions.Item>
               <Descriptions.Item label="状态">
-                {CONTRACT_STATUS[current.c.status]}
+                {CONTRACT_STATUS[current.contract.status]}
               </Descriptions.Item>
               <Descriptions.Item label="租期">
-                {current.c.startDate} ~ {current.c.endDate}
+                {current.contract.startDate} ~ {current.contract.endDate}
               </Descriptions.Item>
               <Descriptions.Item label="月租/押金">
-                {fmtMoney(current.c.monthlyRent)} / {fmtMoney(current.c.deposit)}
+                {fmtMoney(current.contract.monthlyRent)} / {fmtMoney(current.contract.deposit)}
               </Descriptions.Item>
             </Descriptions>
             {clauses.map((cl, i) => (

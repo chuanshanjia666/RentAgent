@@ -109,9 +109,10 @@ export function fmtTime(t: string | null | undefined): string {
 }
 
 /**
- * 后端 JSON 列（设施 facilities / 合同条款 clauses / 风险条款下标 riskFlags）的解析兜底。
- * 同一字段在列表接口里可能已是数组、在详情接口里是 JSON 字符串，解析失败一律退化为空数组，
+ * 后端 JSON 列（合同条款 clauses / 风险条款下标 riskFlags）的解析兜底：
+ * 这两个字段以 JSON 字符串形式返回（结构与业务绑定，未做实体映射），解析失败退化为空数组，
  * 避免一条脏数据把整个页面打挂。
+ * 注：房源设施 facilities 已改为后端统一映射为数组，前端直接用 `house.facilities ?? []`。
  */
 export function parseJsonList<T = string>(v: string | T[] | null | undefined): T[] {
   if (Array.isArray(v)) return v

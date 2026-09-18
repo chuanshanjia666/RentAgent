@@ -2,9 +2,11 @@ package com.rentagent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
+import com.rentagent.dto.PageVO;
+import com.rentagent.dto.TradeDto;
+import com.rentagent.common.JsonColumns;
 import com.rentagent.entity.Contract;
 import com.rentagent.entity.House;
 import com.rentagent.entity.LeaseOrder;
@@ -25,7 +27,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -49,7 +50,7 @@ public class ContractService {
     private final HouseMapper houseMapper;
     private final SysUserMapper userMapper;
     private final NotificationService notification;
-    private final ObjectMapper objectMapper;
+    private final JsonColumns jsonColumns;
 
     /** 生成电子合同：模板 + 双方信息自动填充（FR-18） */
     @Transactional
@@ -90,14 +91,14 @@ public class ContractService {
 
     /** 双方签署：租客 sign 后进入待房东确认；房东 sign 后合同生效并派生订单 */
     @Transactional
-    public Map<String, Object> act(long id, String action, long uid, int role) {
+    public TradeDto.ContractActionResult act(long id, String action, long uid, int role) {
         Contract c = contractMapper.selectById(id);
         if (c == null) {
             throw new BizException(ErrorCode.ORDER_NOT_FOUND);
         }
         boolean isTenant = c.getTenantId() == uid;
         boolean isLandlord = c.getLandlordId() == uid;
-        Map<String, Object> result = new HashMap<>();
+        Long orderId = null;
         switch (action) {
             case "sign" -> {
                 if (isTenant && c.getStatus() == ST_TENANT_CONFIRM) {
@@ -108,8 +109,7 @@ public class ContractService {
                 } else if (isLandlord && c.getStatus() == ST_LANDLORD_CONFIRM) {
                     c.setStatus(ST_EFFECTIVE);
                     c.setSignedLandlordAt(LocalDateTime.now());
-                    LeaseOrder order = createOrder(c);
-                    result.put("orderId", order.getId());
+                    orderId = createOrder(c).getId();
                 } else {
                     throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID);
                 }
@@ -135,14 +135,12 @@ public class ContractService {
                 houseMapper.updateById(house);
                 long other = isTenant ? c.getLandlordId() : c.getTenantId();
                 notification.send(other, 3, "合同已退租", "「" + houseTitle(c) + "」合同已退租，房源重新上架", "contract", c.getId());
-                result.put("orderId", order.getId());
+                orderId = order.getId();
             }
             default -> throw new BizException(ErrorCode.PARAM_INVALID);
         }
         contractMapper.updateById(c);
-        result.put("contractId", c.getId());
-        result.put("status", c.getStatus());
-        return result;
+        return new TradeDto.ContractActionResult(c.getId(), c.getStatus(), orderId);
     }
 
     /** 生效订单 + 按月生成租金账单计划（FR-19） */
@@ -192,10 +190,15 @@ public class ContractService {
         return c;
     }
 
-    public Page<Contract> mine(long uid, long page, long size) {
-        return contractMapper.selectPage(new Page<>(page, size), new LambdaQueryWrapper<Contract>()
+    /**
+     * 我的合同。列表直接带房源标题：前端由此不再需要按 houseId 逐个请求 /houses/{id}
+     * （那既有 N+1 次往返，也会因详情接口的浏览计数副作用把房东自己的浏览量刷高）。
+     */
+    public PageVO<TradeDto.ContractVO> mine(long uid, long page, long size) {
+        Page<Contract> p = contractMapper.selectPage(new Page<>(page, size), new LambdaQueryWrapper<Contract>()
                 .eq(Contract::getTenantId, uid).or().eq(Contract::getLandlordId, uid)
                 .orderByDesc(Contract::getId));
+        return PageVO.map(p, c -> new TradeDto.ContractVO(c, houseTitle(c)));
     }
 
     public LeaseOrder orderByContract(long contractId) {
@@ -203,7 +206,7 @@ public class ContractService {
                 .eq(LeaseOrder::getContractId, contractId));
     }
 
-    public Page<Map<String, Object>> orders(long uid, int role, long page, long size) {
+    public PageVO<TradeDto.OrderVO> orders(long uid, int role, long page, long size) {
         LambdaQueryWrapper<LeaseOrder> w = new LambdaQueryWrapper<LeaseOrder>();
         if (role == 1) {
             w.eq(LeaseOrder::getTenantId, uid);
@@ -212,20 +215,14 @@ public class ContractService {
         }
         w.orderByDesc(LeaseOrder::getId);
         Page<LeaseOrder> p = orderMapper.selectPage(new Page<>(page, size), w);
-        Page<Map<String, Object>> result = new Page<>(p.getCurrent(), p.getSize(), p.getTotal());
-        result.setRecords(p.getRecords().stream().map(o -> {
-            Map<String, Object> vo = new HashMap<>();
-            vo.put("order", o);
+        return PageVO.map(p, o -> {
             Contract c = contractMapper.selectById(o.getContractId());
-            vo.put("contractStatus", c == null ? null : c.getStatus());
-            vo.put("houseTitle", houseTitleById(o.getHouseId()));
-            vo.put("billCount", billMapper.selectCount(new LambdaQueryWrapper<RentBill>()
-                    .eq(RentBill::getLeaseOrderId, o.getId())));
-            vo.put("unpaidCount", billMapper.selectCount(new LambdaQueryWrapper<RentBill>()
-                    .eq(RentBill::getLeaseOrderId, o.getId()).eq(RentBill::getStatus, 0)));
-            return vo;
-        }).toList());
-        return result;
+            return new TradeDto.OrderVO(o, c == null ? null : c.getStatus(), houseTitleById(o.getHouseId()),
+                    billMapper.selectCount(new LambdaQueryWrapper<RentBill>()
+                            .eq(RentBill::getLeaseOrderId, o.getId())),
+                    billMapper.selectCount(new LambdaQueryWrapper<RentBill>()
+                            .eq(RentBill::getLeaseOrderId, o.getId()).eq(RentBill::getStatus, 0)));
+        });
     }
 
     public List<RentBill> bills(long orderId, long uid) {
@@ -291,10 +288,6 @@ public class ContractService {
         clauses.add(Map.of("title", "维修责任", "text", "房屋及附属设施非因乙方原因损坏的，甲方应在接到通知后 7 日内维修。"));
         clauses.add(Map.of("title", "违约责任", "text", "任何一方提前解约的，应提前 30 日书面通知对方；乙方提前退租的押金不予退还，甲方提前收房的应向乙方支付相当于两个月租金的违约金。"));
         clauses.add(Map.of("title", "合同解除", "text", "租赁期满乙方享有优先续租权；单方涨租或单方收房视为甲方违约。"));
-        try {
-            return objectMapper.writeValueAsString(clauses);
-        } catch (Exception e) {
-            return "[]";
-        }
+        return jsonColumns.write(clauses);
     }
 }

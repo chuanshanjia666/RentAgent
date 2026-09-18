@@ -18,6 +18,7 @@ import AdminChatsView from './views/AdminChatsView'
 import AdminUsersView from './views/AdminUsersView'
 import AdminReportsView from './views/AdminReportsView'
 import AdminDashboardView from './views/AdminDashboardView'
+import AdminLogsView from './views/AdminLogsView'
 
 /** 路由守卫：未登录踢回 /login，角色不符回各自首页 */
 function Require({ roles, children }: { roles?: number[]; children: React.ReactNode }) {
@@ -189,6 +190,14 @@ export default function App() {
           element={
             <Require roles={[3]}>
               <AdminDashboardView />
+            </Require>
+          }
+        />
+        <Route
+          path="/admin/logs"
+          element={
+            <Require roles={[3]}>
+              <AdminLogsView />
             </Require>
           }
         />

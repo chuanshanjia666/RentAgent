@@ -1,13 +1,14 @@
 /** 与后端接口对齐的公共类型（宽松索引签名兜底后端动态字段） */
 
-/** 分页/列表通用包装 */
+/** 分页/列表通用包装（后端 PageVO：list + 分页元数据） */
 export interface PageResult<T = any> {
   list: T[]
   total: number
-  [key: string]: any
+  page?: number
+  size?: number
 }
 
-/** 房源实体（house 表） */
+/** 房源实体（house 表）。facilities 由后端 JSON 列统一映射为数组，前端不必再兼容字符串 */
 export interface House {
   id: number
   title: string
@@ -21,7 +22,7 @@ export interface House {
   floorDesc?: string
   rent: number
   depositType?: string
-  facilities?: string | string[]
+  facilities?: string[]
   description?: string
   status?: number
   coverUrl?: string
@@ -124,5 +125,162 @@ export interface LoginResult {
   userId: number
   role: number
   nickname?: string
+  [key: string]: any
+}
+
+/** 当前用户信息：GET /users/me（后端 MeVO，只含展示字段） */
+export interface MeResult {
+  user: {
+    id: number
+    username?: string
+    phone?: string
+    email?: string
+    nickname?: string
+    avatarUrl?: string
+    role?: number
+    status?: number
+    createdAt?: string
+    [key: string]: any
+  }
+  realname: {
+    realName?: string
+    status: number
+    rejectReason?: string
+    maskedIdCard?: string
+    [key: string]: any
+  } | null
+}
+
+/** 交易类列表行（后端 TradeDto 的 record VO，字段名与 JSON 一致） */
+export interface AppointmentRow {
+  appointment: {
+    id: number
+    houseId: number
+    status: number
+    appointmentTime?: string
+    remark?: string
+    rejectReason?: string
+    [key: string]: any
+  }
+  houseTitle?: string | null
+  houseCover?: string | null
+  tenantName?: string | null
+  rent?: number | null
+  [key: string]: any
+}
+
+export interface ReviewRow {
+  id: number
+  houseScore?: number
+  landlordScore?: number
+  content?: string
+  createdAt?: string
+  tenantName?: string
+  [key: string]: any
+}
+
+export interface ContractRow {
+  contract: {
+    id: number
+    houseId: number
+    status: number
+    startDate?: string
+    endDate?: string
+    monthlyRent?: number
+    deposit?: number
+    clauses?: string | { title: string; text: string }[]
+    riskFlags?: string | number[]
+    [key: string]: any
+  }
+  houseTitle: string
+}
+
+export interface OrderRow {
+  order: {
+    id: number
+    contractId: number
+    status: number
+    startDate?: string
+    endDate?: string
+    monthlyRent?: number
+    [key: string]: any
+  }
+  contractStatus?: number | null
+  houseTitle?: string
+  billCount: number
+  unpaidCount: number
+  [key: string]: any
+}
+
+export interface ReportRow {
+  report: {
+    id: number
+    targetType: number
+    status: number
+    reason?: string
+    handleRemark?: string
+    [key: string]: any
+  }
+  targetTitle?: string
+  [key: string]: any
+}
+
+/** FR-24 数据看板：GET /admin/dashboard（后端 DashboardVO） */
+export interface DashboardData {
+  userCount: number
+  landlordCount: number
+  houseCount: number
+  onlineCount: number
+  pendingCount: number
+  rentedCount: number
+  orderCount: number
+  chatCount: number
+  chatMessageCount: number
+  toolCallCount: number
+  transferredCount: number
+  userTrend: TrendPoint[]
+  houseTrend: TrendPoint[]
+  orderTrend: TrendPoint[]
+  chatTrend: TrendPoint[]
+}
+
+export interface TrendPoint {
+  period: string
+  cnt: number | string
+}
+
+/** 租金账单：GET /orders/{id}/bills */
+export interface RentBill {
+  id: number
+  leaseOrderId?: number
+  periodNo: number
+  dueDate?: string
+  amount?: number
+  status: number
+  paidAt?: string
+  [key: string]: any
+}
+
+/** 管理员视角的用户行：GET /admin/users（后端 AdminDto.UserVO） */
+export interface AdminUserRow {
+  id: number
+  username?: string
+  phone?: string
+  email?: string
+  nickname?: string
+  role?: number
+  status?: number
+  [key: string]: any
+}
+
+/** 操作留痕行：GET /admin/audits */
+export interface AuditLogRow {
+  id: number
+  operatorId?: number
+  action?: string
+  targetType?: string | null
+  targetId?: number | null
+  detail?: string | null
+  createdAt?: string
   [key: string]: any
 }

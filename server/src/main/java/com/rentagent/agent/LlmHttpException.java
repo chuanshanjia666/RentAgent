@@ -13,4 +13,9 @@ class LlmHttpException extends RuntimeException {
     int status() {
         return status;
     }
+
+    /** 限流、超时与 5xx 属于可能自愈的传输层故障；4xx（鉴权失败、参数不被支持）重跑没有意义 */
+    boolean retryable() {
+        return status == 408 || status == 429 || status >= 500;
+    }
 }

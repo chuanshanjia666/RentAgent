@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button, Empty, Input, message, Modal, Rate, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
@@ -10,33 +10,30 @@ import {
   ORDER_STATUS,
   ORDER_STATUS_TYPE
 } from '../constants'
+import type { OrderRow as OrderVo, RentBill } from '../types'
+import { usePagedList } from '../usePagedList'
 
-/** 订单行：订单 VO + 展开态账单 */
-interface OrderRow {
-  key: number
-  order: any
-  bills: any[]
-  [key: string]: any
+/** 订单行：后端订单 VO + 展开时才拉取的账单 */
+interface OrderRow extends OrderVo {
+  bills: RentBill[]
 }
 
 export default function OrdersView() {
   const auth = useAuth()
   const isLandlord = auth.role === 2
-  const [rows, setRows] = useState<OrderRow[]>([])
+  const list = usePagedList<OrderVo>('/orders')
+  const [bills, setBills] = useState<Record<number, RentBill[]>>({})
   const [reviewRow, setReviewRow] = useState<OrderRow | null>(null)
   const [reviewForm, setReviewForm] = useState({ houseScore: 5, landlordScore: 5, content: '' })
 
-  async function load() {
-    const p = await http.get('/orders', { params: { size: 50 } })
-    setRows(p.list.map((r: any) => ({ ...r, key: r.order.id, bills: [] })))
-  }
+  const rows: OrderRow[] = list.rows.map(r => ({ ...r, bills: bills[r.order.id] ?? [] }))
 
   async function loadBills(row: OrderRow) {
-    const bills = await http.get(`/orders/${row.order.id}/bills`)
-    setRows(prev => prev.map(r => (r.key === row.key ? { ...r, bills } : r)))
+    const data = await http.get<RentBill[]>(`/orders/${row.order.id}/bills`)
+    setBills(prev => ({ ...prev, [row.order.id]: data }))
   }
 
-  async function pay(row: OrderRow, bill: any) {
+  async function pay(row: OrderRow, bill: RentBill) {
     await http.patch(`/bills/${bill.id}/pay`)
     message.success('已记录支付（演示环境不对接真实支付）')
     loadBills(row)
@@ -68,14 +65,10 @@ export default function OrdersView() {
       onOk: async () => {
         await http.patch(`/contracts/${row.order.contractId}`, { action: 'terminate' })
         message.success('已退租')
-        load()
+        list.reload()
       }
     })
   }
-
-  useEffect(() => {
-    load()
-  }, [])
 
   const columns: ColumnsType<OrderRow> = [
     {
@@ -120,7 +113,7 @@ export default function OrdersView() {
     }
   ]
 
-  function billColumns(row: OrderRow): ColumnsType<any> {
+  function billColumns(row: OrderRow): ColumnsType<RentBill> {
     const cols: ColumnsType<any> = [
       { title: '期数', width: 80, render: (_, b) => `第 ${b.periodNo} 期` },
       { title: '应付日', width: 120, render: (_, b) => b.dueDate },
@@ -152,14 +145,20 @@ export default function OrdersView() {
         rowKey="key"
         columns={columns}
         dataSource={rows}
-        pagination={{ pageSize: 10 }}
+        loading={list.loading}
+        pagination={{
+          current: list.page,
+          pageSize: list.size,
+          total: list.total,
+          onChange: p => list.reload(p)
+        }}
         scroll={{ x: 900 }}
         locale={{ emptyText: <Empty description="暂无订单" /> }}
         expandable={{
           onExpand: (expanded, row) => expanded && loadBills(row),
           expandedRowRender: row => (
             <div style={{ padding: '4px 12px' }}>
-              <Button size="small" onClick={() => loadBills(row)}>
+              <Button size="small" onClick={() => loadBills(row as OrderRow)}>
                 刷新账单
               </Button>
               <Table

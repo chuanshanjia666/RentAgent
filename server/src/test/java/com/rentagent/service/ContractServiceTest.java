@@ -4,6 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rentagent.common.BizException;
+import com.rentagent.common.JsonColumns;
+import com.rentagent.dto.PageVO;
+import com.rentagent.dto.TradeDto;
 import com.rentagent.entity.Contract;
 import com.rentagent.entity.House;
 import com.rentagent.entity.LeaseOrder;
@@ -79,7 +82,7 @@ class ContractServiceTest {
     void setUp() {
         EntityMetadataHelper.init(House.class, Contract.class, LeaseOrder.class, RentBill.class);
         service = new ContractService(contractMapper, orderMapper, billMapper, houseMapper,
-                userMapper, notification, new ObjectMapper());
+                userMapper, notification, new JsonColumns(new ObjectMapper()));
         SysUser tenant = new SysUser();
         tenant.setId(TENANT);
         tenant.setNickname("小陈");
@@ -229,11 +232,11 @@ class ContractServiceTest {
                 LocalDate.now().plusDays(1), LocalDate.now().plusMonths(13));
         when(contractMapper.selectById(88L)).thenReturn(c);
 
-        Map<String, Object> result = service.act(88L, "sign", TENANT, 1);
+        TradeDto.ContractActionResult result = service.act(88L, "sign", TENANT, 1);
 
         assertEquals(ContractService.ST_LANDLORD_CONFIRM, c.getStatus());
         assertNotNull(c.getSignedTenantAt());
-        assertEquals(ContractService.ST_LANDLORD_CONFIRM, result.get("status"));
+        assertEquals(ContractService.ST_LANDLORD_CONFIRM, result.status());
         verify(contractMapper).updateById(c);
         verify(notification).send(eq(LANDLORD), eq(3), eq("租客已确认合同"), anyString(), eq("contract"), eq(88L));
     }
@@ -252,11 +255,11 @@ class ContractServiceTest {
         House house = house(HouseService.ST_ONLINE);
         when(houseMapper.selectById(101L)).thenReturn(house);
 
-        Map<String, Object> result = service.act(88L, "sign", LANDLORD, 2);
+        TradeDto.ContractActionResult result = service.act(88L, "sign", LANDLORD, 2);
 
         assertEquals(ContractService.ST_EFFECTIVE, c.getStatus());
         assertNotNull(c.getSignedLandlordAt());
-        assertEquals(66L, result.get("orderId"));
+        assertEquals(66L, result.orderId());
 
         ArgumentCaptor<LeaseOrder> orderCaptor = ArgumentCaptor.forClass(LeaseOrder.class);
         verify(orderMapper).insert(orderCaptor.capture());
@@ -455,11 +458,11 @@ class ContractServiceTest {
         page.setTotal(0);
         doReturn(page).when(orderMapper).selectPage(any(), any());
 
-        Page<Map<String, Object>> tenantOrders = service.orders(TENANT, 1, 1, 10);
-        Page<Map<String, Object>> landlordOrders = service.orders(LANDLORD, 2, 1, 10);
+        PageVO<TradeDto.OrderVO> tenantOrders = service.orders(TENANT, 1, 1, 10);
+        PageVO<TradeDto.OrderVO> landlordOrders = service.orders(LANDLORD, 2, 1, 10);
 
-        assertEquals(0, tenantOrders.getTotal());
-        assertEquals(0, landlordOrders.getTotal());
+        assertEquals(0, tenantOrders.total());
+        assertEquals(0, landlordOrders.total());
         ArgumentCaptor<Wrapper<LeaseOrder>> captor = ArgumentCaptor.forClass(Wrapper.class);
         verify(orderMapper, times(2)).selectPage(any(), captor.capture());
         assertTrue(captor.getAllValues().get(0).getSqlSegment().contains("tenant_id"));

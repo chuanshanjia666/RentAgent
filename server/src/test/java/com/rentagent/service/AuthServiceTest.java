@@ -67,7 +67,7 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         CryptoUtil crypto = new CryptoUtil(Base64.getEncoder().encodeToString(new byte[32]));
-        service = new AuthService(userMapper, realnameMapper, jwtUtil, redis, crypto);
+        service = new AuthService(userMapper, realnameMapper, jwtUtil, redis, crypto, encoder);
         ReflectionTestUtils.setField(service, "devCaptcha", CAPTCHA);
         when(redis.opsForValue()).thenReturn(valueOps);
         when(jwtUtil.issue(any(Long.class), any(Integer.class))).thenAnswer(

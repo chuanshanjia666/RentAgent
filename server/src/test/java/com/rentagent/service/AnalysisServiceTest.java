@@ -93,7 +93,7 @@ class AnalysisServiceTest {
         h.setArea(new BigDecimal("45"));
         h.setRent(new BigDecimal(rent));
         h.setDepositType("押一付三");
-        h.setFacilities("[\"近地铁\"]");
+        h.setFacilities(List.of("近地铁"));
         h.setDescription("近地铁精装，家电齐全，周边配套成熟，适合上班族长期居住，看房方便。");
         h.setStatus(HouseService.ST_ONLINE);
         return h;

@@ -1,39 +1,33 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button, Empty, message, Modal, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Link } from 'react-router-dom'
 import http from '../api'
 import { APPT_STATUS, APPT_STATUS_TYPE, fmtMoney, fmtTime } from '../constants'
+import type { AppointmentRow } from '../types'
+import { usePagedList } from '../usePagedList'
 
 export default function AppointmentsView({ landlord = false }: { landlord?: boolean }) {
-  const [list, setList] = useState<any[]>([])
-  const [rejectRow, setRejectRow] = useState<any>(null)
+  const [rejectRow, setRejectRow] = useState<AppointmentRow | null>(null)
   const [rejectReason, setRejectReason] = useState('时间不合适')
+  // 角色切换（租客/房东两个入口复用）时 url 变化，hook 会重新从第 1 页拉取
+  const { rows, total, page, size, loading, reload } = usePagedList<AppointmentRow>(
+    landlord ? '/landlord/appointments' : '/appointments/mine'
+  )
 
-  async function load() {
-    const p = await http.get(landlord ? '/landlord/appointments' : '/appointments/mine', {
-      params: { size: 50 }
-    })
-    setList(p.list)
-  }
-
-  async function act(row: any, action: string, reason?: string) {
+  async function act(row: AppointmentRow, action: string, reason?: string) {
     await http.patch(`/appointments/${row.appointment.id}`, { action, reason })
     message.success('操作成功')
-    load()
+    reload()
   }
 
   async function doReject() {
+    if (!rejectRow) return
     await act(rejectRow, 'reject', rejectReason)
     setRejectRow(null)
   }
 
-  useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 租客/房东两种入口复用同一组件，只在身份切换时重载
-  }, [landlord])
-
-  const columns: ColumnsType<any> = [
+  const columns: ColumnsType<AppointmentRow> = [
     {
       title: '房源',
       render: (_, row) => (
@@ -119,8 +113,14 @@ export default function AppointmentsView({ landlord = false }: { landlord?: bool
       <Table
         rowKey={r => r.appointment.id}
         columns={columns}
-        dataSource={list}
-        pagination={{ pageSize: 10 }}
+        dataSource={rows}
+        loading={loading}
+        pagination={{
+          current: page,
+          pageSize: size,
+          total,
+          onChange: p => reload(p)
+        }}
         locale={{ emptyText: <Empty description="暂无预约" /> }}
       />
 

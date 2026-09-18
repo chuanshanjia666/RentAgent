@@ -104,15 +104,24 @@ public class AnthropicMessagesChatModel implements ChatLanguageModel, StreamingC
             String[] eventName = {null};
             http.sendAsync(request(requestBody(messages, tools, true)), HttpResponse.BodyHandlers.ofLines())
                     .thenAccept(response -> {
-                        for (Iterator<String> it = response.body().iterator(); it.hasNext(); ) {
-                            if (!consumeSseLine(it.next(), eventName, text, toolBuffers, handler)) {
+                        try (java.util.stream.Stream<String> lines = response.body()) {
+                            if (response.statusCode() / 100 != 2) {
+                                // 非 2xx 的响应体是错误 JSON 而非 SSE：不判状态码就会当成"模型没说话"
+                                String body = lines.limit(ERROR_BODY_LINES).collect(java.util.stream.Collectors.joining(" "));
+                                handler.onError(new LlmHttpException(response.statusCode(),
+                                        "Messages API HTTP " + response.statusCode() + ": " + abbreviate(body)));
                                 return;
+                            }
+                            for (Iterator<String> it = lines.iterator(); it.hasNext(); ) {
+                                if (!consumeSseLine(it.next(), eventName, text, toolBuffers, handler)) {
+                                    return;
+                                }
                             }
                         }
                         handler.onComplete(Response.from(assemble(text, toolBuffers)));
                     })
                     .exceptionally(ex -> {
-                        handler.onError(ex);
+                        handler.onError(LlmErrors.unwrap(ex));
                         return null;
                     });
         } catch (Exception e) {
@@ -136,9 +145,12 @@ public class AnthropicMessagesChatModel implements ChatLanguageModel, StreamingC
         if (text.length() > 0) {
             return new AiMessage(text.toString());
         }
-        // 思维链耗尽 max_tokens 等场景：content 为空，禁止抛 "text cannot be blank"
-        return new AiMessage("抱歉，这次没有生成有效回答，请换个说法再试一次。");
+        // 正文与工具调用都为空＝本次调用失败（思维链占满 max_tokens、流被截断）：抛错而不是编一句话
+        throw new LlmEmptyResponseException("模型未返回正文与工具调用（Messages API 流式响应）");
     }
+
+    /** 非 2xx 时读多少行错误体用于异常信息（错误体通常只有一行 JSON，留几行防多行 HTML） */
+    private static final long ERROR_BODY_LINES = 4;
 
     private static class ToolBuffer {
         String id;
@@ -300,6 +312,10 @@ public class AnthropicMessagesChatModel implements ChatLanguageModel, StreamingC
             }
         }
         if (requests.isEmpty()) {
+            if (text.length() == 0) {
+                // 与流式分支同一口径：既无正文也无工具调用＝本次调用失败，不得伪造回答
+                throw new LlmEmptyResponseException("模型未返回正文与工具调用（Messages API 同步响应）");
+            }
             return new AiMessage(text.toString());
         }
         return text.length() == 0

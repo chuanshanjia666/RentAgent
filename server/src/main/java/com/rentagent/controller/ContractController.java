@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 /** 在线签约 / 订单与租金 / 合同解读（FR-14/18/19） */
 @Tag(name = "trade", description = "签约与订单")
@@ -43,7 +42,7 @@ public class ContractController {
 
     @Operation(summary = "合同操作：sign 签署 / reject 拒签 / terminate 退租（按角色判定）")
     @PatchMapping("/contracts/{id}")
-    public R<Map<String, Object>> act(@PathVariable long id, @Valid @RequestBody TradeDto.ContractActionReq req) {
+    public R<TradeDto.ContractActionResult> act(@PathVariable long id, @Valid @RequestBody TradeDto.ContractActionReq req) {
         UserContext.User user = UserContext.get();
         return R.ok(contractService.act(id, req.action(), user.getId(), user.getRole()));
     }
@@ -57,9 +56,9 @@ public class ContractController {
 
     @Operation(summary = "我的合同（租客与房东）")
     @GetMapping("/contracts")
-    public R<PageVO<Contract>> mine(@RequestParam(defaultValue = "1") long page,
-                                    @RequestParam(defaultValue = "10") long size) {
-        return R.ok(PageVO.of(contractService.mine(UserContext.userId(), page, size)));
+    public R<PageVO<TradeDto.ContractVO>> mine(@RequestParam(defaultValue = "1") long page,
+                                               @RequestParam(defaultValue = "10") long size) {
+        return R.ok(contractService.mine(UserContext.userId(), page, size));
     }
 
     @Operation(summary = "合同智能解读（AI 逐条通俗化 + 风险标红）")
@@ -70,10 +69,10 @@ public class ContractController {
 
     @Operation(summary = "我的订单")
     @GetMapping("/orders")
-    public R<PageVO<Map<String, Object>>> orders(@RequestParam(defaultValue = "1") long page,
-                                                 @RequestParam(defaultValue = "10") long size) {
+    public R<PageVO<TradeDto.OrderVO>> orders(@RequestParam(defaultValue = "1") long page,
+                                              @RequestParam(defaultValue = "10") long size) {
         UserContext.User user = UserContext.get();
-        return R.ok(PageVO.of(contractService.orders(user.getId(), user.getRole(), page, size)));
+        return R.ok(contractService.orders(user.getId(), user.getRole(), page, size));
     }
 
     @Operation(summary = "订单租金账单")

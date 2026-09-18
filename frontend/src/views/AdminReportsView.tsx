@@ -1,35 +1,27 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button, Empty, Input, message, Modal, Segmented, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
+import type { ReportRow } from '../types'
+import { usePagedList } from '../usePagedList'
 
 const TARGET: Record<number, string> = { 1: '房源', 2: '评价', 3: '用户' }
 
 export default function AdminReportsView() {
   const [tab, setTab] = useState(-1)
-  const [list, setList] = useState<any[]>([])
-  const [handleRow, setHandleRow] = useState<any>(null)
+  const [handleRow, setHandleRow] = useState<ReportRow | null>(null)
   const [remark, setRemark] = useState('已核实，按平台规则处理')
-
-  async function load(t = tab) {
-    const p = await http.get('/admin/reports', { params: { status: t, size: 50 } })
-    setList(p.list)
-  }
+  const list = usePagedList<ReportRow>('/admin/reports', { status: tab })
 
   async function handle() {
+    if (!handleRow) return
     await http.patch(`/admin/reports/${handleRow.report.id}/handle`, { remark })
     message.success('已处理并通知双方')
     setHandleRow(null)
-    load()
+    list.reload()
   }
 
-  // 首屏按默认的「全部」(tab = -1) 拉取；切换筛选由 Segmented 的 onChange 显式触发 load
-  useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const columns: ColumnsType<any> = [
+  const columns: ColumnsType<ReportRow> = [
     {
       title: '举报目标',
       width: 110,
@@ -76,10 +68,7 @@ export default function AdminReportsView() {
       <Segmented
         style={{ marginBottom: 14 }}
         value={tab}
-        onChange={k => {
-          setTab(k as number)
-          load(k as number)
-        }}
+        onChange={k => setTab(k as number)}
         options={[
           { label: '全部', value: -1 },
           { label: '待处理', value: 0 },
@@ -88,8 +77,14 @@ export default function AdminReportsView() {
       />
       <Table
         rowKey={r => r.report.id}
-        dataSource={list}
-        pagination={{ pageSize: 10 }}
+        dataSource={list.rows}
+        loading={list.loading}
+        pagination={{
+          current: list.page,
+          pageSize: list.size,
+          total: list.total,
+          onChange: p => list.reload(p)
+        }}
         locale={{ emptyText: <Empty description="暂无举报" /> }}
         columns={columns}
       />

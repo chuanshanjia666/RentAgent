@@ -96,6 +96,13 @@ export async function ssePost(
   }
   const contentType = resp.headers ? resp.headers.get('content-type') || '' : ''
   if (!resp.ok || !resp.body || !contentType.includes('text/event-stream')) {
+    // 与 axios 拦截器同一套登录态处理：SSE 走原生 fetch，不共用拦截器，
+    // 少了这段，对话页 token 过期时只会弹一句错误提示，人卡在页面上反复失败，而别的页面会被踢回登录
+    if (resp.status === 401) {
+      localStorage.removeItem('ra_token')
+      unauthorizedHandler?.()
+      if (!location.hash.startsWith('#/login')) location.hash = '#/login'
+    }
     let reason = '连接智能助手失败（' + resp.status + '）'
     try {
       const payload = await resp.json()

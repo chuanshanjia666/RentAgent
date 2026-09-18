@@ -100,18 +100,28 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
             JsonNode[] finalOutput = {null};
             http.sendAsync(request(body), HttpResponse.BodyHandlers.ofLines())
                     .thenAccept(response -> {
-                        for (Iterator<String> it = response.body().iterator(); it.hasNext(); ) {
-                            if (!consumeSseLine(it.next(), eventName, text, finalOutput, handler)) {
+                        try (java.util.stream.Stream<String> lines = response.body()) {
+                            if (response.statusCode() / 100 != 2) {
+                                // 非 2xx 的响应体是错误 JSON 而非 SSE：不判状态码就会当成"模型没说话"
+                                String errBody = lines.limit(ERROR_BODY_LINES)
+                                        .collect(java.util.stream.Collectors.joining(" "));
+                                handler.onError(new LlmHttpException(response.statusCode(),
+                                        "Responses API HTTP " + response.statusCode() + ": " + abbreviate(errBody)));
                                 return;
+                            }
+                            for (Iterator<String> it = lines.iterator(); it.hasNext(); ) {
+                                if (!consumeSseLine(it.next(), eventName, text, finalOutput, handler)) {
+                                    return;
+                                }
                             }
                         }
                         AiMessage message = finalOutput[0] != null
                                 ? parseOutput(finalOutput[0])
-                                : new AiMessage(text.toString());
+                                : parseText(text.toString());
                         handler.onComplete(Response.from(message));
                     })
                     .exceptionally(ex -> {
-                        handler.onError(ex);
+                        handler.onError(LlmErrors.unwrap(ex));
                         return null;
                     });
         } catch (Exception e) {
@@ -260,13 +270,24 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
             }
         }
         if (requests.isEmpty()) {
-            return new AiMessage(text.toString());
+            return parseText(text.toString());
         }
         // 纯工具调用响应无文本：必须用 List 构造器（两参构造器会校验 text 非空）
         return text.length() == 0
                 ? new AiMessage(requests)
                 : new AiMessage(text.toString(), requests);
     }
+
+    /** 无工具调用时的纯文本消息：空文本＝本次调用失败，抛错而不是伪造一句话 */
+    private AiMessage parseText(String text) {
+        if (text == null || text.isEmpty()) {
+            throw new LlmEmptyResponseException("模型未返回正文与工具调用（Responses API 流式响应）");
+        }
+        return new AiMessage(text);
+    }
+
+    /** 非 2xx 时读多少行错误体用于异常信息（错误体通常只有一行 JSON，留几行防多行 HTML） */
+    private static final long ERROR_BODY_LINES = 4;
 
     private HttpRequest request(ObjectNode body) throws IOException {
         return HttpRequest.newBuilder(URI.create(baseUrl + "/responses"))

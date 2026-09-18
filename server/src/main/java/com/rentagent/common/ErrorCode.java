@@ -8,11 +8,19 @@ public enum ErrorCode {
     // 1xxx 用户与权限
     PARAM_INVALID(1000, "参数校验失败"),
     ACCOUNT_EXISTS(1001, "该手机号已注册，请直接登录"),
+    /**
+     * 1002 是"凭据与登录态"分段的公共码，具体语义由 message 区分（接口契约测试 UT-API-03 的约定）：
+     * 登录失败 / 未登录 / 原密码不正确共用，前端不必为同类问题写三套分支。
+     */
     LOGIN_FAILED(1002, "账号或密码错误"),
+    NOT_LOGIN(1002, "请先登录"),
+    WRONG_PASSWORD(1002, "原密码不正确"),
     ACCOUNT_LOCKED(1003, "密码错误次数过多，账号已锁定 10 分钟"),
     ACCOUNT_DISABLED(1004, "该账号已被禁用"),
     CAPTCHA_INVALID(1005, "验证码错误或已过期"),
+    /** 1006 是"目标资源不存在"的公共码，message 说明具体对象（用户 / 举报等） */
     USER_NOT_FOUND(1006, "用户不存在"),
+    REPORT_NOT_FOUND(1006, "举报不存在"),
     FORBIDDEN(1007, "无权限执行该操作"),
     REALNAME_REQUIRED(1008, "请先完成实名认证"),
     REALNAME_PENDING(1009, "实名认证审核中，请稍候"),

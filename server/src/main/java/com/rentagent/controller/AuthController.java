@@ -1,6 +1,9 @@
 package com.rentagent.controller;
 
+import com.rentagent.common.BizException;
+import com.rentagent.common.ErrorCode;
 import com.rentagent.common.R;
+import com.rentagent.dto.AdminDto;
 import com.rentagent.dto.AuthDto;
 import com.rentagent.dto.AuthDto.RealnameVO;
 import com.rentagent.dto.AuthDto.TokenResp;
@@ -20,8 +23,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.HashMap;
-import java.util.Map;
 
 /** 认证与个人信息（FR-01~04） */
 @Tag(name = "auth", description = "认证与个人信息")
@@ -32,7 +33,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final SysUserMapper userMapper;
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    private final BCryptPasswordEncoder encoder;
 
     @Operation(summary = "发送验证码（演示期固定 246810）")
     @PostMapping("/auth/captcha")
@@ -55,13 +56,9 @@ public class AuthController {
 
     @Operation(summary = "当前用户信息")
     @GetMapping("/users/me")
-    public R<Map<String, Object>> me() {
+    public R<AuthDto.MeVO> me() {
         SysUser user = userMapper.selectById(UserContext.userId());
-        user.setPassword(null);
-        Map<String, Object> vo = new HashMap<>();
-        vo.put("user", user);
-        vo.put("realname", authService.realnameOf(user.getId()));
-        return R.ok(vo);
+        return R.ok(new AuthDto.MeVO(AdminDto.UserVO.of(user), authService.realnameOf(user.getId())));
     }
 
     @Operation(summary = "修改个人信息")
@@ -86,7 +83,7 @@ public class AuthController {
     public R<Void> changePassword(@Valid @RequestBody AuthDto.ChangePasswordReq req) {
         SysUser user = userMapper.selectById(UserContext.userId());
         if (!encoder.matches(req.oldPassword(), user.getPassword())) {
-            return R.err(1002, "原密码不正确");
+            throw new BizException(ErrorCode.WRONG_PASSWORD);
         }
         user.setPassword(encoder.encode(req.newPassword()));
         userMapper.updateById(user);

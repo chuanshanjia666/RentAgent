@@ -33,6 +33,11 @@ public class AdminChatDto {
                             LocalDateTime createdAt) {
     }
 
+    /** 数据看板复用的 AI 对话量指标（FR-24） */
+    public record ChatMetricsVO(long chatCount, long chatMessageCount, long toolCallCount,
+                               long transferredCount, List<Map<String, Object>> chatTrend) {
+    }
+
     /** 会话规模统计：轮次 / 工具调用 / token / 平均时延 + 工具使用明细 */
     public record StatsVO(Integer roundCount, Integer assistantCount, Integer toolCallCount,
                           Integer totalTokens, Integer avgLatencyMs, List<Map<String, Object>> tools) {

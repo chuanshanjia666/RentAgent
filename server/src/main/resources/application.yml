@@ -67,7 +67,11 @@ ai:
   api-key: ${AI_API_KEY:}
   model: ${AI_MODEL:gpt-4.1-mini}
   temperature: 0.7
-  max-tokens: 2048
+  # 单轮回复的 token 上限。推理类模型的思维链也计入本预算：实测一轮对话
+  # （系统提示 + 工具定义 + 知识库片段 + 思维链 + 正文）约 1.6k~2.0k tokens，
+  # 取值过紧时会被 finish_reason=length 截断成"既无正文也无工具调用"，
+  # 表现为客服场景回答为空，故留出约 2 倍余量。
+  max-tokens: ${AI_MAX_TOKENS:4096}
   timeout-seconds: 60
   # 命名多后端：配好 Key 后用 AI_BACKEND=<name> 一键切换（一个名字＝一套"协议+端点+模型"组合）：
   #   AI_BACKEND=commandcode-chat AGGREGATOR_API_KEY=<key> mvn spring-boot:run

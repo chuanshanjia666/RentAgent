@@ -24,6 +24,7 @@ const MENUS: Record<number, [string, string][]> = {
     ['/admin/audit', '审核工作台'],
     ['/admin/users', '用户管理'],
     ['/admin/reports', '举报处理'],
+    ['/admin/logs', '操作留痕'],
     ['/admin/chats', 'AI 对话审计'],
     ['/admin/dashboard', '数据看板']
   ]

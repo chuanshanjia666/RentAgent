@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.BizException;
+import com.rentagent.dto.TradeDto;
 import com.rentagent.entity.House;
 import com.rentagent.entity.LeaseOrder;
 import com.rentagent.entity.Review;
@@ -197,9 +198,9 @@ class ReviewServiceTest {
 
         var result = service.listByHouse(101L, 1, 10);
 
-        assertEquals(1, result.getRecords().size());
-        assertEquals("租客小陈", result.getRecords().get(0).get("tenantName"));
-        assertNotNull(result.getRecords().get(0).get("houseScore"));
-        assertEquals(5, result.getRecords().get(0).get("houseScore"));
+        assertEquals(1, result.list().size());
+        assertEquals("租客小陈", result.list().get(0).tenantName());
+        assertNotNull(result.list().get(0).houseScore());
+        assertEquals(5, result.list().get(0).houseScore());
     }
 }

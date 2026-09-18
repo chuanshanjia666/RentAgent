@@ -45,6 +45,14 @@ expect_ge() {
 
 code_of() { jq -r '.code // "无响应体"' <<<"$1"; }
 data_of() { jq -r '.data // empty' <<<"$1"; }
+
+# sse_error_of <文件>：取 SSE 流里的失败载荷（后端模型调用失败时发 {error}），无则输出"无"。
+# 单列这条断言的作用：模型故障时流里没有 delta，若只看"回答是否非空"会把真实原因藏起来。
+sse_error_of() {
+  local msg
+  msg=$(sed -n 's/^data: *//p' "$1" 2>/dev/null | jq -r 'select(.error != null) | .error' 2>/dev/null | head -1)
+  printf '%s' "${msg:-无}"
+}
 login() { req POST /auth/login - "$(jq -nc --arg u "$1" '{username:$u,password:"123456"}')"; }
 
 # req <方法> <路径> <token|-> [JSON 体]
@@ -179,30 +187,33 @@ SEARCH=$(req_q /houses - "district=高新园区" "rentMax=2500" "layout=1室" "s
 expect_eq "多条件筛选（行政区 + 租金上限 + 户型前缀 + 租金升序）" "$(code_of "$SEARCH")" "0"
 expect_true "FR-09 筛选结果完全匹配条件" \
   "$(data_of "$SEARCH" | jq -r 'if (.list | length) > 0
-      and ([.list[] | select(.house.district != "高新园区" or (.house.rent | tonumber) > 2500 or (.house.layout | startswith("1室") | not))] | length) == 0
+      and ([.list[] | select(.district != "高新园区" or (.rent | tonumber) > 2500 or (.layout | startswith("1室") | not))] | length) == 0
       then 0 else 1 end')"
 expect_true "FR-09 按租金升序返回" \
-  "$(data_of "$SEARCH" | jq -r 'if ([.list[].house.rent | tonumber]) as $r | $r == ($r | sort) then 0 else 1 end')"
+  "$(data_of "$SEARCH" | jq -r 'if ([.list[].rent | tonumber]) as $r | $r == ($r | sort) then 0 else 1 end')"
 expect_true "FR-09 分页 size 上限生效" \
   "$(data_of "$SEARCH" | jq -r 'if (.list | length) <= 20 and (.total >= (.list | length)) then 0 else 1 end')"
 
 KEYWORD=$(req_q /houses - "keyword=凌水小镇" "size=20")
 expect_true "FR-09 关键词命中标题/小区/地址" \
   "$(data_of "$KEYWORD" | jq -r 'if (.list | length) > 0
-      and ([.list[] | select((.house.community + .house.title + .house.address) | contains("凌水小镇") | not)] | length) == 0
+      and ([.list[] | select((.community + .title + .address) | contains("凌水小镇") | not)] | length) == 0
       then 0 else 1 end')"
 
 FACILITY=$(req_q /houses - "facilities=近地铁" "size=20")
+# facilities 已由后端统一映射为数组（house.facilities 是 JSON 列，实体侧用 typeHandler），
+# 断言不再需要按类型分支：字符串/数组双形状那套兼容逻辑已删除
 expect_true "FR-09 设施筛选（JSON_CONTAINS）结果匹配" \
   "$(data_of "$FACILITY" | jq -r 'if (.list | length) > 0
-      and ([.list[] | select(if (.house.facilities | type) == "string"
-                then ((.house.facilities | fromjson | index("近地铁")) == null)
-                else ((.house.facilities | index("近地铁")) == null) end)] | length) == 0
+      and ([.list[] | select((.facilities | type) != "array" or ((.facilities | index("近地铁")) == null))] | length) == 0
       then 0 else 1 end')"
 
+# 地图接口不分页（上限 300）：早先它复用 search()，默认只回 10 条，地图上永远只有零星几个点
 MAP=$(req_q /houses/map - "district=高新园区")
 expect_true "FR-10 地图找房返回带坐标的房源列表" \
   "$(data_of "$MAP" | jq -r 'if length > 0 and ([.[] | select(.lng == null or .lat == null)] | length) == 0 then 0 else 1 end')"
+expect_true "FR-10 地图结果为数组且不受分页默认值限制（首条即含坐标）" \
+  "$(data_of "$MAP" | jq -r 'if (type == "array") and ((.[0].lng != null) and (.[0].lat != null)) then 0 else 1 end')"
 
 expect_eq "FR-25 收藏房源" "$(code_of "$(req POST "/favorites/$HID" "$T_TENANT")")" "0"
 expect_eq "FR-25 重复收藏幂等成功" "$(code_of "$(req POST "/favorites/$HID" "$T_TENANT")")" "0"
@@ -351,6 +362,8 @@ expect_true "SSE 流式消息返回 delta 与 done 事件" \
   "$([[ "$DELTA_HITS" -ge 1 && "$DONE_HITS" -ge 1 ]] && echo 0 || echo 1)"
 
 # 逐字 delta 需按序拼接后才能校验整段回答
+expect_eq "FR-12 找房流内无失败载荷（模型调用失败会在此显形）" \
+  "$(sse_error_of /tmp/ci_smoke_sse.txt)" "无"
 REPLY=$(sed -n 's/^data: *//p' /tmp/ci_smoke_sse.txt | jq -r '.delta // empty' 2>/dev/null | tr -d '\n')
 expect_true "FR-12 助手返回非空回答（真实模型流式输出）" "$([[ ${#REPLY} -ge 20 ]] && echo 0 || echo 1)"
 expect_true "FR-12 回答未走失败兜底文案" \
@@ -370,6 +383,10 @@ SID2=$(req POST /ai/sessions "$T_TENANT" '{"scene":2}' | jq -r '.data.id')
 curl -sS -m 180 -N -X POST "$BASE/ai/sessions/$SID2/messages" \
   -H "Authorization: Bearer $T_TENANT" -H 'Content-Type: application/json' \
   -d "$(jq -nc '{content:"押金怎么退，什么情况会被扣"}')" >/tmp/ci_smoke_sse_kb.txt
+# 先单独断言"流内没有失败载荷"：模型调用失败时后端会发 {error} 且不发 delta，
+# 不单列这条，失败会表现成三条互不相关的断言（回答为空/未调工具/无引用），排查只能靠翻后端日志
+expect_eq "FR-13 客服流内无失败载荷（模型调用失败会在此显形）" \
+  "$(sse_error_of /tmp/ci_smoke_sse_kb.txt)" "无"
 KB_REPLY=$(sed -n 's/^data: *//p' /tmp/ci_smoke_sse_kb.txt | jq -r '.delta // empty' 2>/dev/null | tr -d '\n')
 expect_true "FR-13 客服返回非空回答" "$([[ ${#KB_REPLY} -ge 20 ]] && echo 0 || echo 1)"
 KB_TRACE=$(req GET "/admin/chats/$SID2" "$T_ADMIN")

@@ -5,8 +5,6 @@ import com.rentagent.dto.AiDto;
 import com.rentagent.dto.HouseDto;
 import com.rentagent.dto.PageVO;
 import com.rentagent.entity.AiChatSession;
-import com.rentagent.entity.House;
-import com.rentagent.mapper.HouseMapper;
 import com.rentagent.security.UserContext;
 import com.rentagent.service.AnalysisService;
 import com.rentagent.service.ChatService;
@@ -38,7 +36,6 @@ public class AiController {
     private final ChatService chatService;
     private final AnalysisService analysisService;
     private final HouseService houseService;
-    private final HouseMapper houseMapper;
 
     @Operation(summary = "创建会话（scene 1找房助手 2智能客服 3合同解读）")
     @PostMapping("/sessions")
@@ -74,23 +71,12 @@ public class AiController {
     @Operation(summary = "智能定价建议（房东，FR-15）")
     @PostMapping("/houses/{id}/pricing-suggestion")
     public R<AiDto.PricingVO> pricing(@PathVariable long id) {
-        House house = houseMapper.selectById(id);
-        if (house == null) {
-            return R.err(2001, "房源不存在");
-        }
-        if (house.getLandlordId() != UserContext.userId()) {
-            return R.err(1007, "仅可对自己发布的房源获取定价建议");
-        }
-        return R.ok(analysisService.pricing(house, UserContext.userId()));
+        return R.ok(analysisService.pricing(id, UserContext.userId()));
     }
 
     @Operation(summary = "房源信息智能识别填充（房东，FR-08）")
     @PostMapping("/assist-fill")
-    public R<Map<String, Object>> assistFill(@Valid @RequestBody Map<String, String> req) {
-        HouseDto.AiFillReq fillReq = new HouseDto.AiFillReq(
-                req.get("title"), req.get("community"), req.get("layout"), req.get("imageFileName"));
-        var vo = analysisService.assistFill(fillReq, UserContext.userId());
-        return R.ok(Map.of("description", vo.description(), "orientation", vo.orientation(),
-                "floorDesc", vo.floorDesc(), "facilities", vo.facilities()));
+    public R<HouseDto.AiFillVO> assistFill(@Valid @RequestBody HouseDto.AiFillReq req) {
+        return R.ok(analysisService.assistFill(req, UserContext.userId()));
     }
 }

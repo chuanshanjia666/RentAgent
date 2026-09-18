@@ -108,6 +108,22 @@ public class AnalysisService {
 
     // ────────────────────────── FR-15 智能定价建议 ──────────────────────────
 
+    /**
+     * FR-15 入口（按房源 id）：查库与"仅本人房源"的越权校验都放在服务层，
+     * 控制器只负责编排——早先这段写在控制器里并直接返回 {@code R.err(2001/1007)}，
+     * 与全仓"抛业务异常交给全局处理器"的口径不一致，且任何新调用方都会漏掉校验。
+     */
+    public AiDto.PricingVO pricing(long houseId, long uid) {
+        House house = houseMapper.selectById(houseId);
+        if (house == null) {
+            throw new BizException(ErrorCode.HOUSE_NOT_FOUND);
+        }
+        if (!Objects.equals(house.getLandlordId(), uid)) {
+            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "仅可对自己发布的房源获取定价建议");
+        }
+        return pricing(house, uid);
+    }
+
     public AiDto.PricingVO pricing(House draft, long uid) {
         List<House> sample = sameCommunitySamples(draft);
         String scope = "同小区「" + draft.getCommunity() + "」在租/在售样本";
@@ -210,7 +226,8 @@ public class AnalysisService {
         sb.append("区域：").append(h.getCity()).append(h.getDistrict()).append(h.getCommunity()).append('\n');
         sb.append("户型：").append(h.getLayout()).append("；面积：").append(h.getArea()).append(" ㎡\n");
         sb.append("朝向：").append(h.getOrientation()).append("；楼层：").append(h.getFloorDesc()).append('\n');
-        sb.append("押付方式：").append(h.getDepositType()).append("；标签：").append(h.getFacilities()).append('\n');
+        sb.append("押付方式：").append(h.getDepositType()).append("；标签：")
+                .append(h.getFacilities() == null ? "无" : String.join("、", h.getFacilities())).append('\n');
         sb.append("挂牌月租：").append(h.getRent()).append(" 元\n");
         sb.append("描述：").append(h.getDescription() == null ? "（房东未填写）" : h.getDescription()).append('\n');
         return sb.toString();

@@ -31,7 +31,7 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final StringRedisTemplate redis;
     private final CryptoUtil crypto;
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    private final BCryptPasswordEncoder encoder;
 
     @Value("${rentagent.captcha-dev-code}")
     private String devCaptcha;

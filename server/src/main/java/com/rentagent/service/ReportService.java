@@ -3,6 +3,8 @@ package com.rentagent.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.BizException;
+import com.rentagent.common.ErrorCode;
+import com.rentagent.dto.AdminDto;
 import com.rentagent.entity.House;
 import com.rentagent.entity.Report;
 import com.rentagent.entity.Review;
@@ -26,6 +28,7 @@ public class ReportService {
     private final HouseMapper houseMapper;
     private final ReviewMapper reviewMapper;
     private final NotificationService notification;
+    private final AuditLogService auditLogService;
 
     public Report create(long reporterId, int targetType, long targetId, String reason) {
         Report r = new Report();
@@ -43,14 +46,15 @@ public class ReportService {
     public void handle(long id, String remark, long adminId) {
         Report r = mapper.selectById(id);
         if (r == null) {
-            throw new BizException(1006, "举报不存在");
+            throw new BizException(ErrorCode.REPORT_NOT_FOUND);
         }
         if (r.getStatus() != 0) {
-            throw new BizException(1000, "该举报已处理");
+            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "该举报已处理");
         }
+        String effectiveRemark = remark == null || remark.isBlank() ? "已核实处理" : remark;
         r.setStatus(1);
         r.setHandleBy(adminId);
-        r.setHandleRemark(remark);
+        r.setHandleRemark(effectiveRemark);
         r.setHandledAt(LocalDateTime.now());
         mapper.updateById(r);
 
@@ -66,10 +70,11 @@ public class ReportService {
                 house.setStatus(HouseService.ST_OFFLINE);
                 houseMapper.updateById(house);
                 notification.send(house.getLandlordId(), 5, "房源被举报下架",
-                        "「" + house.getTitle() + "」因被举报已下架，处理意见：" + remark, "house", house.getId());
+                        "「" + house.getTitle() + "」因被举报已下架，处理意见：" + effectiveRemark, "house", house.getId());
             }
         }
-        notification.send(r.getReporterId(), 5, "举报已处理", "您提交的举报已处理：" + remark, "report", r.getId());
+        notification.send(r.getReporterId(), 5, "举报已处理", "您提交的举报已处理：" + effectiveRemark, "report", r.getId());
+        auditLogService.log(adminId, "REPORT_HANDLE", "report", id, Map.of("remark", effectiveRemark), null);
     }
 
     public Page<Report> page(int status, long page, long size) {
@@ -78,18 +83,17 @@ public class ReportService {
                 .orderByDesc(Report::getId));
     }
 
-    public Map<String, Object> toVO(Report r) {
-        Map<String, Object> vo = new HashMap<>();
-        vo.put("report", r);
+    public AdminDto.ReportVO toVO(Report r) {
+        String targetTitle;
         if (r.getTargetType() == 1) {
             House house = houseMapper.selectById(r.getTargetId());
-            vo.put("targetTitle", house == null ? "(已删除)" : house.getTitle());
+            targetTitle = house == null ? "(已删除)" : house.getTitle();
         } else if (r.getTargetType() == 2) {
             Review review = reviewMapper.selectById(r.getTargetId());
-            vo.put("targetTitle", review == null ? "(已删除)" : "评价：" + review.getContent());
+            targetTitle = review == null ? "(已删除)" : "评价：" + review.getContent();
         } else {
-            vo.put("targetTitle", "用户 #" + r.getTargetId());
+            targetTitle = "用户 #" + r.getTargetId();
         }
-        return vo;
+        return new AdminDto.ReportVO(r, targetTitle);
     }
 }

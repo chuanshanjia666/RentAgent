@@ -3,6 +3,7 @@ package com.rentagent.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.BizException;
+import com.rentagent.common.ErrorCode;
 import com.rentagent.entity.Notification;
 import com.rentagent.mapper.NotificationMapper;
 import lombok.RequiredArgsConstructor;
@@ -42,7 +43,7 @@ public class NotificationService {
     public void markRead(long uid, long id) {
         Notification n = mapper.selectById(id);
         if (n == null || n.getUserId() != uid) {
-            throw new BizException(1007, "通知不存在");
+            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "通知不存在");
         }
         n.setIsRead(1);
         mapper.updateById(n);

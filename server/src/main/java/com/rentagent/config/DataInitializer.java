@@ -61,7 +61,7 @@ public class DataInitializer implements CommandLineRunner {
     private final CryptoUtil crypto;
     private final ObjectMapper objectMapper;
 
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    private final BCryptPasswordEncoder encoder;
 
     @Override
     @Transactional
@@ -143,7 +143,7 @@ public class DataInitializer implements CommandLineRunner {
         h.setFloorDesc("中层");
         h.setRent(BigDecimal.valueOf(rent));
         h.setDepositType("押一付三");
-        h.setFacilities(toJson(facilities));
+        h.setFacilities(facilities);
         h.setDescription(description == null
                 ? title + "，" + String.join("、", facilities) + "，周边配套成熟，交通便捷，适合上班族居住。"
                 : description);
@@ -302,14 +302,6 @@ public class DataInitializer implements CommandLineRunner {
                 b.setPaidAt(order.getStartDate().plusMonths(i).atTime(12, 0));
             }
             billMapper.insert(b);
-        }
-    }
-
-    private String toJson(List<String> list) {
-        try {
-            return objectMapper.writeValueAsString(list);
-        } catch (Exception e) {
-            return "[]";
         }
     }
 

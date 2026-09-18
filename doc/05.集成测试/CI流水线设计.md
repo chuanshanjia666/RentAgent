@@ -1,6 +1,7 @@
 # RentAgent CI 流水线设计
 
 > 项目名称：RentAgent —— 基于 AI 智能体的房屋租赁系统
+> 文档版本：v1.4（v1.4 于 2026-09-18 按前后端协同代码评审结论更新：断言数 127 → **130 条**、后端单测基线 182 → **190 条**；补记 `AI_MAX_TOKENS` 可调项（单轮 token 上限默认 4096，需给推理模型留余量）；补记「模型调用失败不再伪装成回答为空」的排障口径——流式分支此前不校验 HTTP 状态码，且把「正文与工具调用全空」伪造为一句可读提示，导致 CI 只表现为三条互不相关的 FR-13 失败断言；现改为如实报错 + 可自愈故障非流式重跑一次）
 > 文档版本：v1.3（v1.3 于 2026-09-18 补记前端静态检查门禁与断言计数更新：`frontend-test` 作业新增 ESLint 与 Prettier 两步；集成冒烟断言数随代码评审由 125 条增至 127 条，§一/§二/§四 描述与流程图同步）
 > 文档版本：v1.2（v1.2 于 2026-09-17 修正 BUG-02 根因：流式工具调用丢失是客户端解析问题（langchain4j 0.35 组装器在正文非空时丢弃 tool_calls），非网关截断；排障口径与断言口径相应更新）
 > 编制日期：2026-09-17
@@ -29,12 +30,12 @@
 
 | 门禁 | 命令 | 拦截什么 |
 | ---- | ---- | -------- |
-| 后端单元测试 | `mvn -B -ntp test`（182 条） | 业务状态机、权限、金额/日期计算、加解密回归 |
+| 后端单元测试 | `mvn -B -ntp test`（190 条） | 业务状态机、权限、金额/日期计算、加解密回归 |
 | 前端静态检查与格式 | `npm run lint` + `npm run format:check`（ESLint + Prettier） | 死导入与未使用变量、hook 依赖数组遗漏、缩进引号等风格漂移 |
 | 前端单测 | `npm test`（vitest，20 条） | 运行时地址解析、状态字典、SSE 流式解析 |
 | 前端类型与构建 | `npm run build:web`（`tsc --noEmit` + vite） | TS 严格模式下的类型错误、构建失败 |
-| 集成冒烟 | `bash scripts/ci-smoke.sh`（127 条断言） | 跨模块业务闭环、真实 MySQL/Redis 语义、鉴权链路、**真实模型**的工具调用与引用来源 |
-| 反向门禁 | `bash scripts/ci-no-model-check.sh`（6 条断言） | "未配置模型时 AI 能力必须硬报错"——防止模拟/规则兜底被重新引入 |
+| 集成冒烟 | `bash scripts/ci-smoke.sh`（130 条断言） | 跨模块业务闭环、真实 MySQL/Redis 语义、鉴权链路、**真实模型**的工具调用与引用来源 |
+| 反向门禁 | `bash scripts/ci-no-model-check.sh`（6 条，账号无合同时合同解读项跳过） | "未配置模型时 AI 能力必须硬报错"——防止模拟/规则兜底被重新引入 |
 
 ---
 
@@ -81,7 +82,7 @@
 | 初始化库 | 安装 `mysql-client` → 等 MySQL 就绪 → 执行 `docker/mysql-init/01_schema.sql` → 打印表数量（应 18） |
 | 构建 | `mvn -B -ntp -DskipTests package`（产出可执行 jar） |
 | 启动 | 后台启动 jar（注入 `MYSQL_*`/`REDIS_*`/`JWT_SECRET`/`AES_KEY`），轮询直到**接口可用且种子数据已提交**（先探 `/api/v1/ai/engine`，再探查库的 `/api/v1/houses?size=1` 且 `total ≥ 1`，最多 3 分钟），超时打印后端日志尾部 |
-| 冒烟 | `bash scripts/ci-smoke.sh`（127 条断言，失败即非 0 退出） |
+| 冒烟 | `bash scripts/ci-smoke.sh`（130 条断言，失败即非 0 退出） |
 | 无模型校验 | 另起一个不注入模型凭据的实例（`SERVER_PORT=8081`），执行 `scripts/ci-no-model-check.sh`，校验 AI 能力全部返回 4001 |
 | 归档 | 失败时上传 `/tmp/backend.log` 与 SSE 原始输出 |
 
@@ -121,10 +122,10 @@
 ```
 push / PR / 手动
         │
-        ├── backend-test      JDK17 ── mvn test（182 条）────────────────────────────────────────┐
+        ├── backend-test      JDK17 ── mvn test（190 条）────────────────────────────────────────┐
         ├── frontend-test     Node20 ── npm ci → lint → format:check → vitest → build:web ───────┤ 并行
         └── integration-smoke JDK17 + mysql:8.0 + redis:7                                        │
-                              └─ 建表 → 打包 → 启动 → ci-smoke.sh（127 条）                      ┘
+                              └─ 建表 → 打包 → 启动 → ci-smoke.sh（130 条）                      ┘
                                         ↓
                           全部成功 = 门禁通过；任一失败 = 阻断合并
 ```
@@ -137,6 +138,7 @@ push / PR / 手动
 | ---- | ---- | ---- |
 | `MYSQL_HOST` / `MYSQL_USER` / `MYSQL_PASSWORD` | `127.0.0.1` / `rentagent` / `rentagent123` | 与 compose 一致；服务容器端口映射到 runner 本地 |
 | `REDIS_HOST` | `127.0.0.1` | 验证码与登录失败计数 |
+| `AI_MAX_TOKENS`（可选） | 未设置时用 `application.yml` 默认 4096 | 单轮回复 token 上限；推理类模型的思维链也计入该预算，实测一轮对话约 1.6k~2.0k tokens，取值过紧会被 `finish_reason=length` 截断成「既无正文也无工具调用」 |
 | `JWT_SECRET` | CI 专用测试串 | 真实环境由部署方注入，不入库 |
 | `AES_KEY` | CI 专用测试 Base64 密钥 | 同上；**不可**复用生产密钥 |
 | `UPLOAD_DIR` | `${{ runner.temp }}/rentagent-uploads` | 写在**步骤级** env：job 级 env 不提供 `runner` 上下文 |
@@ -219,6 +221,8 @@ push / PR / 手动
 | 后端单测 | 本机 `mvn test` → **148 条全过** |
 | 前端单测与构建 | 本机 `npm test` → **20 条全过**；`npm run build:web` → 通过 |
 | 代码评审后复跑（v1.3） | 前端静态检查：`npm run lint`（ESLint 扁平配置）与 `npm run format:check`（Prettier）本机均零报错；单元与集成：后端 `mvn test` → **182 条全过**、前端 `npm test` → **26 条全过**、`ci-smoke.sh` → **127 条断言全过、退出码 0**（连续两轮均全绿） |
+| 前后端协同评审后复跑（v1.4） | 后端 `mvn test` → **190 条全过**；前端 `npx tsc --noEmit` / `npm run lint` 零报错、`npm test` → **26 条全过**；`ci-smoke.sh` → **130 条断言全过、退出码 0**；`ci-no-model-check.sh`（8081 无凭据实例）→ **5 条通过 + 1 条跳过、退出码 0** |
+| 客服场景三条断言同时失败排障（v1.4，CI 实录） | 现象：`FR-13 客服返回非空回答` / `模型实际调用了 searchKnowledge 工具` / `NFR-05 客服回答附带知识库来源引用` 三条同时失败，而同轮 FR-12 找房场景全过，后端日志**一条 WARN 都没有**。定位：聚合通道为推理模型，流式分片里 `delta.reasoning` 先占满预算、`finish_reason=length` 时正文与工具调用可能全空；适配器只累积 `delta.content` 与 `tool_calls`，全空时返回一句伪造的「抱歉，这次没有生成有效回答」且一个 delta 都不发——前端只能看到空白气泡、CI 只看到「回答为空」；FR-12 未暴露是因为找房场景的兜底条件（scene==1 且回答过短）恰好会触发非流式重跑，客服场景按设计不重跑。修复：① 空返回改为抛错（携带 `finish_reason` 与用量）并按可自愈传输层故障（空返回 / 限流 / 5xx / 超时）非流式重跑一次、4xx 不重跑；② 流式分支补 HTTP 状态码校验与 `CompletionException` 解包；③ 正文只在终止消息里给出时补走 delta 通道；④ 单轮 token 上限 2048 → 4096；⑤ 冒烟脚本为找房与客服各加一条「流内无失败载荷」断言，把模型侧故障与那三条业务断言区分开 |
 | 集成冒烟 | 本机真实 MySQL 8 + Redis + 运行中后端 → **121 条断言全过，退出码 0**（连续 6 轮稳定） |
 | 失败路径 | `BASE_URL` 指向空端口 → 退出码 7 并提示后端未就绪，门禁有效 |
 | lockfile 一致性 | `npm ci --dry-run` 通过（新增测试依赖已同步进 `package-lock.json`） |

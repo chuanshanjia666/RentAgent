@@ -30,6 +30,8 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * OpenAI Chat Completions 协议适配器（自研，替代 langchain4j-open-ai 的模型类）：
@@ -54,6 +56,8 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
     private final Duration timeout;
     private final Map<String, String> customHeaders;
     private final ObjectMapper mapper = new ObjectMapper();
+    /** 非 2xx 时读多少行错误体用于异常信息（错误体通常只有一行 JSON，留几行防多行 HTML） */
+    private static final long ERROR_BODY_LINES = 4;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -159,15 +163,25 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
             String[] finishReason = {null};
             http.sendAsync(request(requestBody(messages, tools, true, null)), HttpResponse.BodyHandlers.ofLines())
                     .thenAccept(response -> {
-                        for (Iterator<String> it = response.body().iterator(); it.hasNext(); ) {
-                            if (!consumeSseLine(it.next(), text, toolBuffers, usage, finishReason, handler)) {
+                        try (Stream<String> lines = response.body()) {
+                            if (response.statusCode() / 100 != 2) {
+                                // 非 2xx（限流/鉴权/网关故障）的响应体通常是一行错误 JSON 而非 SSE：
+                                // 逐行解析一行都认不出，会被当成"模型没说话"而把真实故障吞掉，故必须先判状态码
+                                String body = lines.limit(ERROR_BODY_LINES).collect(Collectors.joining(" "));
+                                handler.onError(new LlmHttpException(response.statusCode(),
+                                        "Chat Completions HTTP " + response.statusCode() + ": " + abbreviate(body)));
                                 return;
                             }
+                            for (Iterator<String> it = lines.iterator(); it.hasNext(); ) {
+                                if (!consumeSseLine(it.next(), text, toolBuffers, usage, finishReason, handler)) {
+                                    return;
+                                }
+                            }
                         }
-                        handler.onComplete(Response.from(assemble(text, toolBuffers, finishReason), usage[0], null));
+                        handler.onComplete(Response.from(assemble(text, toolBuffers, finishReason, usage[0]), usage[0], null));
                     })
                     .exceptionally(ex -> {
-                        handler.onError(ex);
+                        handler.onError(LlmErrors.unwrap(ex));
                         return null;
                     });
         } catch (Exception e) {
@@ -237,8 +251,15 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
         }
     }
 
-    /** 正文与工具调用合并为一个 AiMessage：两者可以同时存在（这正是 langchain4j 0.35 流式丢失的部分） */
-    AiMessage assemble(StringBuilder text, Map<Integer, ToolCallBuffer> toolBuffers, String[] finishReason) {
+    /**
+     * 正文与工具调用合并为一个 AiMessage：两者可以同时存在（这正是 langchain4j 0.35 流式丢失的部分）。
+     * <p>
+     * 正文与工具调用都为空时**抛错而不是编一句话**：典型成因是推理内容占满 max_tokens
+     * （{@code finish_reason=length}）或网关把流截断。此时模型并没有给出任何结论，
+     * 伪造"没有生成有效回答"会让界面显示一条不存在的回答、CI 也查不出原因。
+     */
+    AiMessage assemble(StringBuilder text, Map<Integer, ToolCallBuffer> toolBuffers, String[] finishReason,
+                       TokenUsage usage) {
         List<ToolExecutionRequest> requests = new ArrayList<>();
         for (ToolCallBuffer buf : toolBuffers.values()) {
             if (buf.name.length() == 0) {
@@ -257,8 +278,14 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
         if (!content.isEmpty()) {
             return new AiMessage(content);
         }
-        // 思维链耗尽 max_tokens 等场景：三方都是空的，禁止抛 "text cannot be blank"
-        return new AiMessage("抱歉，这次没有生成有效回答，请换个说法再试一次。");
+        throw new LlmEmptyResponseException("模型未返回正文与工具调用（finish_reason=" + finishReason[0]
+                + ", usage=" + describe(usage) + "）；若为 length 说明推理占满 max_tokens，请调大 ai.max-tokens 后重试");
+    }
+
+    /** 空返回时的用量描述：reasoning 占满预算的情况据此可一眼定位 */
+    private static String describe(TokenUsage usage) {
+        return usage == null ? "无" : usage.inputTokenCount() + "/" + usage.outputTokenCount()
+                + "/" + usage.totalTokenCount();
     }
 
     // ── 请求/响应映射 ──────────────────────────────────────────────────
@@ -347,10 +374,12 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
                     .build());
         }
         String content = text.toString();
-        if (requests.isEmpty()) {
-            return new AiMessage(content);
+        if (requests.isEmpty() && content.isEmpty()) {
+            // 与流式分支同一口径：既无正文也无工具调用＝本次调用失败，不得伪造回答
+            throw new LlmEmptyResponseException("模型未返回正文与工具调用（同步响应）");
         }
-        return content.isEmpty() ? new AiMessage(requests) : new AiMessage(content, requests);
+        return requests.isEmpty() ? new AiMessage(content)
+                : (content.isEmpty() ? new AiMessage(requests) : new AiMessage(content, requests));
     }
 
     private TokenUsage tokenUsage(JsonNode usage) {

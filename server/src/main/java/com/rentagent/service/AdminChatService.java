@@ -3,10 +3,10 @@ package com.rentagent.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rentagent.agent.LlmAgent;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
+import com.rentagent.common.JsonColumns;
 import com.rentagent.dto.AdminChatDto;
 import com.rentagent.entity.AiChatMessage;
 import com.rentagent.entity.AiChatSession;
@@ -46,7 +46,7 @@ public class AdminChatService {
     private final AiChatMessageMapper messageMapper;
     private final SysUserMapper userMapper;
     private final ChatService chatService;
-    private final ObjectMapper objectMapper;
+    private final JsonColumns jsonColumns;
 
     /** 全站会话列表：可按场景/转人工/用户/关键词（标题、昵称、账号、手机号）过滤 */
     public Page<AdminChatDto.SessionVO> sessions(String keyword, Integer scene, Boolean transferred,
@@ -87,7 +87,8 @@ public class AdminChatService {
         Map<Long, SysUser> users = usersOf(List.of(s.getUserId()));
         return new AdminChatDto.DetailVO(
                 vo(s, users.get(s.getUserId()), aggregateOf(raw), lastPreview(raw)),
-                chatService.engineName(), LlmAgent.SYSTEM_PROMPT,
+                // 用不抛错的 describeEngine：审计留痕是只读合规功能，不能因实例没配模型就整页打不开
+                chatService.describeEngine(), LlmAgent.SYSTEM_PROMPT,
                 raw.stream().map(this::toMessage).toList(),
                 stats(raw));
     }
@@ -205,7 +206,7 @@ public class AdminChatService {
     private AdminChatDto.MessageVO toMessage(AiChatMessage m) {
         return new AdminChatDto.MessageVO(m.getId(), m.getRole(),
                 MSG_ROLES.getOrDefault(m.getRole(), "未知"), m.getContent(), m.getToolName(),
-                parseJson(m.getToolArgs()), parseJson(m.getToolResult()), citationsOf(m),
+                jsonColumns.readAny(m.getToolArgs()), jsonColumns.readAny(m.getToolResult()), citationsOf(m),
                 m.getTokenCount(), m.getLatencyMs(), m.getCreatedAt());
     }
 
@@ -256,29 +257,8 @@ public class AdminChatService {
 
     // ---------- JSON 字段解析 ----------
 
-    /** 库内是 JSON 字符串，转成对象供前端结构化展示；解析失败原样返回字符串 */
-    private Object parseJson(String json) {
-        if (json == null || json.isBlank()) {
-            return null;
-        }
-        try {
-            return objectMapper.readValue(json, Object.class);
-        } catch (Exception e) {
-            return json;
-        }
-    }
-
-    @SuppressWarnings("unchecked")
     private List<Map<String, Object>> citationsOf(AiChatMessage m) {
-        if (m.getCitations() == null || m.getCitations().isBlank()) {
-            return List.of();
-        }
-        try {
-            return objectMapper.readValue(m.getCitations(),
-                    objectMapper.getTypeFactory().constructCollectionType(List.class, Map.class));
-        } catch (Exception e) {
-            return List.of();
-        }
+        return jsonColumns.readMapList(m.getCitations());
     }
 
     private long num(Object v) {
@@ -286,16 +266,14 @@ public class AdminChatService {
     }
 
     /** 供数据看板复用：AI 对话量与其时间趋势（FR-24） */
-    public Map<String, Object> dashboardMetrics(String periodFormat) {
-        Map<String, Object> vo = new HashMap<>();
-        vo.put("chatCount", sessionMapper.selectCount(null));
-        vo.put("chatMessageCount", messageMapper.selectCount(null));
-        vo.put("toolCallCount", messageMapper.selectCount(new LambdaQueryWrapper<AiChatMessage>()
-                .eq(AiChatMessage::getRole, 3)));
-        vo.put("transferredCount", sessionMapper.selectCount(new LambdaQueryWrapper<AiChatSession>()
-                .eq(AiChatSession::getIsTransferred, 1)));
-        vo.put("chatTrend", sessionsPerPeriod(periodFormat));
-        return vo;
+    public AdminChatDto.ChatMetricsVO dashboardMetrics(String periodFormat) {
+        return new AdminChatDto.ChatMetricsVO(
+                sessionMapper.selectCount(null),
+                messageMapper.selectCount(null),
+                messageMapper.selectCount(new LambdaQueryWrapper<AiChatMessage>().eq(AiChatMessage::getRole, 3)),
+                sessionMapper.selectCount(new LambdaQueryWrapper<AiChatSession>()
+                        .eq(AiChatSession::getIsTransferred, 1)),
+                sessionsPerPeriod(periodFormat));
     }
 
     private List<Map<String, Object>> sessionsPerPeriod(String fmt) {

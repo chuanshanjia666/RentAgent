@@ -7,6 +7,7 @@ import com.rentagent.agent.AgentEngine;
 import com.rentagent.agent.LlmAgent;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
+import com.rentagent.common.JsonColumns;
 import com.rentagent.dto.AiDto;
 import com.rentagent.entity.AiChatMessage;
 import com.rentagent.entity.AiChatSession;
@@ -19,7 +20,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -41,19 +41,29 @@ public class ChatService {
     private final AiChatMessageMapper messageMapper;
     private final LlmAgent llmAgent;
     private final ObjectMapper objectMapper;
+    private final JsonColumns jsonColumns;
 
     public ChatService(AiChatSessionMapper sessionMapper, AiChatMessageMapper messageMapper,
-                       LlmAgent llmAgent, ObjectMapper objectMapper) {
+                       LlmAgent llmAgent, ObjectMapper objectMapper, JsonColumns jsonColumns) {
         this.sessionMapper = sessionMapper;
         this.messageMapper = messageMapper;
         this.llmAgent = llmAgent;
         this.objectMapper = objectMapper;
+        this.jsonColumns = jsonColumns;
     }
 
     /** 当前引擎标识（<协议>:<模型>）；未配置模型时报 4001，便于调用方与前端明确感知 */
     public String engineName() {
         requireModel();
         return llmAgent.describe();
+    }
+
+    /**
+     * 当前引擎标识，**不因模型不可用而报错**（未配置时返回"未配置模型"）。
+     * 供后台对话审计展示：审计是只读的合规功能，不能因为没配 Key 就整页打不开。
+     */
+    public String describeEngine() {
+        return llmAgent.available() ? llmAgent.describe() : "未配置模型";
     }
 
     public AiChatSession createSession(long uid, int scene, String title) {
@@ -188,16 +198,8 @@ public class ChatService {
         return m;
     }
 
-    private List<Map<String, String>> citationsOf(AiChatMessage m) {
-        try {
-            if (m.getCitations() == null || m.getCitations().isBlank()) {
-                return List.of();
-            }
-            return objectMapper.readValue(m.getCitations(),
-                    objectMapper.getTypeFactory().constructCollectionType(List.class, HashMap.class));
-        } catch (Exception e) {
-            return List.of();
-        }
+    private List<Map<String, Object>> citationsOf(AiChatMessage m) {
+        return jsonColumns.readMapList(m.getCitations());
     }
 
     private Long ts(AiChatMessage m) {

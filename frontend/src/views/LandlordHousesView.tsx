@@ -12,7 +12,8 @@ import {
   Modal,
   Select,
   Table,
-  Tag
+  Tag,
+  Upload
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
@@ -26,9 +27,11 @@ import {
   HOUSE_STATUS,
   HOUSE_STATUS_TYPE,
   LAYOUTS,
-  ORIENTATIONS,
-  parseJsonList
+  ORIENTATIONS
 } from '../constants'
+import { assetUrl } from '../runtime'
+import type { House, HouseDetail } from '../types'
+import { usePagedList } from '../usePagedList'
 
 /** 发布/编辑房源表单 */
 interface HouseForm {
@@ -48,6 +51,8 @@ interface HouseForm {
   description: string
   lng: number
   lat: number
+  /** 房源图片 URL 列表（首图由后端同步为封面） */
+  images: string[]
 }
 
 const emptyForm = (): HouseForm => ({
@@ -66,34 +71,63 @@ const emptyForm = (): HouseForm => ({
   facilities: [],
   description: '',
   lng: 121.52,
-  lat: 38.88
+  lat: 38.88,
+  images: []
 })
 
 export default function LandlordHousesView() {
-  const [list, setList] = useState<any[]>([])
+  const list = usePagedList<House>('/landlord/houses')
   const [publishOpen, setPublishOpen] = useState(false)
   const [form, setForm] = useState<HouseForm>(emptyForm())
   const [priceOpen, setPriceOpen] = useState(false)
   const [price, setPrice] = useState<any>(null)
   const [realnamePassed, setRealnamePassed] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
   const set = (k: keyof HouseForm, v: any) => setForm(f => ({ ...f, [k]: v }) as HouseForm)
 
-  async function load() {
-    const p = await http.get('/landlord/houses', { params: { size: 50 } })
-    setList(p.list.map((h: any) => ({ ...h, key: h.id })))
-    const rn = await http.get('/users/me/realname')
-    setRealnamePassed(!!rn && rn.status === 1)
+  useEffect(() => {
+    http
+      .get('/users/me/realname')
+      .then(rn => setRealnamePassed(!!rn && rn.status === 1))
+      .catch(() => {
+        /* 实名状态拉取失败不影响房源列表展示 */
+      })
+  }, [publishOpen])
+
+  /**
+   * 编辑时按 id 取详情：房源图片在 house_image 表里，只有详情接口会返回，
+   * 直接拿列表行编辑会丢掉已有图片（保存时按空数组处理就等于把照片删了）。
+   */
+  async function openPublish(row?: House) {
+    if (!row) {
+      setForm(emptyForm())
+      setPublishOpen(true)
+      return
+    }
+    const item = await http.get<HouseDetail>(`/houses/${row.id}`)
+    setForm({
+      ...emptyForm(),
+      ...item.house,
+      id: item.house.id,
+      facilities: item.house.facilities ?? [],
+      images: (item.images ?? []).map(img => img.url)
+    } as HouseForm)
+    setPublishOpen(true)
   }
 
-  function openPublish(row?: any) {
-    const base = emptyForm()
-    if (row) {
-      Object.assign(base, row, { id: row.id })
-      base.facilities = parseJsonList(row.facilities)
+  /** 上传单张图片：后端返回 {url}，失败由 axios 拦截器统一提示 */
+  async function uploadImage(file: File) {
+    const body = new FormData()
+    body.append('file', file)
+    setUploading(true)
+    try {
+      const d = await http.post<{ url: string }>('/files/upload', body)
+      set('images', [...form.images, d.url])
+    } finally {
+      setUploading(false)
     }
-    setForm(base)
-    setPublishOpen(true)
+    return false
   }
 
   function fillCenter(d: string) {
@@ -114,14 +148,41 @@ export default function LandlordHousesView() {
       community: form.community,
       layout: form.layout
     })
+    // AI 可能返回白名单外的标签：这类标签在 Checkbox.Group 里没有对应复选框，
+    // 用户既看不见也去不掉，却会随表单一起提交，故只保留平台字典内的取值
+    const picked = (d.facilities ?? []).filter((f: string) => FACILITIES.includes(f))
+    const dropped = (d.facilities ?? []).length - picked.length
     setForm(f => ({
       ...f,
       description: d.description,
       orientation: d.orientation,
       floorDesc: d.floorDesc,
-      facilities: [...new Set([...(f.facilities || []), ...d.facilities])]
+      facilities: [...new Set([...(f.facilities || []), ...picked])]
     }))
-    message.success('AI 已填充，可自行修改')
+    message.success(dropped > 0 ? `AI 已填充（${dropped} 个未知标签已忽略）` : 'AI 已填充，可自行修改')
+  }
+
+  /** 只提交后端 SaveReq 声明的字段：早先直接 PUT 整个表单对象，会把 id/status/viewCount 等
+   *  从列表行带过来的字段一并发出，靠 Jackson 忽略未知字段兜着 */
+  function payload(): Record<string, unknown> {
+    return {
+      title: form.title,
+      community: form.community,
+      city: form.city,
+      district: form.district,
+      address: form.address,
+      layout: form.layout,
+      area: form.area,
+      orientation: form.orientation,
+      floorDesc: form.floorDesc,
+      rent: form.rent,
+      depositType: form.depositType,
+      facilities: form.facilities,
+      description: form.description,
+      lng: form.lng,
+      lat: form.lat,
+      images: form.images
+    }
   }
 
   async function save() {
@@ -130,33 +191,29 @@ export default function LandlordHousesView() {
       return
     }
     if (form.id) {
-      await http.put(`/houses/${form.id}`, form)
+      await http.put(`/houses/${form.id}`, payload())
       message.success('已保存，房源重新进入待审核')
     } else {
-      await http.post('/houses', form)
+      await http.post('/houses', payload())
       message.success('发布成功，等待管理员审核')
     }
     setPublishOpen(false)
-    load()
+    list.reload()
   }
 
-  async function status(row: any, action: string) {
+  async function status(row: House, action: string) {
     await http.patch(`/houses/${row.id}/status`, { action })
     message.success(action === 'online' ? '已上架' : '已下架')
-    load()
+    list.reload()
   }
 
-  async function pricing(row: any) {
+  async function pricing(row: House) {
     const vo = await http.post(`/ai/houses/${row.id}/pricing-suggestion`)
     setPrice(vo)
     setPriceOpen(true)
   }
 
-  useEffect(() => {
-    load()
-  }, [])
-
-  const columns: ColumnsType<any> = [
+  const columns: ColumnsType<House> = [
     {
       title: '房源',
       render: (_, row) => (
@@ -173,7 +230,7 @@ export default function LandlordHousesView() {
       title: '状态',
       width: 100,
       render: (_, row) => (
-        <Tag color={HOUSE_STATUS_TYPE[row.status]}>{HOUSE_STATUS[row.status]}</Tag>
+        <Tag color={HOUSE_STATUS_TYPE[row.status ?? 0]}>{HOUSE_STATUS[row.status ?? 0]}</Tag>
       )
     },
     {
@@ -189,7 +246,7 @@ export default function LandlordHousesView() {
           <Button size="small" onClick={() => openPublish(row)}>
             编辑
           </Button>
-          {[1, 4].includes(row.status) && (
+          {[1, 4].includes(row.status ?? -1) && (
             <Button
               size="small"
               type="primary"
@@ -234,8 +291,14 @@ export default function LandlordHousesView() {
       <Table
         rowKey="id"
         columns={columns}
-        dataSource={list}
-        pagination={{ pageSize: 10 }}
+        dataSource={list.rows}
+        loading={list.loading}
+        pagination={{
+          current: list.page,
+          pageSize: list.size,
+          total: list.total,
+          onChange: p => list.reload(p)
+        }}
         locale={{ emptyText: <Empty description="还没有房源，点右上角发布" /> }}
       />
 
@@ -339,6 +402,32 @@ export default function LandlordHousesView() {
             <Button size="small" type="primary" ghost onClick={aiFill}>
               🤖 AI 智能填充描述与设施（FR-08）
             </Button>
+          </Form.Item>
+          <Form.Item label="房源图片（首图自动作为封面，支持 jpg/png/webp）">
+            <Upload
+              listType="picture-card"
+              accept="image/png,image/jpeg,image/webp"
+              fileList={form.images.map((url, i) => ({
+                uid: url,
+                name: `图片${i + 1}`,
+                status: 'done' as const,
+                url: assetUrl(url)
+              }))}
+              beforeUpload={file => {
+                void uploadImage(file as File)
+                return false
+              }}
+              onRemove={file => {
+                set(
+                  'images',
+                  form.images.filter(u => u !== file.uid)
+                )
+                return true
+              }}
+              showUploadList={{ showPreviewIcon: false }}
+            >
+              {uploading ? '上传中…' : '＋ 上传'}
+            </Upload>
           </Form.Item>
           <div style={{ display: 'flex', gap: 10 }}>
             <Form.Item label="经度" style={{ flex: 1 }}>

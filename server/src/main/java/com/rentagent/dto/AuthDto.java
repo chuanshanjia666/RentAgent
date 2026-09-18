@@ -1,5 +1,6 @@
 package com.rentagent.dto;
 
+import com.rentagent.dto.AdminDto.UserVO;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -38,5 +39,9 @@ public class AuthDto {
     }
 
     public record RealnameVO(String realName, Integer status, String rejectReason, String maskedIdCard) {
+    }
+
+    /** 当前登录用户信息：user 只含展示字段，realname 未提交过则为 null */
+    public record MeVO(UserVO user, RealnameVO realname) {
     }
 }

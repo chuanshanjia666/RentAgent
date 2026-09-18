@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import http from '../api'
 import { useAuth } from '../auth'
 import { USER_ROLE } from '../constants'
+import type { MeResult } from '../types'
 
 interface RealnameInfo {
   status: number
@@ -22,8 +23,8 @@ export default function ProfileView() {
   const [pwd, setPwd] = useState({ oldPassword: '', newPassword: '' })
 
   async function load() {
-    const d = await http.get('/users/me')
-    setMe(d.user)
+    const d = await http.get<MeResult>('/users/me')
+    setMe(prev => ({ ...prev, ...d.user }))
     setRealname(d.realname)
   }
 

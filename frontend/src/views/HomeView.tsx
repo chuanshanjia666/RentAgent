@@ -41,23 +41,25 @@ export default function HomeView() {
   const [page, setPage] = useState(1)
   const [searched, setSearched] = useState(false)
   const [mapMode, setMapMode] = useState(false)
+  const [mapList, setMapList] = useState<House[]>([])
 
   const size = 12
 
+  /** 筛选参数：列表与地图共用同一套条件 */
+  const searchParams = (query: HouseQuery, extra: Record<string, unknown> = {}) => ({
+    keyword: query.keyword || undefined,
+    district: query.district || undefined,
+    layout: query.layout || undefined,
+    rentMax: query.rentMax || undefined,
+    sort: query.sort,
+    ...extra
+  })
+
   async function load(p: number = page, query: HouseQuery = q) {
-    const data = await http.get<PageResult>('/houses', {
-      params: {
-        keyword: query.keyword || undefined,
-        district: query.district || undefined,
-        layout: query.layout || undefined,
-        rentMax: query.rentMax || undefined,
-        sort: query.sort,
-        page: p,
-        size
-      }
+    const data = await http.get<PageResult<House>>('/houses', {
+      params: searchParams(query, { page: p, size })
     })
-    // /houses 返回 Item{house, images, landlordName...}，卡片按裸实体渲染
-    setList(data.list.map((it: any) => it.house || it))
+    setList(data.list)
     setTotal(data.total)
   }
 
@@ -66,6 +68,17 @@ export default function HomeView() {
     setSearched(true)
     setMapMode(false)
     load(1, q)
+  }
+
+  /**
+   * 地图模式取 /houses/map：它按当前筛选条件返回全部点位（上限 300），
+   * 而列表只有当前一页数据——直接拿列表画图会永远只有十几个点，数量文案也跟着错。
+   */
+  async function toggleMap(on: boolean) {
+    setMapMode(on)
+    if (!on) return
+    const points = await http.get<House[]>('/houses/map', { params: searchParams(q) })
+    setMapList(points)
   }
 
   useEffect(() => {
@@ -80,7 +93,7 @@ export default function HomeView() {
   }, [])
 
   const mapPoints = useMemo<MapPoint[]>(() => {
-    const pts = list.filter(h => h.lng && h.lat)
+    const pts = mapList.filter(h => h.lng && h.lat)
     if (!pts.length) return []
     const lons = pts.map(h => Number(h.lng))
     const lats = pts.map(h => Number(h.lat))
@@ -95,7 +108,7 @@ export default function HomeView() {
       x: 40 + ((Number(h.lng) - minLon) / (maxLon - minLon)) * (MAP_W - 80),
       y: MAP_H - 50 - ((Number(h.lat) - minLat) / (maxLat - minLat)) * (MAP_H - 100)
     }))
-  }, [list])
+  }, [mapList])
 
   const set = (k: keyof HouseQuery, v: any) => setQ(s => ({ ...s, [k]: v }) as HouseQuery)
 
@@ -166,7 +179,7 @@ export default function HomeView() {
             <Switch
               style={{ float: 'right' }}
               checked={mapMode}
-              onChange={setMapMode}
+              onChange={toggleMap}
               checkedChildren="地图"
               unCheckedChildren="列表"
             />
@@ -184,7 +197,7 @@ export default function HomeView() {
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <b>地图找房（FR-10 · 演示版按经纬度散点展示）</b>
             <span style={{ color: '#909399', fontSize: 12 }}>
-              共 {list.length} 套在租房源，点击圆点查看详情
+              共 {mapPoints.length} 套在租房源，点击圆点查看详情
             </span>
           </div>
           <svg
@@ -215,7 +228,7 @@ export default function HomeView() {
             <Switch
               style={{ float: 'right' }}
               checked={mapMode}
-              onChange={setMapMode}
+              onChange={toggleMap}
               checkedChildren="地图"
               unCheckedChildren="列表"
             />
