@@ -119,12 +119,15 @@ CREATE TABLE IF NOT EXISTS viewing_appointment (
   landlord_id      BIGINT UNSIGNED NOT NULL COMMENT '查询冗余列,源于房源',
   appointment_time DATETIME    NOT NULL COMMENT '预约时段(起点)',
   status           TINYINT     NOT NULL DEFAULT 0 COMMENT '0待确认 1已确认 2已拒绝 3已完成 4已取消',
+  active_slot      VARCHAR(64) NULL COMMENT '时段占位键 house_id:appointment_time,仅待确认/已确认持有,终态置 NULL 释放时段',
   reject_reason    VARCHAR(200) NULL,
   remark           VARCHAR(200) NULL,
   created_at       DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at       DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uk_house_time (house_id, appointment_time),
+  -- 唯一性只约束"仍占着时段"的预约：MySQL 唯一索引不对 NULL 去重，
+  -- 因此已拒绝/已完成/已取消的行置 active_slot = NULL 后，同一时段可被重新预约
+  UNIQUE KEY uk_active_slot (active_slot),
   KEY idx_tenant (tenant_id),
   KEY idx_landlord (landlord_id),
   CONSTRAINT fk_appt_house FOREIGN KEY (house_id) REFERENCES house (id),

@@ -111,10 +111,23 @@ public class AiJsonClient {
         }
     }
 
-    /** 4xx（429 限流除外）说明端点不接受该参数或该 Schema，属配置性问题；其余（超时/5xx）只影响本次 */
+    /**
+     * 端点是否**明确拒绝** response_format=json_schema 这一参数（据此才值得进程内长期降级）。
+     * <p>
+     * 不能把任意 4xx 都当成该信号：上下文超长、请求体过大等 400 同样落在 4xx，
+     * 一旦据此置位 {@link #jsonSchemaRejected}，本进程后续所有结构化调用都会被永久降级为提示词约束，
+     * 而真正的原因（本次输入过长）与结构化输出能力毫无关系。故只有报错文本点名了该参数才算数。
+     */
     private boolean schemaRejectedByEndpoint(Exception e) {
-        return e instanceof LlmHttpException http
-                && http.status() >= 400 && http.status() < 500 && http.status() != 429;
+        if (!(e instanceof LlmHttpException http)) {
+            return false;
+        }
+        int status = http.status();
+        if (status == 429 || status < 400 || status >= 500) {
+            return false;
+        }
+        String detail = http.getMessage() == null ? "" : http.getMessage().toLowerCase();
+        return detail.contains("response_format") || detail.contains("json_schema");
     }
 
     /** 一次模型调用；未配置模型时明确报错，不做任何本地兜底 */

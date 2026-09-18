@@ -12,10 +12,10 @@ import dev.langchain4j.service.tool.ToolProvider;
 import dev.langchain4j.service.tool.ToolProviderRequest;
 import dev.langchain4j.service.tool.ToolProviderResult;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,7 +31,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * 放在提供器而非工具方法内部，是为了让 {@link HousingTools} 新增 @Tool 方法时
  * 自动获得留痕能力（NFR-09 可扩展），无需逐个改造。
  */
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public class HousingToolProvider implements ToolProvider {
@@ -104,7 +103,7 @@ public class HousingToolProvider implements ToolProvider {
         if (toolMethods == null) {
             synchronized (this) {
                 if (toolMethods == null) {
-                    toolMethods = java.util.Arrays.stream(HousingTools.class.getMethods())
+                    toolMethods = Arrays.stream(HousingTools.class.getMethods())
                             .filter(m -> m.isAnnotationPresent(Tool.class))
                             .sorted(Comparator.comparing(Method::getName))
                             .toList();

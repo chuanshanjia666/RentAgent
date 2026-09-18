@@ -1,10 +1,10 @@
 package com.rentagent.dto;
 
+import com.rentagent.entity.House;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import com.rentagent.entity.House;
 
 import java.math.BigDecimal;
 import java.util.List;

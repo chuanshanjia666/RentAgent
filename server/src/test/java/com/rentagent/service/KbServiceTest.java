@@ -65,7 +65,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-01 空查询不产生关键词")
-    void 空查询无关键词() {
+    void extractsNoKeywordsFromBlankQuery() {
         assertTrue(KbService.keywords(null).isEmpty());
         assertTrue(KbService.keywords("").isEmpty());
         assertTrue(KbService.keywords("   ").isEmpty());
@@ -73,7 +73,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-02 停用词被剔除，短词整段保留")
-    void 停用词剔除() {
+    void stripsStopWords() {
         List<String> kws = KbService.keywords("请问怎么退押金");
 
         assertFalse(kws.contains("请问"));
@@ -83,7 +83,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-03 长片段按 2 字滑窗切词并限制最多 8 个")
-    void 长片段滑窗切词() {
+    void slidesWindowForLongSegment() {
         List<String> kws = KbService.keywords("押金退还流程");
 
         assertTrue(kws.contains("押金"));
@@ -96,7 +96,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-04 标点与符号被视作分隔符")
-    void 标点作为分隔符() {
+    void treatsPunctuationAsSeparator() {
         List<String> kws = KbService.keywords("押金，退还；违约！");
 
         assertTrue(kws.contains("押金"));
@@ -108,7 +108,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-05 无有效关键词时不查库直接返回空")
-    void 无关键词不查库() {
+    void skipsQueryWithoutKeywords() {
         assertTrue(service.search("   ", 3).isEmpty());
 
         verify(chunkMapper, never()).selectList(any());
@@ -116,7 +116,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-06 命中片段按「命中关键词个数」排序并截断 topK")
-    void 检索按命中数排序() {
+    void ranksChunksByHitCount() {
         // 检索评分是"命中关键词个数"（非出现次数）：两个关键词各命中一次的片段排在只命中一个的之前
         when(chunkMapper.selectList(any())).thenReturn(List.of(
                 chunk(1L, "押金交纳说明：签约时交纳押金。"),
@@ -135,7 +135,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-07 无命中片段时返回空列表")
-    void 无命中返回空() {
+    void returnsEmptyWhenNothingMatches() {
         when(chunkMapper.selectList(any())).thenReturn(List.of(chunk(1L, "完全不相关的内容")));
 
         assertTrue(service.search("押金退还", 3).isEmpty());
@@ -143,7 +143,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-08 文档缺失时标题兜底，片段超长截断加省略号")
-    void 引用组装兜底与截断() {
+    void buildsCitationsWithFallbackAndTruncation() {
         String longChunk = "押金退还" + "详细说明".repeat(60);
         when(chunkMapper.selectList(any())).thenReturn(List.of(chunk(9L, longChunk)));
         when(documentMapper.selectById(9L)).thenReturn(null);
@@ -157,7 +157,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-09 知识库命中判定（客服未命中转人工的依据）")
-    void 命中判定() {
+    void decidesKnowledgeHit() {
         when(chunkMapper.selectList(any())).thenReturn(List.of(chunk(1L, "押金退还说明")));
         assertTrue(service.hit("押金退还"));
 
@@ -169,7 +169,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-10 文档导入按 220 字切片，优先在句号处切分并回写切片数")
-    void 文档切片入库() {
+    void splitsDocumentOnImport() {
         String content = "甲".repeat(200) + "。" + "乙".repeat(99);
         when(documentMapper.insert(any(KbDocument.class))).thenAnswer(inv -> {
             ((KbDocument) inv.getArgument(0)).setId(7L);
@@ -194,7 +194,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-11 短文档不切片，仅生成 1 个片段")
-    void 短文档单片段() {
+    void keepsShortDocumentAsSingleChunk() {
         when(documentMapper.insert(any(KbDocument.class))).thenAnswer(inv -> {
             ((KbDocument) inv.getArgument(0)).setId(8L);
             return 1;
@@ -208,7 +208,7 @@ class KbServiceTest {
 
     @Test
     @DisplayName("UT-KB-12 长文档（无句号）按固定长度顺序切片，无内容丢失")
-    void 无句号按固定长度切片() {
+    void splitsWithoutSentenceBreak() {
         String content = "内容".repeat(300); // 600 字，无句号
         when(documentMapper.insert(any(KbDocument.class))).thenAnswer(inv -> {
             ((KbDocument) inv.getArgument(0)).setId(9L);

@@ -24,7 +24,7 @@ class ApiContractTest {
 
     @Test
     @DisplayName("UT-API-01 成功响应固定 code=0 / message=ok")
-    void 成功响应结构() {
+    void buildsSuccessResponse() {
         R<String> ok = R.ok("data");
 
         assertEquals(0, ok.getCode());
@@ -38,7 +38,7 @@ class ApiContractTest {
 
     @Test
     @DisplayName("UT-API-02 业务异常按原错误码与文案透传，data 为空")
-    void 业务异常透传() {
+    void propagatesBizException() {
         R<Void> r = handler.handleBiz(new BizException(ErrorCode.APPOINTMENT_CONFLICT));
 
         assertEquals(3001, r.getCode());
@@ -48,7 +48,7 @@ class ApiContractTest {
 
     @Test
     @DisplayName("UT-API-03 自定义文案业务码（1000/3003 等复用码）按 message 区分语义")
-    void 自定义文案业务码() {
+    void keepsCustomMessageForReusedCode() {
         R<Void> r = handler.handleBiz(BizException.of(ErrorCode.REVIEW_NOT_ALLOWED, "该订单已评价过"));
 
         assertEquals(3005, r.getCode());
@@ -57,7 +57,7 @@ class ApiContractTest {
 
     @Test
     @DisplayName("UT-API-04 参数校验失败统一返回 1000 且附带字段名")
-    void 参数校验失败返回1000() throws Exception {
+    void validationFailureReturnsParamInvalid() throws Exception {
         Method method = ApiContractTest.class.getDeclaredMethod("endpoint", String.class);
         BeanPropertyBindingResult binding = new BeanPropertyBindingResult(new Object(), "registerReq");
         binding.addError(new FieldError("registerReq", "phone", "手机号须为 11 位数字"));
@@ -73,7 +73,7 @@ class ApiContractTest {
 
     @Test
     @DisplayName("UT-API-05 未预期异常统一收敛为 5000，不外泄内部信息")
-    void 未预期异常收敛() {
+    void collapsesUnexpectedException() {
         R<Void> r = handler.handleOther(new IllegalStateException("数据库连接串 jdbc:mysql://secret"));
 
         assertEquals(5000, r.getCode());

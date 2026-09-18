@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * 智能体（唯一实现）：LangChain4j AiServices 编排（角色设定 + 会话记忆 + Function Calling 工具）。
@@ -67,6 +68,16 @@ public class LlmAgent implements AgentEngine {
     /** 兜底重试用：非流式结果按固定长度切片回放，前端渲染体验与流式一致 */
     private static final int SYNC_CHUNK = 24;
 
+    /** 过程语长度上限：真实结论（房源清单、规则说明）不会短于该长度 */
+    private static final int PROCESS_TALK_MAX = 40;
+
+    /** 转人工标准话术：提示词要求"知识库未命中"时逐字回复，属于结论而非过程语 */
+    private static final String TRANSFER_MARK = "转接人工客服";
+
+    /** 过程语特征：只承诺"这就去查"、没给出任何结论 */
+    private static final Pattern PROCESS_TALK_MARKERS =
+            Pattern.compile("正在|查询中|检索中|稍等|稍候|这就|马上|我先|让我");
+
     @Override
     public void stream(long sessionId, long userId, int scene, String userMessage, Callback callback) {
         run(sessionId, scene, userMessage, callback);
@@ -97,14 +108,14 @@ public class LlmAgent implements AgentEngine {
                     // NFR-05：知识库来源取自 searchKnowledge 工具的返回体（非 null 即说明本轮真的调用了工具）
                     String citations = housingToolProvider.takeKnowledgeCitations(sessionId);
                     Set<String> tools = housingToolProvider.takeRoundTools(sessionId);
-                    if (shouldFallbackToSync(scene, effective, citations, tools)) {
+                    if (shouldFallbackToSync(scene, effective, tools)) {
                         log.warn("本轮未执行任何工具且回答疑似过程语（{} 字），改用非流式兜底重跑一次",
                                 effective.trim().length());
                         callback.onToken(effective.isBlank() ? "" : "\n\n");
                         syncRun(sessionId, scene, userMessage + retryHint(scene), callback);
                         return;
                     }
-                    callback.onComplete(effective, citations, effective.contains("转接人工客服"));
+                    callback.onComplete(effective, citations, effective.contains(TRANSFER_MARK));
                 })
                 .onError(error -> {
                     // 本轮中断时清掉会话标记，避免残留污染下一轮的工具链判定
@@ -118,19 +129,28 @@ public class LlmAgent implements AgentEngine {
     /**
      * 是否需要非流式兜底重跑：**本轮执行过工具就绝不重跑**——工具已给出真实结果，
      * 回答偏短（如"暂无符合条件的房源"）是模型的真实结论而非过程语。
-     * 只有在"一个工具都没执行"时，才按场景判断回答是否像半截的过程语：
-     * 找房场景（scene=1）没调 searchHouses 且回答过短；客服/合同场景（scene=2/3）没调 searchKnowledge 因而没有来源。
+     * 只有在"一个工具都没执行"、且回答本身不像结论时才重跑。
+     * <p>
+     * 注意不能仅凭"没有知识库来源"就重跑：寒暄、闲聊一类问题本来就不需要查知识库，
+     * 据此重跑会让用户收到两遍回答，并被误判为"已转人工"。
      */
-    private boolean shouldFallbackToSync(int scene, String text, String citations, Set<String> toolsThisRound) {
+    private boolean shouldFallbackToSync(int scene, String text, Set<String> toolsThisRound) {
         if (!toolsThisRound.isEmpty()) {
             return false;
         }
-        return scene == 1 ? tooShortForSearch(text) : citations == null;
-    }
-
-    /** 找房场景的正常答复会列出房源与价格，过短即视为只回复了过程语 */
-    private boolean tooShortForSearch(String text) {
-        return text == null || text.replaceAll("\\s", "").length() < 40;
+        String flat = text == null ? "" : text.replaceAll("\\s", "");
+        if (flat.isEmpty()) {
+            return true;
+        }
+        if (flat.contains(TRANSFER_MARK)) {
+            return false;
+        }
+        if (flat.length() >= PROCESS_TALK_MAX) {
+            return false;
+        }
+        // 找房场景的正常答复会列出房源与价格，过短即视为没给出结论；
+        // 客服/合同场景还须命中"这就去查"一类过程语特征——寒暄、闲聊本来就短，仅凭长度会误判
+        return scene == 1 || PROCESS_TALK_MARKERS.matcher(flat).find();
     }
 
     private String retryHint(int scene) {
@@ -151,7 +171,9 @@ public class LlmAgent implements AgentEngine {
                 callback.onToken(text.substring(i, Math.min(text.length(), i + SYNC_CHUNK)));
             }
             String citations = housingToolProvider.takeKnowledgeCitations(sessionId);
-            callback.onComplete(text, citations, text.contains("转接人工客服"));
+            // 与流式分支一样清掉本轮工具集：残留会让下一轮"未执行任何工具"的判定失效，兜底从此永不触发
+            housingToolProvider.takeRoundTools(sessionId);
+            callback.onComplete(text, citations, text.contains(TRANSFER_MARK));
         } catch (Exception e) {
             callback.onError(e);
         }

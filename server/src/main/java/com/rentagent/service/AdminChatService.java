@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -122,7 +123,7 @@ public class AdminChatService {
     }
 
     private Map<Long, SysUser> usersOf(List<Long> userIds) {
-        List<Long> ids = userIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        List<Long> ids = userIds.stream().filter(Objects::nonNull).distinct().toList();
         if (ids.isEmpty()) {
             return Map.of();
         }

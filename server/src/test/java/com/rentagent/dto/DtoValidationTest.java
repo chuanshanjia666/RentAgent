@@ -61,7 +61,7 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-01 注册：手机号 11 位数字、验证码必填、密码 6~32 位、角色必填")
-    void 注册参数校验() {
+    void validatesRegisterRequest() {
         assertTrue(validate(register("13800000001", "246810", "123456", 1)).isEmpty());
 
         assertTrue(invalid(register("1380000", "246810", "123456", 1), "phone"));
@@ -74,14 +74,14 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-02 注册角色无取值域约束（现状记录：仅前端限制 1/2）")
-    void 注册角色无范围约束() {
+    void registerRoleHasNoRangeConstraint() {
         // role=3（管理员）在 DTO 层不被拦截，属于既有实现的宽松点，集成用例不覆盖提权路径
         assertFalse(invalid(register("13800000001", "246810", "123456", 3), "role"));
     }
 
     @Test
     @DisplayName("UT-DTO-03 登录用户名与密码必填")
-    void 登录参数校验() {
+    void validatesLoginRequest() {
         assertTrue(validate(new AuthDto.LoginReq("xiaochen", "123456")).isEmpty());
         assertTrue(invalid(new AuthDto.LoginReq("", "123456"), "username"));
         assertTrue(invalid(new AuthDto.LoginReq("xiaochen", ""), "password"));
@@ -89,7 +89,7 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-04 修改密码新密码 6~32 位")
-    void 修改密码校验() {
+    void validatesPasswordChange() {
         assertTrue(validate(new AuthDto.ChangePasswordReq("123456", "abcdef")).isEmpty());
         assertTrue(invalid(new AuthDto.ChangePasswordReq("123456", "abc"), "newPassword"));
         assertTrue(invalid(new AuthDto.ChangePasswordReq("", "abcdef"), "oldPassword"));
@@ -99,7 +99,7 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-05 实名认证：姓名必填、身份证 18 位（含 X 校验位）")
-    void 实名认证参数校验() {
+    void validatesRealnameRequest() {
         assertTrue(validate(new AuthDto.RealnameReq("李建国", "210102198001011234")).isEmpty());
         assertTrue(validate(new AuthDto.RealnameReq("李建国", "21010219800101123X")).isEmpty());
 
@@ -112,7 +112,7 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-06 房源发布：必填项、面积≥1、租金 1~1000000、经纬度合法范围")
-    void 房源发布参数校验() {
+    void validatesHousePublishRequest() {
         assertTrue(validate(saveReq(new BigDecimal("45"), new BigDecimal("2100"),
                 new BigDecimal("121.54"), new BigDecimal("38.85"))).isEmpty());
 
@@ -132,7 +132,7 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-07 房源发布必填文本字段不可为空")
-    void 房源必填文本校验() {
+    void rejectsBlankHouseTextFields() {
         HouseDto.SaveReq req = new HouseDto.SaveReq("", " ", null, "高新园区", "黄浦路 50 号", "1室1厅",
                 new BigDecimal("45"), null, null, new BigDecimal("2100"), "押一付三",
                 null, null, new BigDecimal("121.54"), new BigDecimal("38.85"), null);
@@ -151,7 +151,7 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-08 预约创建：房源 id 与到访时间必填")
-    void 预约创建参数校验() {
+    void validatesAppointmentCreateRequest() {
         assertTrue(validate(new TradeDto.AppointmentCreateReq(101L,
                 LocalDateTime.of(2026, 9, 20, 10, 0), "想看看房")).isEmpty());
 
@@ -161,7 +161,7 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-09 签约创建：房源 id 与起止日期必填")
-    void 签约创建参数校验() {
+    void validatesContractCreateRequest() {
         assertTrue(validate(new TradeDto.ContractCreateReq(101L, LocalDate.now(),
                 LocalDate.now().plusMonths(12))).isEmpty());
 
@@ -172,7 +172,7 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-10 评价：订单 id 必填，两项评分均限制 1~5")
-    void 评价参数校验() {
+    void validatesReviewRequest() {
         assertTrue(validate(new TradeDto.ReviewReq(66L, 1, 5, "很好")).isEmpty());
         assertTrue(validate(new TradeDto.ReviewReq(66L, 5, 1, null)).isEmpty());
 
@@ -186,7 +186,7 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-11 举报：举报类型与目标 id 必填，原因不可为空")
-    void 举报参数校验() {
+    void validatesReportRequest() {
         assertTrue(validate(new TradeDto.ReportReq(1, 101L, "虚假房源")).isEmpty());
 
         assertTrue(invalid(new TradeDto.ReportReq(null, 101L, "虚假房源"), "targetType"));
@@ -198,7 +198,7 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-12 AI 会话场景值限制在 1~3")
-    void 会话场景校验() {
+    void validatesChatSceneRange() {
         assertTrue(validate(new AiDto.SessionCreateReq(1, "找房")).isEmpty());
         assertTrue(validate(new AiDto.SessionCreateReq(3, null)).isEmpty());
 
@@ -209,7 +209,7 @@ class DtoValidationTest {
 
     @Test
     @DisplayName("UT-DTO-13 AI 消息内容必填（空串由服务层处理）")
-    void 消息内容校验() {
+    void validatesChatMessageContent() {
         assertTrue(validate(new AiDto.MessageSendReq("预算 2500 以内")).isEmpty());
         assertTrue(invalid(new AiDto.MessageSendReq(null), "content"));
     }

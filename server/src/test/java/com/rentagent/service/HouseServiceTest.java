@@ -3,6 +3,7 @@ package com.rentagent.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rentagent.common.BizException;
 import com.rentagent.dto.HouseDto;
+import com.rentagent.entity.Favorite;
 import com.rentagent.entity.House;
 import com.rentagent.entity.HouseImage;
 import com.rentagent.entity.SysUser;
@@ -111,7 +112,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-01 未实名房东发布房源被拒（1008）")
-    void 未实名房东发布房源被拒() {
+    void rejectsUnverifiedLandlord() {
         when(authService.realnamePassed(7L)).thenReturn(false);
 
         assertCode(1008, () -> service.create(req(), 7L));
@@ -121,7 +122,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-02 实名房东发布成功，初始状态为待审核且浏览数为 0")
-    void 实名房东发布成功进入待审核() {
+    void publishesAsPendingAfterRealname() {
         when(authService.realnamePassed(7L)).thenReturn(true);
         when(houseMapper.insert(any(House.class))).thenAnswer(inv -> {
             ((House) inv.getArgument(0)).setId(101L);
@@ -135,13 +136,14 @@ class HouseServiceTest {
         assertEquals(7L, created.getLandlordId());
         assertEquals(new BigDecimal("2100"), created.getRent());
         assertEquals("[\"近地铁\",\"精装修\"]", created.getFacilities());
-        // 图片按顺序落库，首图为封面
+        // 图片按顺序落库，首图为封面（列表卡片只读 cover_url）
         verify(imageMapper, times(2)).insert(any(HouseImage.class));
+        assertEquals("/uploads/a.jpg", created.getCoverUrl());
     }
 
     @Test
-    @DisplayName("UT-HOUSE-03 编辑房源后重新回到待审核且清空驳回原因")
-    void 编辑房源重置审核状态() {
+    @DisplayName("UT-HOUSE-03 编辑房源后重新回到待审核、清空驳回原因并重写图片与封面")
+    void editResetsToPending() {
         House existing = house(101L, 7L, HouseService.ST_REJECTED);
         existing.setRejectReason("图片不清晰");
         when(houseMapper.selectById(101L)).thenReturn(existing);
@@ -151,11 +153,33 @@ class HouseServiceTest {
         assertEquals(HouseService.ST_PENDING, existing.getStatus());
         assertNull(existing.getRejectReason());
         verify(houseMapper).updateById(existing);
+        // 旧图片整体替换，首图回写为封面
+        verify(imageMapper).delete(any());
+        verify(imageMapper, times(2)).insert(any(HouseImage.class));
+    }
+
+    @Test
+    @DisplayName("UT-HOUSE-20 images 为 null 表示不改动图片：既不删旧图，也不清空封面")
+    void keepsImagesWhenFieldAbsent() {
+        House existing = house(101L, 7L, HouseService.ST_ONLINE);
+        existing.setCoverUrl("/uploads/old.jpg");
+        when(houseMapper.selectById(101L)).thenReturn(existing);
+
+        HouseDto.SaveReq noImages = new HouseDto.SaveReq("软件园公寓 1 室 1 厅", "软件园公寓", "大连市",
+                "高新园区", "黄浦路 50 号", "1室1厅", new BigDecimal("45"), "南", "中层",
+                new BigDecimal("2100"), "押一付三", List.of("近地铁"), "描述", new BigDecimal("121.54"),
+                new BigDecimal("38.85"), null);
+
+        service.update(101L, noImages, 7L);
+
+        verify(imageMapper, never()).delete(any());
+        verify(imageMapper, never()).insert(any(HouseImage.class));
+        assertEquals("/uploads/old.jpg", existing.getCoverUrl());
     }
 
     @Test
     @DisplayName("UT-HOUSE-04 非房主编辑他人房源被拒（1007）")
-    void 非房主编辑他人房源被拒() {
+    void rejectsEditByNonOwner() {
         when(houseMapper.selectById(101L)).thenReturn(house(101L, 7L, HouseService.ST_ONLINE));
 
         assertCode(1007, () -> service.update(101L, req(), 8L));
@@ -167,7 +191,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-05 已通过/已下架房源可上架")
-    void 已通过或已下架房源可上架() {
+    void allowsOnlineFromPassedOrOffline() {
         House passed = house(101L, 7L, HouseService.ST_PASSED);
         when(houseMapper.selectById(101L)).thenReturn(passed);
         service.changeStatus(101L, "online", 7L);
@@ -181,7 +205,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-06 已上架房源可下架")
-    void 已上架房源可下架() {
+    void allowsOfflineFromOnline() {
         House online = house(101L, 7L, HouseService.ST_ONLINE);
         when(houseMapper.selectById(101L)).thenReturn(online);
 
@@ -192,7 +216,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-07 非法上下架迁移一律拒绝（2002）")
-    void 非法上下架迁移被拒() {
+    void rejectsIllegalStatusTransition() {
         // 待审核/已驳回/已出租 不允许直接上架
         for (int status : new int[]{HouseService.ST_PENDING, HouseService.ST_REJECTED, HouseService.ST_RENTED}) {
             when(houseMapper.selectById(101L)).thenReturn(house(101L, 7L, status));
@@ -208,7 +232,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-08 未知动作参数被拒（1000）")
-    void 未知上下架动作被拒() {
+    void rejectsUnknownStatusAction() {
         when(houseMapper.selectById(101L)).thenReturn(house(101L, 7L, HouseService.ST_PASSED));
 
         assertCode(1000, () -> service.changeStatus(101L, "publish", 7L));
@@ -216,7 +240,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-09 非房主不可上下架他人房源（1007）")
-    void 非房主不可上下架() {
+    void rejectsStatusChangeByNonOwner() {
         when(houseMapper.selectById(101L)).thenReturn(house(101L, 7L, HouseService.ST_PASSED));
 
         assertCode(1007, () -> service.changeStatus(101L, "online", 8L));
@@ -224,7 +248,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-10 房源不存在返回 2001")
-    void 房源不存在返回2001() {
+    void returns2001WhenHouseMissing() {
         when(houseMapper.selectById(999L)).thenReturn(null);
 
         assertCode(2001, () -> service.changeStatus(999L, "online", 7L));
@@ -235,7 +259,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-11 待审核房源审核通过/驳回")
-    void 审核通过或驳回() {
+    void approvesOrRejectsHouse() {
         House pending = house(101L, 7L, HouseService.ST_PENDING);
         when(houseMapper.selectById(101L)).thenReturn(pending);
 
@@ -252,7 +276,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-12 重复审核非待审核房源被拒（2002）")
-    void 重复审核被拒() {
+    void rejectsDuplicateAudit() {
         for (int status : new int[]{HouseService.ST_PASSED, HouseService.ST_REJECTED,
                 HouseService.ST_ONLINE, HouseService.ST_RENTED}) {
             when(houseMapper.selectById(101L)).thenReturn(house(101L, 7L, status));
@@ -262,7 +286,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-13 审核不存在的房源返回 2001")
-    void 审核不存在房源返回2001() {
+    void rejectsAuditOfMissingHouse() {
         when(houseMapper.selectById(999L)).thenReturn(null);
 
         assertCode(2001, () -> service.audit(999L, true, null, 1L));
@@ -272,7 +296,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-14 匿名人只可见已上架/已出租房源，其余伪装为不存在（2001）")
-    void 匿名人可见性受限() {
+    void hidesNonOnlineFromAnonymous() {
         when(houseMapper.selectById(101L)).thenReturn(house(101L, 7L, HouseService.ST_ONLINE));
         when(houseMapper.update(any(), any())).thenReturn(1);
         when(imageMapper.selectList(any())).thenReturn(List.of());
@@ -296,7 +320,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-15 房东与管理员可查看任意状态房源")
-    void 房东与管理员可见任意状态() {
+    void letsLandlordAndAdminSeeAnyStatus() {
         when(houseMapper.update(any(), any())).thenReturn(1);
         when(imageMapper.selectList(any())).thenReturn(List.of());
         when(reviewMapper.selectCount(any())).thenReturn(0L);
@@ -313,7 +337,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-16 详情浏览计数自增，收藏状态与评价数按当前用户返回")
-    void 详情浏览计数与收藏状态() {
+    void detailCountsViewAndFavorites() {
         when(houseMapper.selectById(101L)).thenReturn(house(101L, 7L, HouseService.ST_ONLINE));
         when(houseMapper.update(any(), any())).thenReturn(1);
         HouseImage img = new HouseImage();
@@ -344,7 +368,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-17 facilities JSON 序列化与容错解析")
-    void 标签JSON序列化容错() {
+    void serializesFacilitiesJson() {
         assertEquals("[\"近地铁\"]", service.toJson(List.of("近地铁")));
         assertNull(service.toJson(null));
         assertEquals(List.of("近地铁"), service.toList("[\"近地铁\"]"));
@@ -354,7 +378,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-18 推荐位只取已上架房源且匿名时按热度返回")
-    void 推荐位只含已上架房源() {
+    void recommendsOnlyOnlineHouses() {
         when(houseMapper.selectList(any())).thenReturn(List.of(house(1L, 7L, HouseService.ST_ONLINE)));
 
         List<House> result = service.recommend(null, 6);
@@ -366,7 +390,7 @@ class HouseServiceTest {
 
     @Test
     @DisplayName("UT-HOUSE-19 登录用户推荐按收藏区域加权排序")
-    void 推荐位按偏好加权() {
+    void weightsRecommendationByPreference() {
         House preferred = house(1L, 7L, HouseService.ST_ONLINE);
         preferred.setDistrict("高新园区");
         preferred.setViewCount(0);
@@ -375,7 +399,7 @@ class HouseServiceTest {
         other.setViewCount(100);
         when(houseMapper.selectList(any())).thenReturn(List.of(other, preferred));
 
-        com.rentagent.entity.Favorite fav = new com.rentagent.entity.Favorite();
+        Favorite fav = new Favorite();
         fav.setUserId(2L);
         fav.setHouseId(1L);
         when(favoriteMapper.selectList(any())).thenReturn(List.of(fav));

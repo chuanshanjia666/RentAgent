@@ -3,14 +3,15 @@ package com.rentagent.common;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import javax.crypto.Cipher;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 /** 敏感字段加密（NFR-04）：身份证号 AES-GCM 加密存储 + SHA-256 哈希比对 */
 @Component
@@ -61,13 +62,13 @@ public class CryptoUtil {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(plain.getBytes(StandardCharsets.UTF_8));
-            return HexFormatOf(digest);
+            return hex(digest);
         } catch (Exception e) {
             throw new IllegalStateException("SHA-256 计算失败", e);
         }
     }
 
-    private static String HexFormatOf(byte[] bytes) {
+    private static String hex(byte[] bytes) {
         StringBuilder sb = new StringBuilder(bytes.length * 2);
         for (byte b : bytes) {
             sb.append(String.format("%02x", b));

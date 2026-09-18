@@ -18,13 +18,19 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -63,11 +69,11 @@ class AiJsonClientTest {
     }
 
     private void modelSays(String... texts) {
-        Response<AiMessage>[] responses = java.util.Arrays.stream(texts)
+        Response<AiMessage>[] responses = Arrays.stream(texts)
                 .map(t -> Response.from(AiMessage.from(t)))
                 .toArray(Response[]::new);
         when(chatModel.generate(anyList())).thenReturn(responses[0],
-                java.util.Arrays.copyOfRange(responses, 1, responses.length));
+                Arrays.copyOfRange(responses, 1, responses.length));
     }
 
     private void assertCode(int expected, Runnable action) {
@@ -77,7 +83,7 @@ class AiJsonClientTest {
 
     @Test
     @DisplayName("UT-AIJSON-01 模型直接返回 JSON 对象时正常解析")
-    void 直接解析对象() {
+    void parsesPlainJsonObject() {
         modelSays("{\"low\":2000,\"high\":2400,\"basis\":\"同小区样本均价 2200\"}");
 
         Pricing vo = client.call(AiPrompts.PRICING, "payload", Pricing.class);
@@ -89,7 +95,7 @@ class AiJsonClientTest {
 
     @Test
     @DisplayName("UT-AIJSON-02 返回被 Markdown 代码块包裹时先剥围栏再解析")
-    void 剥代码块围栏() {
+    void stripsMarkdownFence() {
         modelSays("```json\n{\"low\":1900,\"high\":2100,\"basis\":\"保守区间\"}\n```");
 
         Pricing vo = client.call(AiPrompts.PRICING, "payload", Pricing.class);
@@ -100,7 +106,7 @@ class AiJsonClientTest {
 
     @Test
     @DisplayName("UT-AIJSON-03 返回前后夹带说明文字时按首个 JSON 主体截取")
-    void 夹带说明文字仍可解析() {
+    void extractsJsonSurroundedByProse() {
         modelSays("好的，以下是建议：{\"low\":2000,\"high\":2300,\"basis\":\"依据\"} 以上仅供参考。");
 
         Pricing vo = client.call(AiPrompts.PRICING, "payload", Pricing.class);
@@ -110,7 +116,7 @@ class AiJsonClientTest {
 
     @Test
     @DisplayName("UT-AIJSON-04 数组结果解析为泛型 List")
-    void 解析泛型数组() {
+    void parsesGenericList() {
         modelSays("[{\"index\":0,\"risk\":false,\"explanation\":\"第一条\"},"
                 + "{\"index\":1,\"risk\":true,\"explanation\":\"第二条有风险\"}]");
 
@@ -124,7 +130,7 @@ class AiJsonClientTest {
 
     @Test
     @DisplayName("UT-AIJSON-05 首次返回非法 JSON 时追加格式强化说明重试一次并成功")
-    void 首次非法则重试成功() {
+    void retriesOnceAfterInvalidJson() {
         modelSays("这不是 JSON，我重新给你。", "{\"low\":2000,\"high\":2200,\"basis\":\"重试后的依据\"}");
 
         Pricing vo = client.call(AiPrompts.PRICING, "payload", Pricing.class);
@@ -139,7 +145,7 @@ class AiJsonClientTest {
 
     @Test
     @DisplayName("UT-AIJSON-06 两次返回都不合法时报 4001（不返回任何兜底数据）")
-    void 两次都非法则报错() {
+    void failsAfterTwoInvalidResponses() {
         modelSays("抱歉，我无法给出建议。", "仍然不是 JSON。");
 
         assertCode(4001, () -> client.call(AiPrompts.PRICING, "payload", Pricing.class));
@@ -149,7 +155,7 @@ class AiJsonClientTest {
 
     @Test
     @DisplayName("UT-AIJSON-07 未配置模型时立即报 4001 且不发起调用")
-    void 未配置模型报错() {
+    void failsFastWhenModelNotConfigured() {
         when(llmGateway.available()).thenReturn(false);
 
         assertCode(4001, () -> client.call(AiPrompts.PRICING, "payload", Pricing.class));
@@ -159,7 +165,7 @@ class AiJsonClientTest {
 
     @Test
     @DisplayName("UT-AIJSON-08 模型调用抛异常时报 4001 并带上原因")
-    void 模型调用异常报错() {
+    void failsWhenModelCallThrows() {
         when(chatModel.generate(anyList())).thenThrow(new IllegalStateException("connect timed out"));
 
         BizException e = assertThrows(BizException.class,
@@ -171,7 +177,7 @@ class AiJsonClientTest {
 
     @Test
     @DisplayName("UT-AIJSON-09 模型返回空内容时重试后报 4001")
-    void 空返回报错() {
+    void failsOnEmptyModelResponse() {
         modelSays("   ", "");
 
         assertCode(4001, () -> client.call(AiPrompts.PRICING, "payload", Pricing.class));
@@ -179,7 +185,7 @@ class AiJsonClientTest {
 
     @Test
     @DisplayName("UT-AIJSON-10 缺字段可解析为 null，交由调用方按业务校验")
-    void 缺字段解析为null() {
+    void missingFieldsParseAsNull() {
         modelSays("{\"low\":2000}");
 
         Pricing vo = client.call(AiPrompts.PRICING, "payload", Pricing.class);
@@ -197,10 +203,9 @@ class AiJsonClientTest {
     /** 结构化路径生效：直接取回 JSON，不再走提示词调用；Schema 按目标类型生成 */
     @Test
     @DisplayName("UT-AIJSON-11 端点支持 json_schema 时以强约束输出且不触发提示词调用")
-    void 结构化输出优先() {
-        when(llmGateway.jsonSchema()).thenReturn(java.util.Optional.of(jsonSchemaModel));
-        when(jsonSchemaModel.generateJson(anyList(), org.mockito.ArgumentMatchers.eq("Pricing"),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(true)))
+    void prefersJsonSchemaOutput() {
+        when(llmGateway.jsonSchema()).thenReturn(Optional.of(jsonSchemaModel));
+        when(jsonSchemaModel.generateJson(anyList(), eq("Pricing"), any(), eq(true)))
                 .thenReturn("{\"low\":2100,\"high\":2500,\"basis\":\"结构化约束返回\"}");
 
         Pricing vo = client.call(AiPrompts.PRICING, "payload", Pricing.class);
@@ -213,10 +218,9 @@ class AiJsonClientTest {
     /** 端点为 4xx（不支持该参数）时退回提示词路径，并记住失败不再逐次尝试 */
     @Test
     @DisplayName("UT-AIJSON-12 端点 4xx 拒绝 json_schema 后退回提示词路径且只尝试一次")
-    void 端点拒绝后降级() {
-        when(llmGateway.jsonSchema()).thenReturn(java.util.Optional.of(jsonSchemaModel));
-        when(jsonSchemaModel.generateJson(anyList(), org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean()))
+    void fallsBackWhenEndpointRejectsSchema() {
+        when(llmGateway.jsonSchema()).thenReturn(Optional.of(jsonSchemaModel));
+        when(jsonSchemaModel.generateJson(anyList(), anyString(), any(), anyBoolean()))
                 .thenThrow(new LlmHttpException(400, "Chat Completions HTTP 400: unsupported response_format"));
         modelSays("{\"low\":2000,\"high\":2400,\"basis\":\"提示词路径\"}");
 
@@ -225,17 +229,15 @@ class AiJsonClientTest {
 
         assertEquals("提示词路径", first.basis());
         assertEquals("提示词路径", second.basis());
-        verify(jsonSchemaModel, times(1)).generateJson(anyList(), org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean());
+        verify(jsonSchemaModel, times(1)).generateJson(anyList(), anyString(), any(), anyBoolean());
     }
 
     /** 超时/5xx 属偶发故障：本次退回提示词路径，但下次仍会尝试结构化输出 */
     @Test
     @DisplayName("UT-AIJSON-13 结构化调用偶发失败不清除能力，下次仍走结构化路径")
-    void 偶发失败不降级() {
-        when(llmGateway.jsonSchema()).thenReturn(java.util.Optional.of(jsonSchemaModel));
-        when(jsonSchemaModel.generateJson(anyList(), org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean()))
+    void keepsSchemaCapabilityAfterTransientFailure() {
+        when(llmGateway.jsonSchema()).thenReturn(Optional.of(jsonSchemaModel));
+        when(jsonSchemaModel.generateJson(anyList(), anyString(), any(), anyBoolean()))
                 .thenThrow(new IllegalStateException("connect timed out"))
                 .thenReturn("{\"low\":2000,\"high\":2400,\"basis\":\"第二次结构化成功\"}");
         modelSays("{\"low\":2000,\"high\":2400,\"basis\":\"提示词路径\"}");
@@ -244,7 +246,26 @@ class AiJsonClientTest {
         Pricing second = client.call(AiPrompts.PRICING, "payload", Pricing.class);
 
         assertEquals("第二次结构化成功", second.basis());
-        verify(jsonSchemaModel, times(2)).generateJson(anyList(), org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean());
+        verify(jsonSchemaModel, times(2)).generateJson(anyList(), anyString(), any(), anyBoolean());
+    }
+
+    /**
+     * 与结构化能力无关的 4xx（如上下文超长）不得触发长期降级：
+     * 否则一次输入过长就会让本进程后续所有结构化调用都被永久降级。
+     */
+    @Test
+    @DisplayName("UT-AIJSON-14 非参数类 4xx（上下文超长）不置降级位，下次仍走结构化路径")
+    void unrelated4xxDoesNotDisableSchemaOutput() {
+        when(llmGateway.jsonSchema()).thenReturn(Optional.of(jsonSchemaModel));
+        when(jsonSchemaModel.generateJson(anyList(), anyString(), any(), anyBoolean()))
+                .thenThrow(new LlmHttpException(400, "Chat Completions HTTP 400: context_length_exceeded"))
+                .thenReturn("{\"low\":2000,\"high\":2400,\"basis\":\"第二次结构化成功\"}");
+        modelSays("{\"low\":2000,\"high\":2400,\"basis\":\"提示词路径\"}");
+
+        client.call(AiPrompts.PRICING, "payload", Pricing.class);
+        Pricing second = client.call(AiPrompts.PRICING, "payload", Pricing.class);
+
+        assertEquals("第二次结构化成功", second.basis());
+        verify(jsonSchemaModel, times(2)).generateJson(anyList(), anyString(), any(), anyBoolean());
     }
 }

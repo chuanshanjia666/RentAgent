@@ -1,20 +1,27 @@
 package com.rentagent.agent;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolParameters;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.output.TokenUsage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -27,16 +34,16 @@ class OpenAiChatCompletionsModelTest {
 
     private final OpenAiChatCompletionsModel model = new OpenAiChatCompletionsModel(
             "https://api.example.com/v1", "test-key", "demo-model", 0.7, null,
-            java.time.Duration.ofSeconds(30), Map.of("User-Agent", "curl/8.5.0"));
+            Duration.ofSeconds(30), Map.of("User-Agent", "curl/8.5.0"));
 
     // ── 请求映射 ───────────────────────────────────────────────────────
 
     @Test
     @DisplayName("UT-OPENAI-01 系统/用户消息映射为 role 字符串内容")
-    void 基础消息映射() {
+    void mapsBasicMessages() {
         var body = model.requestBody(List.of(
-                dev.langchain4j.data.message.SystemMessage.from("你是租房助手"),
-                dev.langchain4j.data.message.UserMessage.from("帮我找房")), List.of(), false, null);
+                SystemMessage.from("你是租房助手"),
+                UserMessage.from("帮我找房")), List.of(), false, null);
 
         assertEquals("demo-model", body.path("model").asText());
         assertEquals(false, body.path("stream").asBoolean());
@@ -49,18 +56,18 @@ class OpenAiChatCompletionsModelTest {
 
     @Test
     @DisplayName("UT-OPENAI-02 工具以 tools[].function 结构传递，参数为 JSON Schema")
-    void 工具映射() {
-        var spec = dev.langchain4j.agent.tool.ToolSpecification.builder()
+    void mapsTools() {
+        var spec = ToolSpecification.builder()
                 .name("searchHouses")
                 .description("检索房源")
-                .parameters(dev.langchain4j.agent.tool.ToolParameters.builder()
+                .parameters(ToolParameters.builder()
                         .type("object")
                         .properties(Map.of("maxRent", Map.of("type", "integer", "description", "租金上限")))
                         .required(List.of("maxRent"))
                         .build())
                 .build();
 
-        var body = model.requestBody(List.of(dev.langchain4j.data.message.UserMessage.from("找房")),
+        var body = model.requestBody(List.of(UserMessage.from("找房")),
                 List.of(spec), true, null);
 
         JsonNode tool = body.path("tools").get(0);
@@ -73,11 +80,11 @@ class OpenAiChatCompletionsModelTest {
 
     @Test
     @DisplayName("UT-OPENAI-03 多轮工具消息回填为 assistant.tool_calls 与 role=tool")
-    void 多轮工具消息回填() {
+    void mapsMultiTurnToolMessages() {
         ToolExecutionRequest call = ToolExecutionRequest.builder()
                 .id("call_1").name("searchHouses").arguments("{\"maxRent\":2500}").build();
         var body = model.requestBody(List.of(
-                dev.langchain4j.data.message.UserMessage.from("找房"),
+                UserMessage.from("找房"),
                 AiMessage.from("我来帮您查询", List.of(call)),
                 dev.langchain4j.data.message.ToolExecutionResultMessage.from(call, "[{\"id\":1}]")
         ), List.of(), false, null);
@@ -95,10 +102,9 @@ class OpenAiChatCompletionsModelTest {
 
     @Test
     @DisplayName("UT-OPENAI-04 response_format 组装为 json_schema 结构")
-    void 结构化输出请求体() {
-        JsonNode schema = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()
-                .put("type", "object");
-        var body = model.requestBody(List.of(dev.langchain4j.data.message.UserMessage.from("分析")),
+    void buildsJsonSchemaResponseFormat() {
+        JsonNode schema = new ObjectMapper().createObjectNode().put("type", "object");
+        var body = model.requestBody(List.of(UserMessage.from("分析")),
                 List.of(), false, model.responseFormat("pricingai", schema, true));
 
         JsonNode rf = body.path("response_format");
@@ -110,8 +116,8 @@ class OpenAiChatCompletionsModelTest {
 
     @Test
     @DisplayName("UT-OPENAI-05 同步响应同时解析正文与 tool_calls（content 为 null 时不报错）")
-    void 同步响应解析() throws Exception {
-        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+    void parsesSyncResponse() throws Exception {
+        var mapper = new ObjectMapper();
         AiMessage withText = model.parseMessage(mapper.readTree(
                 "{\"role\":\"assistant\",\"content\":\"我来帮您查询\","
                 + "\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\","
@@ -135,7 +141,7 @@ class OpenAiChatCompletionsModelTest {
 
     @Test
     @DisplayName("UT-OPENAI-06 回归：同一轮正文与工具调用并存时两者都保留（BUG-02 根因）")
-    void 正文与工具调用同轮并存() {
+    void keepsTextAndToolCallsInSameRound() {
         StreamCapture capture = stream(String.join("\n",
                 chunk("{\"role\":\"assistant\"}"),
                 chunk("{\"content\":\"我来帮您查询朝阳区的房源。\"}"),
@@ -156,7 +162,7 @@ class OpenAiChatCompletionsModelTest {
 
     @Test
     @DisplayName("UT-OPENAI-07 纯工具调用轮（无正文）仍组成完整工具请求")
-    void 纯工具调用轮() {
+    void handlesToolOnlyRound() {
         StreamCapture capture = stream(String.join("\n",
                 chunk("{\"tool_calls\":[{\"index\":0,\"id\":\"call_9\",\"type\":\"function\","
                         + "\"function\":{\"name\":\"searchKnowledge\",\"arguments\":\"{}\"}}]}"),
@@ -169,7 +175,7 @@ class OpenAiChatCompletionsModelTest {
 
     @Test
     @DisplayName("UT-OPENAI-08 多个工具调用按 index 分别累积，顺序稳定")
-    void 并发多工具调用() {
+    void accumulatesParallelToolCalls() {
         StreamCapture capture = stream(String.join("\n",
                 chunk("{\"tool_calls\":[{\"index\":0,\"id\":\"c0\",\"function\":{\"name\":\"searchHouses\",\"arguments\":\"{\"}},"
                         + "{\"index\":1,\"id\":\"c1\",\"function\":{\"name\":\"searchKnowledge\",\"arguments\":\"{\"}}]}"),
@@ -186,7 +192,7 @@ class OpenAiChatCompletionsModelTest {
 
     @Test
     @DisplayName("UT-OPENAI-09 流式返回 token 用量（末片携带 usage）")
-    void 流式用量解析() {
+    void readsStreamingTokenUsage() {
         StreamCapture capture = stream(String.join("\n",
                 chunk("{\"content\":\"您好\"}"),
                 "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],"
@@ -199,7 +205,7 @@ class OpenAiChatCompletionsModelTest {
 
     @Test
     @DisplayName("UT-OPENAI-10 空返回（思维链耗尽等）不抛异常，给出可读提示")
-    void 空返回兜底文案() {
+    void fallsBackOnEmptyResponse() {
         StreamCapture capture = stream(String.join("\n",
                 chunk("{\"reasoning\":\"思考中\"}"),
                 chunk("{}", "length"),
@@ -207,6 +213,41 @@ class OpenAiChatCompletionsModelTest {
 
         assertTrue(capture.message.text().contains("请换个说法"), capture.message.text());
         assertTrue(capture.requests.isEmpty());
+    }
+
+    /**
+     * 回归：分片解析失败时 {@code consumeSseLine} 必须返回 false，调用方据此立即停止解析。
+     * 少了这条约定，流里出现一个坏分片后循环仍会跑完并调用 onComplete，
+     * 一次请求就会收到 onError + onComplete 两个终止回调。
+     */
+    @Test
+    @DisplayName("UT-OPENAI-11 分片解析失败返回 false，调用方不得再发 onComplete")
+    void stopsParsingAfterMalformedChunk() {
+        StringBuilder text = new StringBuilder();
+        Map<Integer, OpenAiChatCompletionsModel.ToolCallBuffer> buffers = new LinkedHashMap<>();
+        TokenUsage[] usage = {null};
+        String[] finishReason = {null};
+        List<Throwable> errors = new ArrayList<>();
+        StreamingResponseHandler<AiMessage> handler = new StreamingResponseHandler<>() {
+            @Override
+            public void onNext(String token) {
+            }
+
+            @Override
+            public void onComplete(Response<AiMessage> response) {
+                throw new AssertionError("解析已失败，不得再发终止回调 onComplete");
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                errors.add(error);
+            }
+        };
+
+        boolean keepGoing = model.consumeSseLine("data: {\"choices\":[", text, buffers, usage, finishReason, handler);
+
+        assertFalse(keepGoing, "解析失败必须返回 false 以终止后续解析");
+        assertEquals(1, errors.size(), "错误只上报一次");
     }
 
     // ── 测试脚手架 ─────────────────────────────────────────────────────

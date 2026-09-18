@@ -10,6 +10,7 @@ import com.rentagent.dto.HouseDto;
 import com.rentagent.entity.Favorite;
 import com.rentagent.entity.House;
 import com.rentagent.entity.HouseImage;
+import com.rentagent.entity.Review;
 import com.rentagent.entity.SysUser;
 import com.rentagent.mapper.FavoriteMapper;
 import com.rentagent.mapper.HouseImageMapper;
@@ -21,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -57,11 +59,16 @@ public class HouseService {
         house.setStatus(ST_PENDING);
         house.setViewCount(0);
         houseMapper.insert(house);
-        saveImages(house.getId(), req.images());
+        house.setCoverUrl(saveImages(house.getId(), req.images()));
         return house;
     }
 
-    /** FR-06：编辑后重新进入待审核 */
+    /**
+     * FR-06：编辑后重新进入待审核。
+     * <p>
+     * {@code images} 为 null 表示"本次不改动图片"：列表页等场景提交的请求不带该字段，
+     * 若无条件按它重写，已有照片会被整个删光。传空数组才是显式清空。
+     */
     @Transactional
     public void update(long id, HouseDto.SaveReq req, long uid) {
         House house = owned(id, uid);
@@ -69,8 +76,10 @@ public class HouseService {
         house.setStatus(ST_PENDING);
         house.setRejectReason(null);
         houseMapper.updateById(house);
-        imageMapper.delete(new LambdaQueryWrapper<HouseImage>().eq(HouseImage::getHouseId, id));
-        saveImages(id, req.images());
+        if (req.images() != null) {
+            imageMapper.delete(new LambdaQueryWrapper<HouseImage>().eq(HouseImage::getHouseId, id));
+            saveImages(id, req.images());
+        }
     }
 
     /** FR-06：上架/下架 */
@@ -161,9 +170,14 @@ public class HouseService {
         house.setLat(req.lat());
     }
 
-    private void saveImages(long houseId, List<String> urls) {
+    /**
+     * 落库房源图片，并把首图同步为 {@code house.cover_url}，返回写入的封面 URL（无图时为 null）。
+     * 列表卡片（{@code HouseCard}、预约 VO）只读 {@code house.cover_url}，
+     * 不同步的话即便图片齐全也一律显示占位图。用 {@code set} 显式赋值，清空图片时封面才会真的置空。
+     */
+    private String saveImages(long houseId, List<String> urls) {
         if (urls == null) {
-            return;
+            return null;
         }
         int sort = 0;
         for (String url : urls) {
@@ -174,6 +188,11 @@ public class HouseService {
             img.setIsCover(sort == 1 ? 1 : 0);
             imageMapper.insert(img);
         }
+        String cover = urls.isEmpty() ? null : urls.get(0);
+        houseMapper.update(null, new LambdaUpdateWrapper<House>()
+                .eq(House::getId, houseId)
+                .set(House::getCoverUrl, cover));
+        return cover;
     }
 
     public HouseDto.Item toItem(House house, UserContext.User viewer) {
@@ -184,9 +203,9 @@ public class HouseService {
                 .toList();
         boolean favorited = viewer != null && favoriteMapper.selectCount(new LambdaQueryWrapper<Favorite>()
                 .eq(Favorite::getUserId, viewer.getId()).eq(Favorite::getHouseId, house.getId())) > 0;
-        long reviewCount = reviewMapper.selectCount(new LambdaQueryWrapper<com.rentagent.entity.Review>()
-                .eq(com.rentagent.entity.Review::getHouseId, house.getId())
-                .eq(com.rentagent.entity.Review::getStatus, 0));
+        long reviewCount = reviewMapper.selectCount(new LambdaQueryWrapper<Review>()
+                .eq(Review::getHouseId, house.getId())
+                .eq(Review::getStatus, 0));
         return new HouseDto.Item(house, images, landlord == null ? null : landlord.getNickname(),
                 favorited, reviewCount);
     }
@@ -227,7 +246,7 @@ public class HouseService {
     }
 
     private Map<String, Long> weightOf(long uid, int limit) {
-        List<Long> houseIds = new java.util.ArrayList<>();
+        List<Long> houseIds = new ArrayList<>();
         favoriteMapper.selectList(new LambdaQueryWrapper<Favorite>().eq(Favorite::getUserId, uid))
                 .forEach(f -> houseIds.add(f.getHouseId()));
         if (houseIds.isEmpty()) {

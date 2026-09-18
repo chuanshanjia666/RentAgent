@@ -20,7 +20,7 @@ class CryptoUtilTest {
 
     @Test
     @DisplayName("UT-CRYPTO-01 AES-GCM 加密后可原样解密")
-    void 加密后可解密() {
+    void encryptThenDecryptRoundTrip() {
         String plain = "210102198001011234";
 
         String enc = crypto.encrypt(plain);
@@ -30,7 +30,7 @@ class CryptoUtilTest {
 
     @Test
     @DisplayName("UT-CRYPTO-02 密文不含明文且随机 IV 使同一明文两次密文不同")
-    void 密文随机化() {
+    void randomIvMakesCiphertextUnique() {
         String plain = "210102198001011234";
 
         String first = crypto.encrypt(plain);
@@ -44,7 +44,7 @@ class CryptoUtilTest {
 
     @Test
     @DisplayName("UT-CRYPTO-03 SHA-256 哈希符合标准向量且稳定")
-    void sha256标准向量() {
+    void sha256MatchesKnownVector() {
         assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
                 crypto.sha256Hex("abc"));
         assertEquals(crypto.sha256Hex("210102198001011234"), crypto.sha256Hex("210102198001011234"));
@@ -52,7 +52,7 @@ class CryptoUtilTest {
 
     @Test
     @DisplayName("UT-CRYPTO-04 密文被篡改时 GCM 完整性校验失败")
-    void 密文篡改解密失败() {
+    void failsOnTamperedCiphertext() {
         String enc = crypto.encrypt("210102198001011234");
         byte[] raw = Base64.getDecoder().decode(enc);
         raw[raw.length - 1] ^= 0x01;
@@ -63,14 +63,14 @@ class CryptoUtilTest {
 
     @Test
     @DisplayName("UT-CRYPTO-05 非法密文解密抛出明确异常，不返回脏数据")
-    void 非法密文解密失败() {
+    void failsOnMalformedCiphertext() {
         assertThrows(IllegalStateException.class, () -> crypto.decrypt("不是密文"));
         assertThrows(IllegalStateException.class, () -> crypto.decrypt(Base64.getEncoder().encodeToString(new byte[4])));
     }
 
     @Test
     @DisplayName("UT-CRYPTO-06 中文姓名等 UTF-8 内容加解密无损")
-    void 中文内容无损() {
+    void preservesUtf8Content() {
         String plain = "李建国·测试中文与符号 #@!";
 
         String enc = crypto.encrypt(plain);

@@ -1,15 +1,20 @@
 package com.rentagent.agent;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolParameters;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,10 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OpenAiResponsesChatModelTest {
 
     private final OpenAiResponsesChatModel model = new OpenAiResponsesChatModel(
-            "https://api.openai.com/v1", "test-key", "gpt-4.1-mini", 0.7, 2048, java.time.Duration.ofSeconds(30));
+            "https://api.openai.com/v1", "test-key", "gpt-4.1-mini", 0.7, 2048, Duration.ofSeconds(30));
 
     @Test
-    void 系统消息进instructions_用户消息进input() {
+    @DisplayName("UT-RESP-01 系统消息进 instructions，用户消息进 input")
+    void mapsSystemToInstructionsAndUserToInput() {
         var body = model.requestBody(
                 List.of(SystemMessage.from("你是租房助手"), UserMessage.from("帮我找房")), List.of(), false);
         assertEquals("你是租房助手", body.path("instructions").asText());
@@ -34,15 +40,16 @@ class OpenAiResponsesChatModelTest {
     }
 
     @Test
-    void 工具映射为扁平function结构() {
+    @DisplayName("UT-RESP-02 工具映射为扁平 function 结构")
+    void mapsToolsToFlatFunctionStructure() {
         ToolSpecification spec = ToolSpecification.builder()
                 .name("searchHouses")
                 .description("检索房源")
-                .parameters(dev.langchain4j.agent.tool.ToolParameters.builder()
+                .parameters(ToolParameters.builder()
                         .type("object")
-                        .properties(java.util.Map.of(
-                                "maxRent", java.util.Map.of("type", "integer", "description", "租金上限")))
-                        .required(java.util.List.of())
+                        .properties(Map.of(
+                                "maxRent", Map.of("type", "integer", "description", "租金上限")))
+                        .required(List.of())
                         .build())
                 .build();
         var body = model.requestBody(List.of(UserMessage.from("找房")), List.of(spec), true);
@@ -55,7 +62,8 @@ class OpenAiResponsesChatModelTest {
     }
 
     @Test
-    void 多轮工具消息映射与输出解析() {
+    @DisplayName("UT-RESP-03 多轮工具消息映射与输出解析")
+    void mapsToolRoundTripAndParsesOutput() {
         ToolExecutionRequest call = ToolExecutionRequest.builder()
                 .id("call_1").name("searchHouses").arguments("{\"maxRent\":2500}").build();
         var body = model.requestBody(List.of(
@@ -69,7 +77,7 @@ class OpenAiResponsesChatModelTest {
         assertEquals("function_call_output", input.get(2).path("type").asText());
         assertEquals("call_1", input.get(2).path("call_id").asText());
 
-        var output = com.fasterxml.jackson.databind.json.JsonMapper.builder().build().createArrayNode();
+        var output = JsonMapper.builder().build().createArrayNode();
         var msg = output.addObject();
         msg.put("type", "message");
         var content = msg.putArray("content");

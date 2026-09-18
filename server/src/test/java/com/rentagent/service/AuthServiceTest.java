@@ -95,7 +95,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-01 验证码错误或已过期不可注册（1005）")
-    void 验证码错误不可注册() {
+    void rejectsWrongCaptcha() {
         when(valueOps.get("captcha:13800000009")).thenReturn(CAPTCHA);
 
         assertCode(1005, () -> service.register(new AuthDto.RegisterReq("13800000009", "000000", "123456", 1, null)));
@@ -108,7 +108,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-02 手机号已注册不可重复注册（1001）")
-    void 重复手机号不可注册() {
+    void rejectsDuplicatePhone() {
         when(valueOps.get("captcha:13800000001")).thenReturn(CAPTCHA);
         when(userMapper.selectCount(any())).thenReturn(1L);
 
@@ -117,7 +117,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-03 注册成功：用户名手机号一致、默认昵称取后四位、验证码作废并自动登录")
-    void 注册成功自动登录() {
+    void registersAndAutoLogins() {
         when(valueOps.get("captcha:13800000009")).thenReturn(CAPTCHA);
         when(userMapper.selectCount(any())).thenReturn(0L);
         when(userMapper.insert(any(SysUser.class))).thenAnswer(inv -> {
@@ -143,7 +143,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-04 注册昵称为空时使用默认昵称，非空时原样落库")
-    void 注册昵称兜底() {
+    void fallsBackToDefaultNickname() {
         when(valueOps.get("captcha:13800000009")).thenReturn(CAPTCHA);
         when(userMapper.selectCount(any())).thenReturn(0L);
         when(userMapper.insert(any(SysUser.class))).thenAnswer(inv -> {
@@ -162,7 +162,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-05 登录成功清空失败计数并签发 token")
-    void 登录成功清空失败计数() {
+    void resetsFailCountOnLogin() {
         when(valueOps.get("login:fail:xiaochen")).thenReturn("2");
         when(userMapper.selectOne(any())).thenReturn(user(2L, 1, 1));
 
@@ -176,7 +176,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-06 密码错误返回 1002，累计失败次数并设 10 分钟过期")
-    void 密码错误累计失败次数() {
+    void countsFailedLogins() {
         when(userMapper.selectOne(any())).thenReturn(user(2L, 1, 1));
 
         BizException e = assertThrows(BizException.class,
@@ -189,7 +189,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-07 用户不存在同样返回 1002，不泄漏账号是否存在")
-    void 用户不存在返回1002() {
+    void hidesWhetherAccountExists() {
         when(userMapper.selectOne(any())).thenReturn(null);
 
         assertCode(1002, () -> service.login(new AuthDto.LoginReq("nobody", "123456")));
@@ -197,7 +197,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-08 连续失败 5 次后锁定登录（1003）")
-    void 失败五次锁定() {
+    void locksAfterFiveFailures() {
         when(valueOps.get("login:fail:xiaochen")).thenReturn("5");
 
         BizException e = assertThrows(BizException.class,
@@ -209,7 +209,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-09 已禁用账号不可登录（1004）")
-    void 禁用账号不可登录() {
+    void rejectsDisabledAccount() {
         when(userMapper.selectOne(any())).thenReturn(user(5L, 1, 0));
 
         assertCode(1004, () -> service.login(new AuthDto.LoginReq("historyuser", "123456")));
@@ -219,7 +219,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-10 实名提交：身份证 AES 加密 + SHA-256 双写，初始待审核")
-    void 实名提交双写加密与哈希() {
+    void storesRealnameEncryptedAndHashed() {
         service.submitRealname(7L, new AuthDto.RealnameReq("李建国", "210102198001011234"));
 
         ArgumentCaptor<RealnameAuth> captor = ArgumentCaptor.forClass(RealnameAuth.class);
@@ -235,7 +235,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-11 实名通过判定为存在性判断（任一通过记录即放行）")
-    void 实名通过判定() {
+    void realnamePassedIsExistenceCheck() {
         when(realnameMapper.selectCount(any())).thenReturn(0L);
         assertFalse(service.realnamePassed(7L));
 
@@ -245,7 +245,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-12 实名状态查询：无记录返回 null，有记录时身份证脱敏展示")
-    void 实名状态查询脱敏() {
+    void masksIdCardWhenQuerying() {
         when(realnameMapper.selectList(any())).thenReturn(List.of());
         assertNull(service.realnameOf(7L));
 
@@ -267,7 +267,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("UT-AUTH-13 验证码发送写入 5 分钟有效期的演示固定码")
-    void 验证码发送写入固定码() {
+    void sendsDemoCaptcha() {
         service.sendCaptcha("13800000009");
 
         verify(valueOps).set("captcha:13800000009", CAPTCHA, Duration.ofMinutes(5));

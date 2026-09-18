@@ -11,8 +11,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * RAG 知识库（FR-13 / NFR-05）：
@@ -106,7 +108,7 @@ public class KbService {
         for (String sw : stop) {
             cleaned = cleaned.replace(sw, " ");
         }
-        java.util.Set<String> kws = new java.util.LinkedHashSet<>();
+        Set<String> kws = new LinkedHashSet<>();
         for (String seg : cleaned.split("\\s+")) {
             if (seg.isEmpty()) {
                 continue;

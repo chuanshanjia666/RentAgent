@@ -1,5 +1,7 @@
 package com.rentagent.security;
 
+import com.rentagent.common.BizException;
+import com.rentagent.common.ErrorCode;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
@@ -26,7 +28,7 @@ public class UserContext {
     public static Long userId() {
         User u = HOLDER.get();
         if (u == null) {
-            throw new com.rentagent.common.BizException(com.rentagent.common.ErrorCode.FORBIDDEN);
+            throw new BizException(ErrorCode.FORBIDDEN);
         }
         return u.getId();
     }

@@ -33,7 +33,7 @@ class JsonSchemasTest {
 
     @Test
     @DisplayName("UT-SCHEMA-01 对象类型：属性齐全、required 列出全部字段、additionalProperties=false")
-    void 对象严格化() {
+    void strictifiesObjectType() {
         JsonNode schema = JsonSchemas.strict(type(Pricing.class));
 
         assertEquals("object", schema.path("type").asText());
@@ -48,7 +48,7 @@ class JsonSchemasTest {
 
     @Test
     @DisplayName("UT-SCHEMA-02 数组字段：items 类型正确且嵌套对象同样严格化")
-    void 数组字段() {
+    void strictifiesArrayFieldItems() {
         JsonNode schema = JsonSchemas.strict(type(Detect.class));
 
         JsonNode items = schema.path("properties").path("suspicions").path("items");
@@ -58,7 +58,7 @@ class JsonSchemasTest {
 
     @Test
     @DisplayName("UT-SCHEMA-03 顶层数组（合同解读）：根为 array，items 内的对象同样补齐 required")
-    void 顶层数组() {
+    void strictifiesTopLevelArray() {
         JavaType listType = mapper.getTypeFactory().constructCollectionType(List.class, Interp.class);
 
         JsonNode schema = JsonSchemas.strict(listType);
@@ -72,7 +72,7 @@ class JsonSchemasTest {
 
     @Test
     @DisplayName("UT-SCHEMA-04 Schema 名称只含字母数字下划线（顶层数组加 _list 后缀）")
-    void schema名称() {
+    void schemaNameKeepsOnlySafeChars() {
         assertEquals("Pricing", JsonSchemas.name(type(Pricing.class)));
         assertEquals("Interp_list",
                 JsonSchemas.name(mapper.getTypeFactory().constructCollectionType(List.class, Interp.class)));

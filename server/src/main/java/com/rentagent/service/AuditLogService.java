@@ -20,14 +20,14 @@ public class AuditLogService {
 
     public void log(long operatorId, String action, String targetType, Long targetId, Map<String, Object> detail, String ip) {
         try {
-            AuditLog log1 = new AuditLog();
-            log1.setOperatorId(operatorId);
-            log1.setAction(action);
-            log1.setTargetType(targetType);
-            log1.setTargetId(targetId);
-            log1.setDetail(detail == null ? null : objectMapper.writeValueAsString(detail));
-            log1.setIp(ip);
-            mapper.insert(log1);
+            AuditLog entry = new AuditLog();
+            entry.setOperatorId(operatorId);
+            entry.setAction(action);
+            entry.setTargetType(targetType);
+            entry.setTargetId(targetId);
+            entry.setDetail(detail == null ? null : objectMapper.writeValueAsString(detail));
+            entry.setIp(ip);
+            mapper.insert(entry);
         } catch (Exception e) {
             log.warn("审计日志写入失败: {}", e.getMessage());
         }

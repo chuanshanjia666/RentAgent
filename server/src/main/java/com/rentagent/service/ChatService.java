@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -89,8 +90,6 @@ public class ChatService {
         SseEmitter emitter = new SseEmitter(120_000L);
         long start = System.currentTimeMillis();
         StringBuilder full = new StringBuilder();
-        String[] citationsJson = {null};
-        boolean[] transferred = {false};
         // token 用量：找房重试时模型会多次上报，累加计为本轮总消耗（NFR-05 留痕）
         int[] tokens = {0};
 
@@ -115,10 +114,11 @@ public class ChatService {
 
             @Override
             public void onComplete(String text, String citations, boolean isTransferred) {
-                citationsJson[0] = citations;
-                transferred[0] = isTransferred;
                 long latency = System.currentTimeMillis() - start;
-                AiChatMessage saved = saveMessage(s.getId(), 2, full.toString(), citations, null, (int) latency,
+                // full 是实际推给前端的增量；部分协议只在终止事件里带正文（delta 全程为空），
+                // 此时若仍按 full 落库，会存下一条空的助手消息
+                String answer = full.length() == 0 && text != null ? text : full.toString();
+                AiChatMessage saved = saveMessage(s.getId(), 2, answer, citations, null, (int) latency,
                         tokens[0] == 0 ? null : tokens[0]);
                 if (isTransferred) {
                     s.setIsTransferred(1);
@@ -202,7 +202,7 @@ public class ChatService {
 
     private Long ts(AiChatMessage m) {
         return m.getCreatedAt() == null ? null : m.getCreatedAt()
-                .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
     }
 
     private String defaultTitle(int scene) {

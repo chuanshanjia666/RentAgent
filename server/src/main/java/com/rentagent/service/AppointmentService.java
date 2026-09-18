@@ -1,6 +1,7 @@
 package com.rentagent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +36,7 @@ public class AppointmentService {
     private final SysUserMapper userMapper;
     private final NotificationService notification;
 
-    public ViewingAppointment create(long houseId, java.time.LocalDateTime time, String remark, long tenantId) {
+    public ViewingAppointment create(long houseId, LocalDateTime time, String remark, long tenantId) {
         House house = houseMapper.selectById(houseId);
         if (house == null || house.getStatus() != HouseService.ST_ONLINE) {
             throw new BizException(ErrorCode.HOUSE_NOT_FOUND);
@@ -42,11 +44,17 @@ public class AppointmentService {
         if (tenantId == house.getLandlordId()) {
             throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "不能预约自己的房源");
         }
+        // 秒以下精度会被 DATETIME 列截断，先对齐再同时用于落库值与占位键，避免两者不一致
+        LocalDateTime slot = time.withNano(0);
+        if (!slot.isAfter(LocalDateTime.now())) {
+            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "预约时间需晚于当前时间");
+        }
         ViewingAppointment a = new ViewingAppointment();
         a.setHouseId(houseId);
         a.setTenantId(tenantId);
         a.setLandlordId(house.getLandlordId());
-        a.setAppointmentTime(time);
+        a.setAppointmentTime(slot);
+        a.setActiveSlot(slotKey(houseId, slot));
         a.setStatus(ST_PENDING);
         a.setRemark(remark);
         try {
@@ -97,7 +105,23 @@ public class AppointmentService {
             }
             default -> throw new BizException(ErrorCode.PARAM_INVALID);
         }
-        mapper.updateById(a);
+        // 终态释放时段：active_slot 置 NULL 后同一房源同一时段可以被重新预约。
+        // updateById 会跳过 null 字段，释放必须走显式 set。
+        mapper.update(null, new LambdaUpdateWrapper<ViewingAppointment>()
+                .eq(ViewingAppointment::getId, a.getId())
+                .set(ViewingAppointment::getStatus, a.getStatus())
+                .set(ViewingAppointment::getRejectReason, a.getRejectReason())
+                .set(ViewingAppointment::getActiveSlot, holdsSlot(a.getStatus()) ? slotKey(a.getHouseId(), a.getAppointmentTime()) : null));
+    }
+
+    /** 待确认与已确认占用时段；已拒绝/已完成/已取消不再占用 */
+    static boolean holdsSlot(int status) {
+        return status == ST_PENDING || status == ST_CONFIRMED;
+    }
+
+    /** 时段占位键：与 {@code uk_active_slot} 唯一键配合，实现"仅有效预约之间互斥" */
+    static String slotKey(long houseId, LocalDateTime time) {
+        return houseId + ":" + time;
     }
 
     public Page<Map<String, Object>> pageFor(long uid, boolean landlordSide, long page, long size) {

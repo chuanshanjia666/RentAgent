@@ -2,6 +2,7 @@ package com.rentagent.service;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.BizException;
 import com.rentagent.entity.House;
 import com.rentagent.entity.LeaseOrder;
@@ -34,6 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -91,7 +93,7 @@ class ReviewServiceTest {
 
     @Test
     @DisplayName("UT-REVIEW-01 订单不存在或非本人订单不可评价（3005）")
-    void 非本人订单不可评价() {
+    void rejectsNonOwnOrder() {
         when(orderMapper.selectById(66L)).thenReturn(null);
         assertCode(3005, () -> service.create(66L, 5, 5, "很好", TENANT));
 
@@ -103,7 +105,7 @@ class ReviewServiceTest {
 
     @Test
     @DisplayName("UT-REVIEW-02 在租中（订单未完成）不可评价（3005）")
-    void 在租中不可评价() {
+    void rejectsActiveLease() {
         when(orderMapper.selectById(66L)).thenReturn(order(0, TENANT));
 
         BizException e = assertThrows(BizException.class, () -> service.create(66L, 5, 5, "很好", TENANT));
@@ -114,7 +116,7 @@ class ReviewServiceTest {
 
     @Test
     @DisplayName("UT-REVIEW-03 同一订单重复评价被唯一键拦截（3005）")
-    void 重复评价被拒() {
+    void rejectsDuplicateReview() {
         when(orderMapper.selectById(66L)).thenReturn(order(1, TENANT));
         when(reviewMapper.insert(any(Review.class))).thenThrow(new DuplicateKeyException("uk_order"));
 
@@ -125,7 +127,7 @@ class ReviewServiceTest {
 
     @Test
     @DisplayName("UT-REVIEW-04 已退租订单可评价：字段取订单快照、状态正常、通知房东")
-    void 已退租订单可评价() {
+    void allowsReviewAfterTermination() {
         when(orderMapper.selectById(66L)).thenReturn(order(1, TENANT));
         when(reviewMapper.selectList(any())).thenReturn(List.of());
 
@@ -143,7 +145,7 @@ class ReviewServiceTest {
 
     @Test
     @DisplayName("UT-REVIEW-05 评价后房源均分按 HALF_UP 保留 1 位回填")
-    void 均分回填保留一位小数() {
+    void backfillsAvgScoreWithOneDecimal() {
         when(orderMapper.selectById(66L)).thenReturn(order(1, TENANT));
         Review old = new Review();
         old.setHouseScore(4);
@@ -163,7 +165,7 @@ class ReviewServiceTest {
 
     @Test
     @DisplayName("UT-REVIEW-06 无有效评价时清理均分（写 null 而非 0）")
-    void 无有效评价清理均分() {
+    void clearsAvgScoreWithoutReviews() {
         when(orderMapper.selectById(66L)).thenReturn(order(1, TENANT));
         when(reviewMapper.selectList(any())).thenReturn(List.of());
 
@@ -177,17 +179,17 @@ class ReviewServiceTest {
 
     @Test
     @DisplayName("UT-REVIEW-07 房源评价列表只展示正常状态评价并脱敏租客名")
-    void 评价列表组装() {
+    void assemblesReviewList() {
         Review r = new Review();
         r.setId(1L);
         r.setTenantId(TENANT);
         r.setHouseScore(5);
         r.setLandlordScore(5);
         r.setContent("很好");
-        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Review> page = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 10);
+        Page<Review> page = new Page<>(1, 10);
         page.setRecords(List.of(r));
         page.setTotal(1);
-        org.mockito.Mockito.doReturn(page).when(reviewMapper).selectPage(any(), any());
+        doReturn(page).when(reviewMapper).selectPage(any(), any());
         SysUser tenant = new SysUser();
         tenant.setId(TENANT);
         tenant.setNickname("小陈");

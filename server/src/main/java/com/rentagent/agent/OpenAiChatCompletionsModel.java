@@ -5,17 +5,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolParameters;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.output.TokenUsage;
 
+import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -23,6 +26,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,7 +90,7 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
             JsonNode choice = root.path("choices").path(0);
             AiMessage message = parseMessage(choice.path("message"));
             return Response.from(message, tokenUsage(root.path("usage")), null);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             throw new UncheckedIOException("Chat Completions 调用失败", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -118,7 +122,7 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
                 throw new IllegalStateException("结构化输出返回内容为空");
             }
             return text;
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             throw new UncheckedIOException("Chat Completions 结构化调用失败", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -140,13 +144,13 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
     // ── 流式 ───────────────────────────────────────────────────────────
 
     @Override
-    public void generate(List<ChatMessage> messages, dev.langchain4j.model.StreamingResponseHandler<AiMessage> handler) {
+    public void generate(List<ChatMessage> messages, StreamingResponseHandler<AiMessage> handler) {
         generate(messages, List.of(), handler);
     }
 
     @Override
     public void generate(List<ChatMessage> messages, List<ToolSpecification> tools,
-                         dev.langchain4j.model.StreamingResponseHandler<AiMessage> handler) {
+                         StreamingResponseHandler<AiMessage> handler) {
         try {
             // 会话级状态（每次调用独立，避免并发串扰）
             StringBuilder text = new StringBuilder();
@@ -155,12 +159,12 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
             String[] finishReason = {null};
             http.sendAsync(request(requestBody(messages, tools, true, null)), HttpResponse.BodyHandlers.ofLines())
                     .thenAccept(response -> {
-                        try {
-                            response.body().forEach(line -> consumeSseLine(line, text, toolBuffers, usage, finishReason, handler));
-                            handler.onComplete(Response.from(assemble(text, toolBuffers, finishReason), usage[0], null));
-                        } catch (Exception e) {
-                            handler.onError(e);
+                        for (Iterator<String> it = response.body().iterator(); it.hasNext(); ) {
+                            if (!consumeSseLine(it.next(), text, toolBuffers, usage, finishReason, handler)) {
+                                return;
+                            }
                         }
+                        handler.onComplete(Response.from(assemble(text, toolBuffers, finishReason), usage[0], null));
                     })
                     .exceptionally(ex -> {
                         handler.onError(ex);
@@ -180,17 +184,19 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
     /**
      * SSE 分片：delta.content 逐字上抛；delta.tool_calls 按 index 累积 id / function.name / function.arguments
      * （参数是分片拼接的 JSON 片段，必须收完整个流才能解析）。reasoning 等其它字段按设计跳过。
+     *
+     * @return false 表示本行解析失败、已向 handler 上报 {@code onError}——终止回调已经发出，
+     *         调用方必须立即停止解析并且**不得**再调用 {@code onComplete}，否则一次调用会收到两个终止回调
      */
-    void consumeSseLine(String line, StringBuilder text, Map<Integer, ToolCallBuffer> toolBuffers,
-                                TokenUsage[] usage, String[] finishReason,
-                                dev.langchain4j.model.StreamingResponseHandler<AiMessage> handler) {
+    boolean consumeSseLine(String line, StringBuilder text, Map<Integer, ToolCallBuffer> toolBuffers,
+                           TokenUsage[] usage, String[] finishReason, StreamingResponseHandler<AiMessage> handler) {
         try {
             if (!line.startsWith("data:")) {
-                return;
+                return true;
             }
             String payload = line.substring(5).trim();
             if (payload.isEmpty() || "[DONE]".equals(payload)) {
-                return;
+                return true;
             }
             JsonNode data = mapper.readTree(payload);
             if (data.hasNonNull("usage")) {
@@ -224,8 +230,10 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
                     }
                 }
             }
+            return true;
         } catch (Exception e) {
             handler.onError(e);
+            return false;
         }
     }
 
@@ -305,7 +313,7 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
                 if (t.description() != null) {
                     fn.put("description", t.description());
                 }
-                dev.langchain4j.agent.tool.ToolParameters p = t.parameters();
+                ToolParameters p = t.parameters();
                 ObjectNode schema = fn.putObject("parameters");
                 schema.put("type", p == null || p.type() == null ? "object" : p.type());
                 if (p != null && p.properties() != null) {
@@ -353,7 +361,7 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
                 usage.path("total_tokens").asInt());
     }
 
-    private HttpRequest request(ObjectNode body) throws java.io.IOException {
+    private HttpRequest request(ObjectNode body) throws IOException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/chat/completions"))
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")

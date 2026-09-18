@@ -1,6 +1,7 @@
 package com.rentagent.config;
 
 import com.rentagent.agent.LlmGateway;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,12 +19,14 @@ class AiPropsTest {
     }
 
     @Test
-    void 无任何配置时无可用后端() {
+    @DisplayName("UT-PROPS-01 无任何配置时无可用后端")
+    void noBackendWhenNothingConfigured() {
         assertNull(new AiProps().activeBackend());
     }
 
     @Test
-    void 快捷单后端生效并补默认协议() {
+    @DisplayName("UT-PROPS-02 快捷单后端生效并补默认协议")
+    void flatConfigAppliesDefaultProtocol() {
         AiProps p = new AiProps();
         p.setApiKey("k1");
         p.setModel("demo-flash");
@@ -33,7 +36,8 @@ class AiPropsTest {
     }
 
     @Test
-    void 指定active的命名后端优先() {
+    @DisplayName("UT-PROPS-03 指定 active 的命名后端优先")
+    void namedBackendWinsWhenActiveSet() {
         AiProps p = new AiProps();
         p.setApiKey("flat-key");
         p.getBackends().put("demo", backend("openai-chat-completions", "demo-key", "demo-large"));
@@ -45,7 +49,8 @@ class AiPropsTest {
     }
 
     @Test
-    void active缺Key时不静默换厂商而是回落快捷配置() {
+    @DisplayName("UT-PROPS-04 active 后端缺 Key 时不静默换厂商，而是回落快捷配置")
+    void missingKeyOnActiveDoesNotSilentlySwitchVendor() {
         AiProps p = new AiProps();
         p.setApiKey("flat-key");
         p.setProtocol("openai-chat-completions");
@@ -56,7 +61,8 @@ class AiPropsTest {
     }
 
     @Test
-    void 未指定active时取第一个有Key的命名后端() {
+    @DisplayName("UT-PROPS-05 未指定 active 时取第一个有 Key 的命名后端")
+    void firstNamedBackendWithKeyWhenActiveUnset() {
         AiProps p = new AiProps();
         p.getBackends().put("empty", backend("openai-chat-completions", "", "m0"));
         p.getBackends().put("demo", backend("openai-chat-completions", "k", "demo-large"));
@@ -64,7 +70,8 @@ class AiPropsTest {
     }
 
     @Test
-    void 协议名归一化兼容旧别名() {
+    @DisplayName("UT-PROPS-06 协议名归一化兼容旧别名")
+    void normalizeProtocolAcceptsLegacyAliases() {
         assertEquals("openai-chat-completions", LlmGateway.normalizeProtocol("openai"));
         assertEquals("openai-chat-completions", LlmGateway.normalizeProtocol("chat-completions"));
         assertEquals("openai-chat-completions", LlmGateway.normalizeProtocol("OpenAI-Chat-Completions"));

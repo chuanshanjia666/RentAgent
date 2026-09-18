@@ -48,10 +48,11 @@ public class ContractController {
         return R.ok(contractService.act(id, req.action(), user.getId(), user.getRole()));
     }
 
-    @Operation(summary = "合同详情")
+    @Operation(summary = "合同详情（仅合同双方与管理员）")
     @GetMapping("/contracts/{id}")
     public R<Contract> detail(@PathVariable long id) {
-        return R.ok(contractService.detail(id));
+        UserContext.User user = UserContext.get();
+        return R.ok(contractService.detail(id, user.getId(), user.getRole()));
     }
 
     @Operation(summary = "我的合同（租客与房东）")

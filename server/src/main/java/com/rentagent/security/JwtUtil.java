@@ -6,11 +6,12 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
+
+import javax.crypto.SecretKey;
 
 /** JWT 签发与校验（jjwt 0.12 API），claims 携带 uid 与 role */
 @Component

@@ -5,16 +5,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolParameters;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
 
+import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -22,6 +25,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -71,7 +75,7 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
                         + abbreviate(resp.body()));
             }
             return Response.from(parseOutput(mapper.readTree(resp.body()).path("output")));
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             throw new UncheckedIOException("Responses API 调用失败", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -82,13 +86,13 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
     // ── 流式 ───────────────────────────────────────────────────────────
 
     @Override
-    public void generate(List<ChatMessage> messages, dev.langchain4j.model.StreamingResponseHandler<AiMessage> handler) {
+    public void generate(List<ChatMessage> messages, StreamingResponseHandler<AiMessage> handler) {
         generate(messages, List.of(), handler);
     }
 
     @Override
     public void generate(List<ChatMessage> messages, List<ToolSpecification> tools,
-                         dev.langchain4j.model.StreamingResponseHandler<AiMessage> handler) {
+                         StreamingResponseHandler<AiMessage> handler) {
         try {
             ObjectNode body = requestBody(messages, tools, true);
             StringBuilder text = new StringBuilder();
@@ -96,15 +100,15 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
             JsonNode[] finalOutput = {null};
             http.sendAsync(request(body), HttpResponse.BodyHandlers.ofLines())
                     .thenAccept(response -> {
-                        try {
-                            response.body().forEach(line -> consumeSseLine(line, eventName, text, finalOutput, handler));
-                            AiMessage message = finalOutput[0] != null
-                                    ? parseOutput(finalOutput[0])
-                                    : new AiMessage(text.toString());
-                            handler.onComplete(Response.from(message));
-                        } catch (Exception e) {
-                            handler.onError(e);
+                        for (Iterator<String> it = response.body().iterator(); it.hasNext(); ) {
+                            if (!consumeSseLine(it.next(), eventName, text, finalOutput, handler)) {
+                                return;
+                            }
                         }
+                        AiMessage message = finalOutput[0] != null
+                                ? parseOutput(finalOutput[0])
+                                : new AiMessage(text.toString());
+                        handler.onComplete(Response.from(message));
                     })
                     .exceptionally(ex -> {
                         handler.onError(ex);
@@ -115,20 +119,25 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
         }
     }
 
-    /** SSE 行协议：event: <name> + data: <json>；关注 output_text.delta 与 completed（含完整 output，便于还原工具调用） */
-    private void consumeSseLine(String line, String[] eventName, StringBuilder text, JsonNode[] finalOutput,
-                                dev.langchain4j.model.StreamingResponseHandler<AiMessage> handler) {
+    /**
+     * SSE 行协议：event: &lt;name&gt; + data: &lt;json&gt;；关注 output_text.delta 与 completed（含完整 output，便于还原工具调用）。
+     *
+     * @return false 表示本行解析失败或收到失败事件、已向 handler 上报 {@code onError}——终止回调已经发出，
+     *         调用方必须立即停止解析并且**不得**再调用 {@code onComplete}，否则一次调用会收到两个终止回调
+     */
+    private boolean consumeSseLine(String line, String[] eventName, StringBuilder text, JsonNode[] finalOutput,
+                                   StreamingResponseHandler<AiMessage> handler) {
         try {
             if (line.startsWith("event:")) {
                 eventName[0] = line.substring(6).trim();
-                return;
+                return true;
             }
             if (!line.startsWith("data:")) {
-                return;
+                return true;
             }
             String payload = line.substring(5).trim();
             if (payload.isEmpty() || "[DONE]".equals(payload)) {
-                return;
+                return true;
             }
             JsonNode data = mapper.readTree(payload);
             switch (eventName[0] == null ? "" : eventName[0]) {
@@ -140,13 +149,17 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
                     }
                 }
                 case "response.completed" -> finalOutput[0] = data.path("response").path("output");
-                case "response.failed", "error" -> handler.onError(new IllegalStateException(
-                        "Responses API 流式错误: " + abbreviate(payload)));
+                case "response.failed", "error" -> {
+                    handler.onError(new IllegalStateException("Responses API 流式错误: " + abbreviate(payload)));
+                    return false;
+                }
                 default -> {
                 }
             }
+            return true;
         } catch (Exception e) {
             handler.onError(e);
+            return false;
         }
     }
 
@@ -207,7 +220,7 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
                 if (t.description() != null) {
                     tool.put("description", t.description());
                 }
-                dev.langchain4j.agent.tool.ToolParameters p = t.parameters();
+                ToolParameters p = t.parameters();
                 if (p != null) {
                     ObjectNode schema = tool.putObject("parameters");
                     schema.put("type", p.type() == null ? "object" : p.type());
@@ -255,7 +268,7 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
                 : new AiMessage(text.toString(), requests);
     }
 
-    private HttpRequest request(ObjectNode body) throws java.io.IOException {
+    private HttpRequest request(ObjectNode body) throws IOException {
         return HttpRequest.newBuilder(URI.create(baseUrl + "/responses"))
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")

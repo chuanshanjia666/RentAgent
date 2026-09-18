@@ -136,7 +136,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-01 非上架房源不可发起签约（2001）")
-    void 非上架房源不可签约() {
+    void rejectsOfflineHouse() {
         for (int status : new int[]{HouseService.ST_PENDING, HouseService.ST_PASSED,
                 HouseService.ST_REJECTED, HouseService.ST_OFFLINE, HouseService.ST_RENTED}) {
             when(houseMapper.selectById(101L)).thenReturn(house(status));
@@ -150,7 +150,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-02 不能与自己发布的房源签约（1000）")
-    void 不能与自己的房源签约() {
+    void rejectsSigningOwnHouse() {
         BizException e = assertThrows(BizException.class, () -> service.create(101L,
                 LocalDate.now().plusDays(1), LocalDate.now().plusMonths(12), LANDLORD));
         assertEquals(1000, e.getCode());
@@ -159,7 +159,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-03 租期非法拒绝：起止无序、起止相同、起始早于今天（1000）")
-    void 租期非法拒绝() {
+    void rejectsInvalidTerm() {
         LocalDate today = LocalDate.now();
         assertCode(1000, () -> service.create(101L, today.plusMonths(12), today.plusMonths(1), TENANT));
         assertCode(1000, () -> service.create(101L, today.plusDays(1), today.plusDays(1), TENANT));
@@ -168,7 +168,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-04 起始日为今天允许签约（边界）")
-    void 起始日为今天允许() {
+    void allowsTermStartingToday() {
         when(contractMapper.selectCount(any())).thenReturn(0L);
         when(contractMapper.insert(any(Contract.class))).thenAnswer(inv -> {
             ((Contract) inv.getArgument(0)).setId(88L);
@@ -183,7 +183,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-05 同房源同租客已有进行中合同不可重复发起（3003）")
-    void 重复发起合同被拒() {
+    void rejectsDuplicateActiveContract() {
         when(contractMapper.selectCount(any())).thenReturn(1L);
 
         BizException e = assertThrows(BizException.class, () -> service.create(101L,
@@ -195,7 +195,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-06 合同创建成功：待租客确认、金额与押金取房源租金、条款非空并通知房东")
-    void 合同创建成功() {
+    void createsContract() {
         when(contractMapper.selectCount(any())).thenReturn(0L);
         when(contractMapper.insert(any(Contract.class))).thenAnswer(inv -> {
             ((Contract) inv.getArgument(0)).setId(88L);
@@ -216,7 +216,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-07 合同不存在返回 3004")
-    void 合同不存在返回3004() {
+    void actFailsWhenContractMissing() {
         when(contractMapper.selectById(88L)).thenReturn(null);
 
         assertCode(3004, () -> service.act(88L, "sign", TENANT, 1));
@@ -224,7 +224,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-08 租客签署后进入待房东确认并通知房东")
-    void 租客签署进入待房东确认() {
+    void tenantSignAdvancesToLandlordConfirm() {
         Contract c = contract(ContractService.ST_TENANT_CONFIRM,
                 LocalDate.now().plusDays(1), LocalDate.now().plusMonths(13));
         when(contractMapper.selectById(88L)).thenReturn(c);
@@ -240,7 +240,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-09 房东签署后合同生效：派生订单、按月生成账单、房源置已出租")
-    void 房东签署合同生效并派生订单账单() {
+    void landlordSignActivatesAndDerivesOrderBills() {
         LocalDate start = LocalDate.of(2026, 11, 1);
         LocalDate end = start.plusMonths(12);
         Contract c = contract(ContractService.ST_LANDLORD_CONFIRM, start, end);
@@ -284,7 +284,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-10 起止不足一个月仍生成 1 期账单（期数取下限 1）")
-    void 不足一月生成一期账单() {
+    void generatesSingleBillForShortTerm() {
         Contract c = contract(ContractService.ST_LANDLORD_CONFIRM,
                 LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 20));
         when(contractMapper.selectById(88L)).thenReturn(c);
@@ -302,7 +302,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-11 乱序或重复签署被拒（3003）")
-    void 乱序签署被拒() {
+    void rejectsOutOfOrderSigning() {
         // 房东在待租客确认阶段抢先签署
         when(contractMapper.selectById(88L)).thenReturn(contract(ContractService.ST_TENANT_CONFIRM,
                 LocalDate.now().plusDays(1), LocalDate.now().plusMonths(13)));
@@ -322,7 +322,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-12 拒签：待签双方可作废，非双方与已生效阶段被拒")
-    void 拒签规则() {
+    void rejectRules() {
         Contract c = contract(ContractService.ST_TENANT_CONFIRM,
                 LocalDate.now().plusDays(1), LocalDate.now().plusMonths(13));
         when(contractMapper.selectById(88L)).thenReturn(c);
@@ -346,7 +346,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-13 退租：已生效合同置已退租、订单关闭、房源重新上架")
-    void 退租释放房源() {
+    void terminateReleasesHouse() {
         Contract c = contract(ContractService.ST_EFFECTIVE,
                 LocalDate.now().plusDays(1), LocalDate.now().plusMonths(13));
         LeaseOrder order = new LeaseOrder();
@@ -377,7 +377,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-14 未知动作返回 1000")
-    void 未知合同动作返回1000() {
+    void rejectsUnknownContractAction() {
         when(contractMapper.selectById(88L)).thenReturn(contract(ContractService.ST_EFFECTIVE,
                 LocalDate.now().plusDays(1), LocalDate.now().plusMonths(13)));
 
@@ -388,7 +388,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-15 账单查询：仅订单双方或管理员可见，他人不可见（3004）")
-    void 账单查询归属校验() {
+    void billsCheckOwnership() {
         LeaseOrder order = new LeaseOrder();
         order.setId(66L);
         order.setTenantId(TENANT);
@@ -413,7 +413,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-16 账单支付：仅订单租客可支付，非待支付状态拒绝")
-    void 账单支付规则() {
+    void billPaymentRules() {
         RentBill bill = new RentBill();
         bill.setId(31L);
         bill.setLeaseOrderId(66L);
@@ -449,7 +449,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-17 订单列表按角色口径过滤：租客看自己的、房东看自己收到的")
-    void 订单列表角色口径() {
+    void ordersScopedByRole() {
         Page<LeaseOrder> page = new Page<>(1, 10);
         page.setRecords(List.of());
         page.setTotal(0);
@@ -468,7 +468,7 @@ class ContractServiceTest {
 
     @Test
     @DisplayName("UT-CONTRACT-18 我的合同列表按签署双方过滤")
-    void 我的合同列表() {
+    void mineScopedToBothParties() {
         Page<Contract> page = new Page<>(1, 10);
         page.setRecords(List.of());
         page.setTotal(0);
@@ -484,16 +484,23 @@ class ContractServiceTest {
     }
 
     @Test
-    @DisplayName("UT-CONTRACT-19 合同详情不存在返回 3004")
-    void 合同详情不存在返回3004() {
+    @DisplayName("UT-CONTRACT-19 合同详情：不存在 3004；仅合同双方与管理员可读，其余 1007")
+    void detailChecksOwnership() {
         when(contractMapper.selectById(999L)).thenReturn(null);
+        assertCode(3004, () -> service.detail(999L, TENANT, 1));
 
-        assertCode(3004, () -> service.detail(999L));
+        Contract c = contract(ContractService.ST_EFFECTIVE, LocalDate.now(), LocalDate.now().plusMonths(12));
+        when(contractMapper.selectById(88L)).thenReturn(c);
+
+        assertEquals(c, service.detail(88L, TENANT, 1));
+        assertEquals(c, service.detail(88L, LANDLORD, 2));
+        assertEquals(c, service.detail(88L, STRANGER, 3));
+        assertCode(1007, () -> service.detail(88L, STRANGER, 1));
     }
 
     @Test
     @DisplayName("UT-CONTRACT-20 生效时间写回：租客/房东签署时间戳各自独立")
-    void 签署时间戳独立写回() {
+    void signTimestampsWrittenIndependently() {
         LocalDate start = LocalDate.now().plusDays(1);
         Contract c = contract(ContractService.ST_TENANT_CONFIRM, start, start.plusMonths(12));
         when(contractMapper.selectById(88L)).thenReturn(c);

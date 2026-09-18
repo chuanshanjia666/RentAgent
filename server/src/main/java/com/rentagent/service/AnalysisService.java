@@ -1,6 +1,7 @@
 package com.rentagent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rentagent.agent.AiJsonClient;
@@ -26,6 +27,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * AI 分析服务（FR-08/14/15/16）：定价建议、虚假房源检测、合同解读、房源信息识别填充。
@@ -80,7 +82,7 @@ public class AnalysisService {
 
         static SampleStats of(List<House> houses) {
             List<BigDecimal> rents = houses.stream().map(House::getRent)
-                    .filter(java.util.Objects::nonNull).sorted().toList();
+                    .filter(Objects::nonNull).sorted().toList();
             if (rents.isEmpty()) {
                 return new SampleStats(0, null, null, null, null);
             }
@@ -249,7 +251,7 @@ public class AnalysisService {
         AiDto.InterpVO vo = new AiDto.InterpVO(items,
                 "AI 生成，仅供参考，不构成法律意见；重要条款建议咨询专业人士", engineLabel());
         save(uid, 3, "contract", contractId, Map.of("contractId", contractId), vo);
-        writeRiskFlags(contract, items);
+        writeRiskFlags(contract.getId(), items);
         return vo;
     }
 
@@ -273,12 +275,19 @@ public class AnalysisService {
         return sb.toString();
     }
 
-    /** 风险条款下标回写 contract.risk_flags（前端据此在合同上标红） */
-    private void writeRiskFlags(Contract contract, List<AiDto.InterpItem> items) {
+    /**
+     * 风险条款下标回写 contract.risk_flags（前端据此在合同上标红）。
+     * <p>
+     * 只更新这一列：模型调用耗时以秒计，若用 updateById 整行回写，期间并发发生的
+     * 签约/退租状态会被这里携带的旧快照覆盖回去（合同状态被静默回退）。
+     */
+    private void writeRiskFlags(Long contractId, List<AiDto.InterpItem> items) {
         try {
-            contract.setRiskFlags(objectMapper.writeValueAsString(
-                    items.stream().filter(AiDto.InterpItem::risk).map(AiDto.InterpItem::index).toList()));
-            contractMapper.updateById(contract);
+            String riskFlags = objectMapper.writeValueAsString(
+                    items.stream().filter(AiDto.InterpItem::risk).map(AiDto.InterpItem::index).toList());
+            contractMapper.update(null, new LambdaUpdateWrapper<Contract>()
+                    .eq(Contract::getId, contractId)
+                    .set(Contract::getRiskFlags, riskFlags));
         } catch (Exception e) {
             log.warn("风险标注写回失败: {}", e.getMessage());
         }

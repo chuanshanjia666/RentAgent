@@ -2,6 +2,7 @@ package com.rentagent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
@@ -89,7 +90,7 @@ public class AdminService {
         return vo;
     }
 
-    private <T> List<Map<String, Object>> trend(com.baomidou.mybatisplus.core.mapper.BaseMapper<T> mapper,
+    private <T> List<Map<String, Object>> trend(BaseMapper<T> mapper,
                                                 String fmt, String table, String where) {
         QueryWrapper<T> w = new QueryWrapper<T>()
                 .select("DATE_FORMAT(created_at, '" + fmt + "') AS period", "COUNT(*) AS cnt")

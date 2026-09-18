@@ -226,6 +226,10 @@ expect_eq "房东确认预约" "$(code_of "$(req PATCH "/appointments/$APPT_ID" 
 expect_eq "已确认预约不可重复确认" "$(code_of "$(req PATCH "/appointments/$APPT_ID" "$T_LI" '{"action":"confirm"}')")" "3002"
 expect_eq "已确认预约可取消" "$(code_of "$(req PATCH "/appointments/$APPT_ID" "$T_TENANT" '{"action":"cancel"}')")" "0"
 expect_eq "已取消预约不可再确认" "$(code_of "$(req PATCH "/appointments/$APPT_ID" "$T_LI" '{"action":"confirm"}')")" "3002"
+# 唯一键 uk_active_slot 只约束仍占着时段的有效预约：取消后时段应被释放
+expect_eq "取消后同一时段可被重新预约（唯一键已释放）" "$(code_of "$(req POST /appointments "$T_TENANT" "$(jq -nc --argjson h "$HID" --arg t "$APPT_TIME" '{houseId:$h,appointmentTime:$t}')")")" "0"
+APPT_PAST=$(date -d '-1 day' '+%Y-%m-%dT%H:%M:00')
+expect_eq "过去时间不可预约" "$(code_of "$(req POST /appointments "$T_TENANT" "$(jq -nc --argjson h "$HID" --arg t "$APPT_PAST" '{houseId:$h,appointmentTime:$t}')")")" "1000"
 
 # ── 4. FR-18/19 在线签约 → 订单 → 账单 ─────────────────────────
 say "5. FR-18/19 签约、订单与账单"

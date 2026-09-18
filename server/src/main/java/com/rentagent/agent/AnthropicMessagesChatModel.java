@@ -5,16 +5,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolParameters;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
 
+import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -22,6 +25,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,7 +79,7 @@ public class AnthropicMessagesChatModel implements ChatLanguageModel, StreamingC
                 throw new IllegalStateException("Messages API HTTP " + resp.statusCode() + ": " + abbreviate(resp.body()));
             }
             return Response.from(parseContent(mapper.readTree(resp.body()).path("content")));
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             throw new UncheckedIOException("Messages API 调用失败", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -92,7 +96,7 @@ public class AnthropicMessagesChatModel implements ChatLanguageModel, StreamingC
 
     @Override
     public void generate(List<ChatMessage> messages, List<ToolSpecification> tools,
-                         dev.langchain4j.model.StreamingResponseHandler<AiMessage> handler) {
+                         StreamingResponseHandler<AiMessage> handler) {
         try {
             // 流式过程中的会话级状态（每次调用独立，避免并发串扰）
             StringBuilder text = new StringBuilder();
@@ -100,31 +104,12 @@ public class AnthropicMessagesChatModel implements ChatLanguageModel, StreamingC
             String[] eventName = {null};
             http.sendAsync(request(requestBody(messages, tools, true)), HttpResponse.BodyHandlers.ofLines())
                     .thenAccept(response -> {
-                        try {
-                            response.body().forEach(line -> consumeSseLine(line, eventName, text, toolBuffers, handler));
-                            List<ToolExecutionRequest> requests = new ArrayList<>();
-                            for (ToolBuffer tb : toolBuffers.values()) {
-                                requests.add(ToolExecutionRequest.builder()
-                                        .id(tb.id).name(tb.name)
-                                        .arguments(tb.json.length() == 0 ? "{}" : tb.json.toString())
-                                        .build());
+                        for (Iterator<String> it = response.body().iterator(); it.hasNext(); ) {
+                            if (!consumeSseLine(it.next(), eventName, text, toolBuffers, handler)) {
+                                return;
                             }
-                            AiMessage message;
-                            if (!requests.isEmpty()) {
-                                // 纯工具调用响应无文本：必须用 List 构造器（两参构造器会校验 text 非空）
-                                message = text.length() == 0
-                                        ? new AiMessage(requests)
-                                        : new AiMessage(text.toString(), requests);
-                            } else if (text.length() > 0) {
-                                message = new AiMessage(text.toString());
-                            } else {
-                                // 思维链耗尽 max_tokens 等场景：content 为空，禁止抛 "text cannot be blank"
-                                message = new AiMessage("抱歉，这次没有生成有效回答，请换个说法再试一次。");
-                            }
-                            handler.onComplete(Response.from(message));
-                        } catch (Exception e) {
-                            handler.onError(e);
                         }
+                        handler.onComplete(Response.from(assemble(text, toolBuffers)));
                     })
                     .exceptionally(ex -> {
                         handler.onError(ex);
@@ -135,27 +120,51 @@ public class AnthropicMessagesChatModel implements ChatLanguageModel, StreamingC
         }
     }
 
+    /** 正文与工具调用合并为一个 AiMessage：两者可以同时存在 */
+    private AiMessage assemble(StringBuilder text, Map<Integer, ToolBuffer> toolBuffers) {
+        List<ToolExecutionRequest> requests = new ArrayList<>();
+        for (ToolBuffer tb : toolBuffers.values()) {
+            requests.add(ToolExecutionRequest.builder()
+                    .id(tb.id).name(tb.name)
+                    .arguments(tb.json.length() == 0 ? "{}" : tb.json.toString())
+                    .build());
+        }
+        if (!requests.isEmpty()) {
+            // 纯工具调用响应无文本：必须用 List 构造器（两参构造器会校验 text 非空）
+            return text.length() == 0 ? new AiMessage(requests) : new AiMessage(text.toString(), requests);
+        }
+        if (text.length() > 0) {
+            return new AiMessage(text.toString());
+        }
+        // 思维链耗尽 max_tokens 等场景：content 为空，禁止抛 "text cannot be blank"
+        return new AiMessage("抱歉，这次没有生成有效回答，请换个说法再试一次。");
+    }
+
     private static class ToolBuffer {
         String id;
         String name;
         StringBuilder json = new StringBuilder();
     }
 
-    /** SSE 行协议：event: <name> + data: <json>。text_delta 逐字上抛；tool_use 由 content_block_start + input_json_delta 组装 */
-    private void consumeSseLine(String line, String[] eventName, StringBuilder text,
-                                Map<Integer, ToolBuffer> toolBuffers,
-                                dev.langchain4j.model.StreamingResponseHandler<AiMessage> handler) {
+    /**
+     * SSE 行协议：event: &lt;name&gt; + data: &lt;json&gt;。text_delta 逐字上抛；tool_use 由 content_block_start + input_json_delta 组装。
+     *
+     * @return false 表示本行解析失败或收到 error 事件、已向 handler 上报 {@code onError}——终止回调已经发出，
+     *         调用方必须立即停止解析并且**不得**再调用 {@code onComplete}，否则一次调用会收到两个终止回调
+     */
+    private boolean consumeSseLine(String line, String[] eventName, StringBuilder text,
+                                   Map<Integer, ToolBuffer> toolBuffers, StreamingResponseHandler<AiMessage> handler) {
         try {
             if (line.startsWith("event:")) {
                 eventName[0] = line.substring(6).trim();
-                return;
+                return true;
             }
             if (!line.startsWith("data:")) {
-                return;
+                return true;
             }
             String payload = line.substring(5).trim();
             if (payload.isEmpty()) {
-                return;
+                return true;
             }
             JsonNode data = mapper.readTree(payload);
             switch (eventName[0] == null ? "" : eventName[0]) {
@@ -185,13 +194,17 @@ public class AnthropicMessagesChatModel implements ChatLanguageModel, StreamingC
                     }
                     // thinking_delta / signature_delta：按设计跳过
                 }
-                case "error" -> handler.onError(new IllegalStateException(
-                        "Messages API 流式错误: " + abbreviate(payload)));
+                case "error" -> {
+                    handler.onError(new IllegalStateException("Messages API 流式错误: " + abbreviate(payload)));
+                    return false;
+                }
                 default -> {
                 }
             }
+            return true;
         } catch (Exception e) {
             handler.onError(e);
+            return false;
         }
     }
 
@@ -252,7 +265,7 @@ public class AnthropicMessagesChatModel implements ChatLanguageModel, StreamingC
                 if (t.description() != null) {
                     tool.put("description", t.description());
                 }
-                dev.langchain4j.agent.tool.ToolParameters p = t.parameters();
+                ToolParameters p = t.parameters();
                 ObjectNode schema = tool.putObject("input_schema");
                 schema.put("type", p == null || p.type() == null ? "object" : p.type());
                 if (p != null && p.properties() != null) {
@@ -294,7 +307,7 @@ public class AnthropicMessagesChatModel implements ChatLanguageModel, StreamingC
                 : new AiMessage(text.toString(), requests);
     }
 
-    private HttpRequest request(ObjectNode body) throws java.io.IOException {
+    private HttpRequest request(ObjectNode body) throws IOException {
         return HttpRequest.newBuilder(URI.create(baseUrl + "/v1/messages"))
                 .header("x-api-key", apiKey)
                 .header("anthropic-version", "2023-06-01")

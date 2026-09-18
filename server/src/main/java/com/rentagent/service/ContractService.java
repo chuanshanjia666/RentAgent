@@ -15,6 +15,7 @@ import com.rentagent.mapper.HouseMapper;
 import com.rentagent.mapper.LeaseOrderMapper;
 import com.rentagent.mapper.RentBillMapper;
 import com.rentagent.mapper.SysUserMapper;
+import com.rentagent.security.UserContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -176,10 +177,17 @@ public class ContractService {
         return order;
     }
 
-    public Contract detail(long id) {
+    /**
+     * 合同详情：仅合同双方与管理员可见。开放给任意登录用户会形成越权读取
+     * （合同正文含双方姓名、房屋地址与租金，遍历 id 即可批量拉取）。
+     */
+    public Contract detail(long id, long uid, int role) {
         Contract c = contractMapper.selectById(id);
         if (c == null) {
             throw new BizException(ErrorCode.ORDER_NOT_FOUND);
+        }
+        if (c.getTenantId() != uid && c.getLandlordId() != uid && role != 3) {
+            throw new BizException(ErrorCode.FORBIDDEN);
         }
         return c;
     }
@@ -222,7 +230,7 @@ public class ContractService {
 
     public List<RentBill> bills(long orderId, long uid) {
         LeaseOrder order = orderMapper.selectById(orderId);
-        if (order == null || (order.getTenantId() != uid && order.getLandlordId() != uid && UserContext_role() != 3)) {
+        if (order == null || (order.getTenantId() != uid && order.getLandlordId() != uid && !isAdmin())) {
             throw new BizException(ErrorCode.ORDER_NOT_FOUND);
         }
         return billMapper.selectList(new LambdaQueryWrapper<RentBill>()
@@ -249,8 +257,9 @@ public class ContractService {
                 "第 " + bill.getPeriodNo() + " 期租金 ¥" + bill.getAmount() + " 已确认支付", "order", order.getId());
     }
 
-    private Integer UserContext_role() {
-        return com.rentagent.security.UserContext.role();
+    /** 当前登录用户是否为管理员（未登录时为 false） */
+    private boolean isAdmin() {
+        return Integer.valueOf(3).equals(UserContext.role());
     }
 
     private String houseTitle(Contract c) {
@@ -275,7 +284,7 @@ public class ContractService {
                 house.getCity() + house.getDistrict() + house.getCommunity() + "的房屋（" + house.getLayout() +
                 "，" + house.getArea() + "㎡）出租给乙方（租客）" + tenant.getNickname() + "居住使用。"));
         clauses.add(Map.of("title", "租期", "text", "租赁期自 " + start + " 至 " + end + "，共 " +
-                java.time.temporal.ChronoUnit.MONTHS.between(start, end) + " 个月。"));
+                ChronoUnit.MONTHS.between(start, end) + " 个月。"));
         clauses.add(Map.of("title", "租金与押金", "text", "月租金人民币 " + house.getRent() + " 元，押付方式：" +
                 house.getDepositType() + "，押金人民币 " + house.getRent() + " 元，合同期满无违约无损坏全额退还。"));
         clauses.add(Map.of("title", "费用承担", "text", "租赁期内水费、电费、燃气费、物业费、网络费由乙方承担；房屋主体结构自然损坏的维修由甲方承担。"));
