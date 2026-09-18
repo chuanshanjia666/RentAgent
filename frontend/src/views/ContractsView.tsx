@@ -20,18 +20,27 @@ export default function ContractsView() {
 
   async function load() {
     const p = await http.get('/contracts', { params: { size: 50 } })
-    const enriched: ContractRow[] = []
-    for (const c of p.list) {
-      let houseTitle = `房源 #${c.houseId}`
-      try {
-        const item = await http.get(`/houses/${c.houseId}`)
-        houseTitle = item.house.title
-      } catch {
-        /* 房源已删除或不可见时保留「房源 #id」占位 */
-      }
-      enriched.push({ key: c.id, c, houseTitle })
-    }
-    setRows(enriched)
+    // 同一房源可能有多份合同（续租/重签），先按 houseId 去重再并发取标题。
+    // 原来是逐行串行 await，N 份合同 = N 次串行往返，列表一长就是明显的白屏等待。
+    const houseIds = [...new Set<number>(p.list.map((c: any) => c.houseId))]
+    const titles = new Map<number, string>()
+    await Promise.all(
+      houseIds.map(async id => {
+        try {
+          const item = await http.get(`/houses/${id}`)
+          titles.set(id, item.house.title)
+        } catch {
+          /* 房源已删除或不可见时保留「房源 #id」占位 */
+        }
+      })
+    )
+    setRows(
+      p.list.map((c: any) => ({
+        key: c.id,
+        c,
+        houseTitle: titles.get(c.houseId) ?? `房源 #${c.houseId}`
+      }))
+    )
   }
 
   async function act(row: ContractRow, action: string, tip: string) {

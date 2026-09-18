@@ -27,17 +27,30 @@ export default function AdminChatsView() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(10)
-  const [keyword, setKeyword] = useState('')
-  const [scene, setScene] = useState<number | undefined>()
-  const [transferred, setTransferred] = useState<boolean | undefined>()
+  /**
+   * 三个筛选条件合成一个对象，并把它作为参数传给 load。
+   * 拆成三个 useState 的话，`setScene(v)` 之后同一 tick 调 `load(1)`，load 读到的仍是旧的 scene
+   * ——React 的 setState 不改变本次渲染闭包里的值，筛选和「重置」都会静默用上一组条件查询。
+   */
+  const [filters, setFilters] = useState<{
+    keyword: string
+    scene?: number
+    transferred?: boolean
+  }>({ keyword: '' })
   const [detail, setDetail] = useState<AdminChatDetail | null>(null)
   const [loading, setLoading] = useState(false)
 
-  async function load(p = page, s = size) {
+  async function load(p = page, s = size, f = filters) {
     setLoading(true)
     try {
       const res = await http.get('/admin/chats', {
-        params: { keyword: keyword || undefined, scene, transferred, page: p, size: s }
+        params: {
+          keyword: f.keyword || undefined,
+          scene: f.scene,
+          transferred: f.transferred,
+          page: p,
+          size: s
+        }
       })
       setList(res.list)
       setTotal(res.total)
@@ -144,10 +157,11 @@ export default function AdminChatsView() {
           style={{ width: 150 }}
           placeholder="全部场景"
           allowClear
-          value={scene}
+          value={filters.scene}
           onChange={v => {
-            setScene(v)
-            load(1)
+            const next = { ...filters, scene: v }
+            setFilters(next)
+            load(1, size, next)
           }}
           options={[
             { value: 1, label: '找房助手' },
@@ -159,10 +173,11 @@ export default function AdminChatsView() {
           style={{ width: 150 }}
           placeholder="全部状态"
           allowClear
-          value={transferred}
+          value={filters.transferred}
           onChange={v => {
-            setTransferred(v)
-            load(1)
+            const next = { ...filters, transferred: v }
+            setFilters(next)
+            load(1, size, next)
           }}
           options={[
             { value: true, label: '含转人工' },
@@ -172,8 +187,8 @@ export default function AdminChatsView() {
         <Input
           style={{ width: 280 }}
           placeholder="会话标题 / 用户昵称 / 账号 / 手机号"
-          value={keyword}
-          onChange={e => setKeyword(e.target.value)}
+          value={filters.keyword}
+          onChange={e => setFilters(f => ({ ...f, keyword: e.target.value }))}
           onPressEnter={() => load(1)}
           allowClear
         />
@@ -182,10 +197,9 @@ export default function AdminChatsView() {
         </Button>
         <Button
           onClick={() => {
-            setKeyword('')
-            setScene(undefined)
-            setTransferred(undefined)
-            load(1)
+            const next = { keyword: '', scene: undefined, transferred: undefined }
+            setFilters(next)
+            load(1, size, next)
           }}
         >
           重置

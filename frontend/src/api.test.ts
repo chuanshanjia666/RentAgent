@@ -205,4 +205,110 @@ describe('FT-SSE AI 对话流式解析', () => {
     expect(init.headers['Content-Type']).toBe('application/json')
     expect(JSON.parse(init.body)).toEqual({ content: '找房' })
   })
+
+  it('FT-SSE-07 末尾事件不带换行时也要处理（收尾补刷缓冲）', async () => {
+    // 服务端最后一帧没有以 \n 结束，事件会滞留在缓冲区里；不补刷就会把 done 丢掉
+    fetchMock.mockResolvedValue(
+      sseResponse(['data: {"delta":"你好"}\n\ndata: {"messageId":7,"latencyMs":120}'])
+    )
+    const deltas: string[] = []
+    let done: Record<string, any> | undefined
+
+    await ssePost(
+      '/ai/sessions/1/messages',
+      { content: '你好' },
+      { onDelta: d => deltas.push(d), onDone: d => (done = d) }
+    )
+
+    expect(deltas).toEqual(['你好'])
+    expect(done?.messageId).toBe(7)
+  })
+
+  it('FT-SSE-08 服务端未发终止事件时兜底收尾，界面不会永远停在「回复中…」', async () => {
+    fetchMock.mockResolvedValue(sseResponse(['data: {"delta":"在"}\n\n']))
+    const onDone = vi.fn()
+    const onError = vi.fn()
+
+    await ssePost('/ai/sessions/1/messages', { content: '在吗' }, { onDone, onError })
+
+    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(onDone).toHaveBeenCalledWith({})
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('FT-SSE-09 流中途断开时回调可读原因，且不抛未捕获异常', async () => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"delta":"半"}\n\n'))
+        controller.error(new Error('connection reset'))
+      }
+    })
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: stream,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      json: async () => ({})
+    })
+    const onError = vi.fn()
+    const onDone = vi.fn()
+
+    await expect(
+      ssePost('/ai/sessions/1/messages', { content: '你好' }, { onError, onDone })
+    ).resolves.toBeUndefined()
+    expect(onError).toHaveBeenCalledWith('连接中断，请重试')
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
+  it('FT-SSE-10 主动中断（切换会话）不触发任何回调，不误报网络错误', async () => {
+    const encoder = new TextEncoder()
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode('data: {"delta":"半"}\n\n'))
+          // 之后不再产出，模拟模型仍在生成；中断时让在途的 read 以错误结束
+          init.signal?.addEventListener('abort', () =>
+            controller.error(new DOMException('aborted', 'AbortError'))
+          )
+        }
+      })
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        body: stream,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        json: async () => ({})
+      })
+    })
+    const ac = new AbortController()
+    const deltas: string[] = []
+    const onError = vi.fn()
+    const onDone = vi.fn()
+    let seenFirst!: () => void
+    const firstDelta = new Promise<void>(r => (seenFirst = r))
+
+    const pending = ssePost(
+      '/ai/sessions/1/messages',
+      { content: '你好' },
+      {
+        onDelta: d => {
+          deltas.push(d)
+          seenFirst()
+        },
+        onError,
+        onDone
+      },
+      ac.signal
+    )
+
+    // 等首片真正被消费，这样中断才落在「流中途」而非请求发出前
+    await firstDelta
+    ac.abort()
+
+    await expect(pending).resolves.toBeUndefined()
+    expect(deltas).toEqual(['半'])
+    expect(onError).not.toHaveBeenCalled()
+    expect(onDone).not.toHaveBeenCalled()
+  })
 })

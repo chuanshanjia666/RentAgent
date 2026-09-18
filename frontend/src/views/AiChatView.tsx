@@ -12,6 +12,11 @@ export default function AiChatView() {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const msgsEl = useRef<HTMLDivElement | null>(null)
+  /**
+   * 在途流式请求的中断句柄。切换/新建会话时必须先中断：
+   * 否则旧的增量回调会继续 updateLast，把上一个会话的回复追加到刚加载的新会话消息里。
+   */
+  const inFlight = useRef<AbortController | null>(null)
 
   const quickPrompts =
     scene === 1
@@ -25,29 +30,46 @@ export default function AiChatView() {
     }, 30)
   }
 
-  async function loadSessions() {
+  /** 中断在途流并解除发送禁用。被中断的回调不会再触发，因此不会改动消息列表 */
+  function abortStream() {
+    inFlight.current?.abort()
+    inFlight.current = null
+    setStreaming(false)
+  }
+
+  async function loadSessions(): Promise<any[]> {
     const p = await http.get('/ai/sessions', { params: { size: 50 } })
     setSessions(p.list)
+    return p.list
   }
 
   async function newSession(sc: number = scene) {
+    abortStream()
     const s = await http.post('/ai/sessions', { scene: sc })
     setCurrent(s.id)
     setMessages([])
     await loadSessions()
   }
 
-  async function switchSession(id: number) {
+  /**
+   * 打开某个历史会话。`sc` 由调用方传入而不再从 state 里找：
+   * 侧栏点开的是任意场景的会话，场景单选必须跟着会话走，否则快捷提问与占位文案会串场景。
+   */
+  async function switchSession(id: number, sc?: number) {
+    abortStream()
     setCurrent(id)
     const history = await http.get(`/ai/sessions/${id}/history`)
     setMessages(
       history.map((m: any) => ({ role: m.role, content: m.content, citations: m.citations || [] }))
     )
+    if (typeof sc === 'number') setScene(sc)
     scrollBottom()
   }
 
   function updateLast(fn: (m: ChatMsg) => ChatMsg) {
     setMessages(prev => {
+      // 会话被切换/清空后列表可能已空，此时没有"最后一条"可改
+      if (!prev.length) return prev
       const next = [...prev]
       next[next.length - 1] = fn({ ...next[next.length - 1] })
       return next
@@ -71,6 +93,8 @@ export default function AiChatView() {
     ])
     setStreaming(true)
     scrollBottom()
+    const ac = new AbortController()
+    inFlight.current = ac
     await ssePost(
       `/ai/sessions/${sessionId}/messages`,
       { content },
@@ -98,19 +122,25 @@ export default function AiChatView() {
           }))
           setStreaming(false)
         }
-      }
+      },
+      ac.signal
     )
+    // 中途被 abortStream 换掉时 inFlight 已指向新的控制器，这里不要误清
+    if (inFlight.current === ac) inFlight.current = null
   }
 
   useEffect(() => {
-    loadSessions().then(() => {
-      http.get('/ai/sessions', { params: { size: 1 } }).then(p => {
-        if (p.list.length) switchSession(p.list[0].id)
-        else newSession()
+    // 一次拉取即可：列表已按更新时间倒序，首条就是最近会话，不必再为此单独请求一次 size=1
+    loadSessions()
+      .then(list => (list.length ? switchSession(list[0].id, list[0].scene) : newSession()))
+      .catch(() => {
+        /* 首屏定位最近会话失败不阻断，用户仍可手动新建 */
       })
-    })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在进入页面时定位到最近一个会话
   }, [])
+
+  // 组件卸载时中断在途流，避免回调对着已卸载的组件 setState
+  useEffect(() => () => inFlight.current?.abort(), [])
 
   return (
     <div className="page">
@@ -139,7 +169,7 @@ export default function AiChatView() {
             <div
               key={s.id}
               className={'session-item' + (s.id === current ? ' active' : '')}
-              onClick={() => switchSession(s.id)}
+              onClick={() => switchSession(s.id, s.scene)}
             >
               <div className="session-title">{s.title || '新会话'}</div>
               <div className="session-time">{fmtTime(s.updatedAt)}</div>

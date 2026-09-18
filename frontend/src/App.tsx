@@ -137,6 +137,14 @@ export default function App() {
           }
         />
         <Route
+          path="/landlord/notifications"
+          element={
+            <Require roles={[2]}>
+              <NotificationsView />
+            </Require>
+          }
+        />
+        <Route
           path="/landlord/profile"
           element={
             <Require roles={[2]}>
@@ -181,6 +189,14 @@ export default function App() {
           element={
             <Require roles={[3]}>
               <AdminDashboardView />
+            </Require>
+          }
+        />
+        <Route
+          path="/admin/notifications"
+          element={
+            <Require roles={[3]}>
+              <NotificationsView />
             </Require>
           }
         />

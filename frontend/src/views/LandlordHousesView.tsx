@@ -106,11 +106,13 @@ export default function LandlordHousesView() {
   }
 
   async function aiFill() {
+    // 不传 imageFileName：后端把它作为「图片文件名」拼进模型提示词（AnalysisService.fillPayload），
+    // 而本表单并无上传入口，此前传的 facilities.join('') 等于把设施标签当成照片文件名喂给模型。
+    // 留空后端会渲染成「（未填写）」；FR-08 的图片识别要等发布页接上上传功能才谈得上。
     const d = await http.post('/ai/assist-fill', {
       title: form.title,
       community: form.community,
-      layout: form.layout,
-      imageFileName: (form.facilities || []).join('')
+      layout: form.layout
     })
     setForm(f => ({
       ...f,

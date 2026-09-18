@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { setUnauthorizedHandler } from './api'
 import type { LoginResult } from './types'
 
 /** 登录态（token + 角色信息持久化到 localStorage） */
@@ -50,6 +51,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuth({ token: '', userId: 0, role: 0, nickname: '' })
     ;['ra_token', 'ra_uid', 'ra_role', 'ra_nickname'].forEach(k => localStorage.removeItem(k))
   }, [])
+
+  // token 失效由 axios 拦截器发现，它只够得着 localStorage；这里把 React 登录态一起清掉，
+  // 否则守卫读到的仍是旧 auth，会继续渲染受保护页面、继续 401
+  useEffect(() => {
+    setUnauthorizedHandler(logout)
+    return () => setUnauthorizedHandler(null)
+  }, [logout])
 
   const value = useMemo<AuthCtxType>(
     () => ({
