@@ -50,7 +50,11 @@ export default function ContractsView() {
 
   const columns: ColumnsType<ContractRow> = [
     { title: '房源', dataIndex: 'houseTitle', render: v => v },
-    { title: '租期', width: 200, render: (_, r) => `${r.contract.startDate} ~ ${r.contract.endDate}` },
+    {
+      title: '租期',
+      width: 200,
+      render: (_, r) => `${r.contract.startDate} ~ ${r.contract.endDate}`
+    },
     { title: '月租', width: 110, render: (_, r) => fmtMoney(r.contract.monthlyRent) },
     {
       title: '状态',
@@ -102,7 +106,9 @@ export default function ContractsView() {
     }
   ]
 
-  const clauses = current ? parseJsonList<{ title: string; text: string }>(current.contract.clauses) : []
+  const clauses = current
+    ? parseJsonList<{ title: string; text: string }>(current.contract.clauses)
+    : []
   const riskIdx = current ? parseJsonList<number>(current.contract.riskFlags) : []
 
   return (

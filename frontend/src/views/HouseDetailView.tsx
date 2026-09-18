@@ -32,7 +32,9 @@ export default function HouseDetailView() {
   async function load() {
     const d = await http.get<HouseDetail>(`/houses/${id}`)
     setItem(d)
-    const p = await http.get<PageResult<ReviewRow>>(`/houses/${id}/reviews`, { params: { size: 20 } })
+    const p = await http.get<PageResult<ReviewRow>>(`/houses/${id}/reviews`, {
+      params: { size: 20 }
+    })
     setReviews(p.list)
   }
 

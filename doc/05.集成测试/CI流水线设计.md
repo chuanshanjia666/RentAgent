@@ -208,7 +208,7 @@ push / PR / 手动
 | 4 | 性能基准（NFR-01/NFR-02） | 引入 k6 场景脚本，对核心查询接口做 50 并发基准并记录首字延迟 |
 | 5 | 真实模型通道回归 | 用 GitHub Secrets 注入演示用 Key，增加一个**非阻塞**（`continue-on-error`）的对话质量作业 |
 | 6 | 依赖漏洞扫描 | 加 `dependency-review-action`（PR）与 `npm audit`/OWASP 依赖检查 |
-| 7 | 冒烟脚本的模型无关性 | 若演示通道从规则引擎切到真实模型，需为 `IT-7-08`、`IT-9-*` 增加按 `engine` 分支断言的适配 |
+| 7 | ~~冒烟脚本的模型无关性~~（已完成） | 演示通道早已是真实模型（规则引擎实现已删除），`IT-7-08` 与 `IT-9-*` 均为真模型口径断言；**另需注意**：换模型后若新模型为推理模型，要留足 `ai.max-tokens`（思维链计入该预算，过紧会被 `finish_reason=length` 截断成空回答），并先跑一遍 `scripts/ci-smoke.sh` 的 IT-9 组确认工具调用与引用来源仍成立 |
 | 8 | CI 的 Node 运行时升级（20 → 24 LTS） | 项目自身 `node-version` 仍为 `20`，该版本已于 2026-04 进入 EOL（本次仅升级了 Action 自身的运行时，未动它）；`frontend/package.json` 未声明 `engines`，本地开发机实测为 Node 26。升级前建议本地跑一遍 `npm ci → npm test → npm run build:web` 复核 vite/vitest/jsdom 兼容性，并同步 §2.2 与 §2.4 拓扑图中的 Node 版本 |
 
 ---

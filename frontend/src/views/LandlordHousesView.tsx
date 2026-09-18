@@ -159,7 +159,9 @@ export default function LandlordHousesView() {
       floorDesc: d.floorDesc,
       facilities: [...new Set([...(f.facilities || []), ...picked])]
     }))
-    message.success(dropped > 0 ? `AI 已填充（${dropped} 个未知标签已忽略）` : 'AI 已填充，可自行修改')
+    message.success(
+      dropped > 0 ? `AI 已填充（${dropped} 个未知标签已忽略）` : 'AI 已填充，可自行修改'
+    )
   }
 
   /** 只提交后端 SaveReq 声明的字段：早先直接 PUT 整个表单对象，会把 id/status/viewCount 等

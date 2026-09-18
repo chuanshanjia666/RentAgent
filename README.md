@@ -8,7 +8,7 @@
 | 后端 | Spring Boot 3.x + MyBatis-Plus + LangChain4j（AiServices 编排）+ 自研 LLM 协议适配器（三种协议均自研，`server/`） |
 | 数据 | MySQL 8（18 张业务表）+ Redis Stack（缓存 / 向量检索预留） |
 | AI | **模型无关的 LLM 网关**：三协议适配（OpenAI Chat Completions / Anthropic Messages / OpenAI Responses），三种协议的模型客户端均为自研（厂商内置客户端在"正文与工具调用同轮并存"的流式响应下会丢弃工具调用，导致工具永不执行），端点、模型、Key 全部可配置，换模型只改配置；四项 AI 分析的输出结构优先用 `response_format=json_schema` 强约束（端点不支持则退回提示词约束）。当前演示通道经聚合网关接入 `deepseek/deepseek-v4.1-flash`。**AI 能力必须接真实模型**：未配置模型或模型调用失败时统一返回 4001 并提示，不做任何规则/模拟兜底 |
-| 设计文档 | `doc/`（需求定义说明书、需求分析矩阵、概要设计说明 v1.5、数据库设计简介 v1.2 等） |
+| 设计文档 | `doc/`（需求定义说明书、需求分析矩阵、概要设计说明 v1.10、数据库设计简介 v1.6 等） |
 | 演示原型 | `doc/02.需求分析/prototype/`（React 高保真原型，规则模拟 AI，无需后端） |
 
 ## 快速启动
@@ -44,7 +44,7 @@ mvn spring-boot:run
 `server/src/main/resources/application.yml` 的 `ai:` 段。
 
 启动后验证：`curl http://localhost:8080/api/v1/ai/engine` → `{"engine":"openai-chat-completions:deepseek/deepseek-v4.1-flash"}`
-（实际显示当前生效的 `协议:模型`，未配 Key 时为 `rule-engine`）。
+（实际显示当前生效的 `协议:模型`；未配 Key 时该接口返回 4001 并提示注入凭据——本系统不提供任何规则/模拟兜底）。
 
 接口文档（Swagger）：<http://localhost:8080/swagger-ui.html>
 

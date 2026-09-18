@@ -35,9 +35,7 @@ export default function AdminLogsView() {
     { title: '操作人', width: 110, render: (_, r) => `uid=${r.operatorId ?? '-'}` },
     {
       title: '明细',
-      render: (_, r) => (
-        <span style={{ color: '#606266', fontSize: 12 }}>{r.detail || '-'}</span>
-      )
+      render: (_, r) => <span style={{ color: '#606266', fontSize: 12 }}>{r.detail || '-'}</span>
     }
   ]
 
