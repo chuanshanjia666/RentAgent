@@ -1,32 +1,50 @@
 import { useEffect, useState } from 'react'
 import { Badge, Button, Dropdown, Menu, Space } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import type { ReactNode } from 'react'
 import http from '../api'
 import { useAuth } from '../auth'
+import {
+  IconBell,
+  IconBot,
+  IconBuilding,
+  IconCalendar,
+  IconChart,
+  IconChat,
+  IconChevronDown,
+  IconFile,
+  IconFlag,
+  IconHeart,
+  IconHome,
+  IconList,
+  IconReceipt,
+  IconShield,
+  IconUsers
+} from './icons'
 
-/** 各角色导航菜单：[路径, 标签] */
-const MENUS: Record<number, [string, string][]> = {
+/** 各角色导航菜单：[路径, 标签, 图标] */
+const MENUS: Record<number, [string, string, ReactNode][]> = {
   1: [
-    ['/app', '找房'],
-    ['/app/ai', '🤖 AI 助手'],
-    ['/app/appointments', '我的预约'],
-    ['/app/contracts', '我的合同'],
-    ['/app/orders', '我的订单'],
-    ['/app/favorites', '收藏']
+    ['/app', '找房', <IconHome key="i" />],
+    ['/app/ai', 'AI 助手', <IconBot key="i" />],
+    ['/app/appointments', '我的预约', <IconCalendar key="i" />],
+    ['/app/contracts', '我的合同', <IconFile key="i" />],
+    ['/app/orders', '我的订单', <IconReceipt key="i" />],
+    ['/app/favorites', '收藏', <IconHeart key="i" />]
   ],
   2: [
-    ['/landlord/houses', '房源管理'],
-    ['/landlord/appointments', '预约管理'],
-    ['/landlord/contracts', '我的合同'],
-    ['/landlord/orders', '订单管理']
+    ['/landlord/houses', '房源管理', <IconBuilding key="i" />],
+    ['/landlord/appointments', '预约管理', <IconCalendar key="i" />],
+    ['/landlord/contracts', '我的合同', <IconFile key="i" />],
+    ['/landlord/orders', '订单管理', <IconReceipt key="i" />]
   ],
   3: [
-    ['/admin/audit', '审核工作台'],
-    ['/admin/users', '用户管理'],
-    ['/admin/reports', '举报处理'],
-    ['/admin/logs', '操作留痕'],
-    ['/admin/chats', 'AI 对话审计'],
-    ['/admin/dashboard', '数据看板']
+    ['/admin/audit', '审核工作台', <IconShield key="i" />],
+    ['/admin/users', '用户管理', <IconUsers key="i" />],
+    ['/admin/reports', '举报处理', <IconFlag key="i" />],
+    ['/admin/logs', '操作留痕', <IconList key="i" />],
+    ['/admin/chats', 'AI 对话审计', <IconChat key="i" />],
+    ['/admin/dashboard', '数据看板', <IconChart key="i" />]
   ]
 }
 
@@ -64,24 +82,26 @@ export default function NavLayout() {
       <div className="nav-header">
         <div className="nav-inner">
           <div className="brand" onClick={() => nav(auth.home)}>
-            🏠 <b>RentAgent</b>
-            <span className="badge">AI 智能租房</span>
+            <span className="seal">租</span>
+            <span className="brand-name">RentAgent</span>
+            <span className="brand-plate">AI 智能租房</span>
           </div>
           <Menu
+            className="nav-menu"
             mode="horizontal"
             selectedKeys={[active]}
             style={{ flex: 1, borderBottom: 'none', minWidth: 0 }}
           >
-            {items.map(([path, label]) => (
-              <Menu.Item key={path} onClick={() => nav(path)}>
+            {items.map(([path, label, icon]) => (
+              <Menu.Item key={path} icon={icon} onClick={() => nav(path)}>
                 {label}
               </Menu.Item>
             ))}
           </Menu>
           <Space size="middle">
             <Badge count={unread} size="small">
-              <Button type="text" onClick={() => nav(`${base}/notifications`)}>
-                🔔 消息
+              <Button type="text" icon={<IconBell />} onClick={() => nav(`${base}/notifications`)}>
+                消息
               </Button>
             </Badge>
             <Dropdown
@@ -101,12 +121,18 @@ export default function NavLayout() {
                 }
               }}
             >
-              <span className="nav-user">{auth.nickname || '用户'} ▾</span>
+              <span className="nav-user">
+                <span className="nav-avatar">{(auth.nickname || '用').slice(0, 1)}</span>
+                {auth.nickname || '用户'}
+                <span className="nav-caret">
+                  <IconChevronDown size={13} />
+                </span>
+              </span>
             </Dropdown>
           </Space>
         </div>
       </div>
-      <div style={{ background: '#f5f7fa', minHeight: 'calc(100vh - 60px)' }}>
+      <div className="app-body">
         <Outlet />
       </div>
     </div>

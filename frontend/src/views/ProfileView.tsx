@@ -76,7 +76,7 @@ export default function ProfileView() {
           </Form.Item>
           <Form.Item>
             <Tag>{USER_ROLE[auth.role] || '用户'}</Tag>
-            <span style={{ color: '#909399', fontSize: 12, marginLeft: 8 }}>
+            <span style={{ color: '#82948e', fontSize: 12, marginLeft: 8 }}>
               账号：{me.username} / {me.phone}
             </span>
           </Form.Item>

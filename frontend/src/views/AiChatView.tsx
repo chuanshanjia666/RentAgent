@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Input, message, Radio, Tag } from 'antd'
+import { Button, Input, message, Radio } from 'antd'
 import http, { ssePost } from '../api'
+import { IconBot, IconPlus, IconSend } from '../components/icons'
 import { fmtTime } from '../constants'
 import type { ChatMsg } from '../types'
 
@@ -196,8 +197,8 @@ export default function AiChatView() {
               智能客服
             </Radio.Button>
           </Radio.Group>
-          <Button style={{ width: '100%' }} onClick={() => newSession()}>
-            ＋ 新会话
+          <Button style={{ width: '100%' }} icon={<IconPlus />} onClick={() => newSession()}>
+            新会话
           </Button>
           {sessions.map(s => (
             <div
@@ -212,39 +213,50 @@ export default function AiChatView() {
         </div>
 
         <div className="chat-main">
+          <div className="chat-head">
+            <span className="chat-bot-badge">
+              <IconBot size={18} />
+            </span>
+            <div>
+              <b>{scene === 1 ? '找房助手' : '智能客服'}</b>
+              <small>
+                {scene === 1
+                  ? '按预算、区域、户型帮你筛房源'
+                  : '押金、退租、维修等租房问题在线解答'}
+              </small>
+            </div>
+          </div>
           <div className="chat-msgs" ref={msgsEl}>
             {messages.length === 0 && (
               <div className="chat-empty">
-                <div style={{ fontSize: 40 }}>🤖</div>
-                <div style={{ color: '#8492a6', margin: '8px 0 16px' }}>
+                <div className="chat-empty-art">
+                  <IconBot size={36} />
+                </div>
+                <p>
                   {scene === 1
                     ? '用一句话描述你的租房需求，我来帮你找'
                     : '押金、退租、维修、违约……有问题尽管问'}
+                </p>
+                <div>
+                  {quickPrompts.map(p => (
+                    <button key={p} className="prompt-chip" onClick={() => send(p)}>
+                      {p}
+                    </button>
+                  ))}
                 </div>
-                {quickPrompts.map(p => (
-                  <Button
-                    key={p}
-                    size="small"
-                    shape="round"
-                    style={{ margin: '0 6px 8px' }}
-                    onClick={() => send(p)}
-                  >
-                    {p}
-                  </Button>
-                ))}
               </div>
             )}
             {messages.map((m, i) => (
               <div key={i} className={'msg-row ' + (m.role === 1 ? 'me' : 'ai')}>
                 <div className="bubble">
                   {m.role === 1 ? m.content : renderWithLinks(m.content)}
-                  {m.typing ? '▌' : ''}
+                  {m.typing ? <span className="cursor" /> : ''}
                   {m.citations && m.citations.length > 0 && (
                     <div className="cite-tags">
                       {m.citations.map((c, ci) => (
-                        <Tag key={ci} color="green" style={{ marginBottom: 4 }}>
+                        <span key={ci} className="cite-tag">
                           来源：{c.title}
-                        </Tag>
+                        </span>
                       ))}
                     </div>
                   )}
@@ -268,7 +280,8 @@ export default function AiChatView() {
             />
             <Button
               type="primary"
-              style={{ marginLeft: 10 }}
+              icon={<IconSend />}
+              style={{ marginLeft: 2 }}
               disabled={streaming || !input.trim()}
               onClick={() => send()}
             >

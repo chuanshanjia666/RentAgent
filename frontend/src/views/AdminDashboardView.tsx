@@ -27,10 +27,10 @@ export default function AdminDashboardView() {
     // AI 会话趋势的周期可能不与用户趋势完全重合，取并集后缺失补 0（FR-24）
     // 只取趋势字段：keyof DashboardData 里还有一堆数值字段，收窄后 data[key] 才是数组
     const series: [TrendKey, string, string][] = [
-      ['userTrend', '新增用户', '#1f6feb'],
-      ['houseTrend', '新增房源', '#52c41a'],
-      ['orderTrend', '新增订单', '#fa8c16'],
-      ['chatTrend', '新增 AI 会话', '#722ed1']
+      ['userTrend', '新增用户', '#0d6b5b'],
+      ['houseTrend', '新增房源', '#4e7d8c'],
+      ['orderTrend', '新增订单', '#c99a3a'],
+      ['chatTrend', '新增 AI 会话', '#bc4a1d']
     ]
     const byKey: Record<string, Map<string, number>> = {}
     const periodSet = new Set<string>()

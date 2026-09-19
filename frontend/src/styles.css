@@ -1,134 +1,275 @@
+/* ============================================================
+   RentAgent 全局样式 · 设计令牌与组件皮肤
+   母题：釉青 × 瓷白 × 柿朱——「户型线稿」是全站唯一装饰母题
+   语义：釉青=品牌与操作 / 柿朱=钱与风险 / 沙=选中态 / 瓷白=纸面
+   ============================================================ */
+:root {
+  --glaze: #0d6b5b;
+  --glaze-strong: #0a584b;
+  --glaze-deep: #0c463c;
+  --glaze-soft: #dcece8;
+  --glaze-faint: #eef5f3;
+  --porcelain: #f3f6f5;
+  --card: #fff;
+  --line: #e1e8e6;
+  --line-strong: #ccd7d4;
+  --ink: #1d2c28;
+  --ink-2: #4a5c56;
+  --ink-3: #82948e;
+  --seal: #bc4a1d;
+  --seal-deep: #9e3c15;
+  --seal-soft: #f8ebe4;
+  --sand: #f4f0e4;
+  --sand-line: #e3dbc2;
+  --warn: #d98a1f;
+  --ok: #3d8f63;
+  --radius: 10px;
+  --radius-sm: 7px;
+  --shadow-lift: 0 10px 28px rgba(23, 54, 47, 0.12);
+  --font-serif: 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', serif;
+}
+
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
-  background: #f5f7fa;
-  font-family: 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--porcelain);
+  color: var(--ink);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* 顶部导航 */
+:focus-visible {
+  outline: 2px solid var(--glaze);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------- 顶部导航 ---------- */
 .nav-header {
-  background: #fff;
-  border-bottom: 1px solid #ebeef5;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 .nav-inner {
   max-width: 1200px;
   margin: 0 auto;
   display: flex;
   align-items: center;
-  gap: 24px;
-  height: 60px;
-  padding: 0 16px;
+  gap: 22px;
+  height: 64px;
+  padding: 0 20px;
 }
 .brand {
-  font-size: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   cursor: pointer;
-  color: #1f6feb;
   white-space: nowrap;
 }
-.brand .badge {
-  font-size: 10px;
-  background: #e8f0fe;
-  color: #1f6feb;
+/* 印章：朱底白字，全站品牌件 */
+.seal {
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
-  padding: 1px 6px;
-  margin-left: 6px;
+  background: var(--seal);
+  color: #fff;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.35);
+  user-select: none;
+}
+.brand-name {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: 0.2px;
+}
+/* 门牌式小铭牌 */
+.brand-plate {
+  font-size: 11px;
+  color: var(--glaze);
+  background: var(--glaze-faint);
+  border: 1px solid var(--glaze-soft);
+  border-radius: 5px;
+  padding: 2px 7px;
+  margin-left: 2px;
+}
+.nav-menu {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none !important;
+  background: transparent;
+}
+.nav-menu .ant-menu-item {
+  font-weight: 500;
 }
 .nav-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   cursor: pointer;
-  color: #303133;
+  color: var(--ink);
   font-size: 14px;
   white-space: nowrap;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+.nav-user:hover {
+  background: var(--porcelain);
+}
+.nav-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--glaze);
+  color: #fff;
+  font-size: 13px;
+  display: grid;
+  place-items: center;
+  user-select: none;
+}
+.nav-caret {
+  color: var(--ink-3);
+  display: inline-flex;
+}
+.app-body {
+  background: var(--porcelain);
+  min-height: calc(100vh - 64px);
 }
 
+/* ---------- 页面骨架 ---------- */
 .page {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px 16px 40px;
+  padding: 24px 20px 48px;
 }
 .page-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 16px;
-  color: #1f2f3d;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 18px;
+  color: var(--ink);
 }
 .sec-title {
-  margin: 4px 0 14px;
-  color: #303133;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 16px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.sec-title::before {
+  content: '';
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--glaze);
+  flex-shrink: 0;
+}
+.sec-note {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+/* ---------- 首页 hero 与搜索 ---------- */
+.hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--glaze-faint);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 32px 32px 28px;
+  margin-bottom: 26px;
+}
+.hero-art {
+  position: absolute;
+  right: 26px;
+  top: 18px;
+  color: var(--glaze);
+  opacity: 0.13;
+  pointer-events: none;
+}
+.hero h1 {
+  margin: 0 0 8px;
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.hero-sub {
+  margin: 0 0 20px;
+  color: var(--ink-2);
+  font-size: 14px;
 }
 .search-bar {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  background: #fff;
+  background: var(--card);
   padding: 16px;
-  border-radius: 10px;
-  border: 1px solid #ebeef5;
-  margin-bottom: 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
 }
 
-/* 登录页 */
-.login-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #1f6feb 0%, #6db3f2 100%);
-}
-.login-card {
-  width: 420px;
-  background: #fff;
-  border-radius: 14px;
-  padding: 28px 32px 24px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
-}
-.login-brand {
-  font-size: 24px;
-  color: #1f6feb;
-  text-align: center;
-  margin-bottom: 18px;
-}
-.slogan {
-  font-size: 12px;
-  color: #8492a6;
-  font-weight: 400;
-  margin-top: 4px;
-}
-
-/* 房源卡片 */
+/* ---------- 房源卡片 ---------- */
 .house-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+  gap: 18px;
 }
 .house-card {
-  background: #fff;
-  border-radius: 10px;
+  background: var(--card);
+  border-radius: var(--radius);
   overflow: hidden;
   cursor: pointer;
   transition:
-    box-shadow 0.2s,
-    transform 0.2s;
-  border: 1px solid #ebeef5;
+    box-shadow 0.18s ease,
+    transform 0.18s ease,
+    border-color 0.18s ease;
+  border: 1px solid var(--line);
 }
 .house-card:hover {
-  box-shadow: 0 6px 18px rgba(31, 111, 235, 0.12);
-  transform: translateY(-2px);
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-3px);
+  border-color: var(--line-strong);
 }
 .house-cover {
-  height: 160px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 44px;
-  background: linear-gradient(135deg, #dbe7fb, #eef3fb);
-  color: #7fa7dd;
+  height: 158px;
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: #9dbbb3;
+  background: var(--glaze-faint);
+  border-bottom: 1px solid var(--line);
 }
 .house-cover img {
+  /* 绝对定位铺满：避免百分比高度在 auto 行里循环解析导致图片溢出容器 */
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 .house-body {
   padding: 12px 14px 14px;
@@ -136,61 +277,300 @@ body {
 .house-title {
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .house-sub {
-  color: #8492a6;
+  color: var(--ink-3);
   font-size: 12px;
   margin-top: 4px;
 }
+.chip {
+  display: inline-block;
+  font-size: 11.5px;
+  line-height: 18px;
+  color: var(--ink-2);
+  background: var(--porcelain);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 0 7px;
+}
+.chip-score {
+  color: var(--warn);
+  border-color: #ecd9b0;
+  background: #fdf6e9;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
 .house-rent {
-  color: #e6392f;
-  font-size: 18px;
-  font-weight: 700;
-  margin-top: 8px;
+  color: var(--seal);
+  font-size: 19px;
+  font-weight: 800;
+  margin-top: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
 }
 .house-rent small {
   font-size: 12px;
   font-weight: 400;
-  color: #8492a6;
+  color: var(--ink-3);
+  letter-spacing: 0;
+}
+.house-views {
+  float: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-3);
 }
 
-/* AI 对话 */
+/* ---------- 地图找房 ---------- */
+.map-panel {
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  padding: 16px;
+}
+.dot {
+  cursor: pointer;
+}
+
+/* ---------- 登录页：左品牌右表单 ---------- */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  background: var(--porcelain);
+}
+.login-side {
+  width: 44%;
+  min-width: 380px;
+  background: var(--glaze-deep);
+  color: #dcebe7;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 48px 46px;
+}
+.login-side .seal {
+  width: 44px;
+  height: 44px;
+  font-size: 24px;
+  border-radius: 10px;
+}
+.login-pattern {
+  position: absolute;
+  color: #fff;
+  opacity: 0.09;
+  pointer-events: none;
+}
+.login-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  position: relative;
+}
+.login-word {
+  font-size: 23px;
+  font-weight: 800;
+  color: #fff;
+}
+.login-word small {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: #9fc0b8;
+  margin-top: 3px;
+  letter-spacing: 0.5px;
+}
+.login-slogan {
+  position: relative;
+  font-family: var(--font-serif);
+  font-size: 34px;
+  color: #fff;
+  letter-spacing: 7px;
+  margin: 0;
+}
+.login-slogan-sub {
+  position: relative;
+  font-size: 13px;
+  color: #9fc0b8;
+  margin: 10px 0 0;
+  letter-spacing: 1px;
+}
+.login-points {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.login-point {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.login-point-ico {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.login-point b {
+  display: block;
+  color: #fff;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+.login-point span {
+  font-size: 12.5px;
+  color: #9fc0b8;
+  line-height: 1.6;
+}
+.login-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+.login-card {
+  width: 408px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 28px 32px 24px;
+}
+.login-brand {
+  text-align: center;
+  margin-bottom: 14px;
+}
+.login-brand .seal {
+  width: 46px;
+  height: 46px;
+  font-size: 25px;
+  border-radius: 11px;
+  margin: 0 auto 10px;
+}
+.login-brand-name {
+  font-size: 21px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.slogan {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  font-weight: 400;
+  margin-top: 5px;
+}
+.demo-tip {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 16px;
+  line-height: 2;
+  border-top: 1px dashed var(--line);
+  padding-top: 12px;
+}
+
+/* ---------- AI 对话 ---------- */
 .chat-wrap {
   display: flex;
   gap: 16px;
-  height: calc(100vh - 140px);
+  height: calc(100vh - 148px);
   min-height: 480px;
 }
 .chat-side {
-  width: 240px;
+  width: 252px;
   flex-shrink: 0;
-  background: #fff;
-  border-radius: 10px;
+  background: var(--card);
+  border-radius: var(--radius);
   padding: 12px;
   overflow-y: auto;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--line);
+}
+.session-item {
+  padding: 9px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-top: 8px;
+  border: 1px solid transparent;
+  transition: background 0.15s ease;
+}
+.session-item:hover {
+  background: var(--porcelain);
+}
+.session-item.active {
+  background: var(--sand);
+  border-color: var(--sand-line);
+}
+.session-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-time {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 3px;
 }
 .chat-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border-radius: 10px;
-  border: 1px solid #ebeef5;
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
   overflow: hidden;
+}
+.chat-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+}
+.chat-bot-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--glaze-soft);
+  color: var(--glaze);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.chat-head b {
+  font-size: 14.5px;
+  color: var(--ink);
+  display: block;
+}
+.chat-head small {
+  font-size: 12px;
+  color: var(--ink-3);
 }
 .chat-msgs {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 22px;
+  background: var(--porcelain);
 }
 .msg-row {
   display: flex;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 .msg-row.me {
   justify-content: flex-end;
@@ -198,20 +578,21 @@ body {
 .bubble {
   max-width: 72%;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.75;
   white-space: pre-wrap;
   word-break: break-word;
 }
 .msg-row.ai .bubble {
-  background: #f4f6fa;
-  color: #303133;
-  border-top-left-radius: 2px;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-top-left-radius: 3px;
 }
 /* AI 气泡里的房源详情页链接：主色可辨识，悬停下划线 */
 .msg-row.ai .bubble a {
-  color: #1f6feb;
+  color: var(--glaze);
   font-weight: 600;
   text-decoration: none;
 }
@@ -219,42 +600,185 @@ body {
   text-decoration: underline;
 }
 .msg-row.me .bubble {
-  background: #1f6feb;
+  background: var(--glaze);
   color: #fff;
-  border-top-right-radius: 2px;
+  border-top-right-radius: 3px;
+}
+/* 流式输出中的光标 */
+.cursor {
+  display: inline-block;
+  width: 2.5px;
+  height: 14px;
+  background: var(--glaze);
+  margin-left: 2px;
+  vertical-align: -2px;
+  animation: blink 1s steps(2) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
 }
 .cite-tags {
-  margin-top: 8px;
+  margin-top: 9px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
-
-.map-panel {
-  background: #fff;
-  border-radius: 10px;
-  border: 1px solid #ebeef5;
-  padding: 16px;
+.cite-tag {
+  font-size: 11.5px;
+  color: var(--glaze);
+  background: var(--glaze-faint);
+  border: 1px solid var(--glaze-soft);
+  border-radius: 5px;
+  padding: 1px 7px;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.dot {
+.chat-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px;
+}
+.chat-empty-art {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: var(--glaze-soft);
+  color: var(--glaze);
+  display: grid;
+  place-items: center;
+  margin-bottom: 14px;
+}
+.chat-empty p {
+  color: var(--ink-2);
+  margin: 0 0 18px;
+  font-size: 14px;
+}
+.prompt-chip {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 5px 13px;
+  margin: 0 5px 8px;
   cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.prompt-chip:hover {
+  color: var(--glaze);
+  border-color: var(--glaze);
+}
+.chat-input {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--card);
 }
 
-/* AI 对话审计（后台 Trace 视图） */
+/* ---------- 房源详情 ---------- */
+.detail-layout {
+  display: flex;
+  gap: 22px;
+  margin-top: 4px;
+}
+.detail-cover {
+  height: 320px;
+  border-radius: var(--radius);
+  background: var(--glaze-faint);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  color: #9dbbb3;
+  overflow: hidden;
+  position: relative;
+}
+.detail-cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.price-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  position: sticky;
+  top: 84px;
+}
+.detail-label {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 20px 0 10px;
+}
+.review-item {
+  padding: 12px 2px;
+  border-bottom: 1px dashed var(--line);
+}
+.review-item p {
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  font-size: 13.5px;
+}
+.stars {
+  color: var(--warn);
+  margin-left: 8px;
+  letter-spacing: 2px;
+}
+
+/* ---------- 合同条款 / 弹窗内块 ---------- */
+.clause {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--card);
+}
+.clause b {
+  color: var(--ink);
+}
+.clause p {
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+.clause-explain {
+  margin: 6px 0 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--glaze-soft);
+  color: var(--glaze-strong);
+}
+
+/* ---------- AI 对话审计（后台 Trace 视图） ---------- */
 .trace-filter {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  background: #fff;
+  background: var(--card);
   padding: 16px;
-  border-radius: 10px;
-  border: 1px solid #ebeef5;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
   margin-bottom: 16px;
 }
 .trace-meta {
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   padding: 14px 16px;
   margin-bottom: 14px;
 }
@@ -270,7 +794,7 @@ body {
   top: 22px;
   bottom: -4px;
   width: 2px;
-  background: #e4e9f2;
+  background: var(--line);
 }
 .trace-step:last-child::before {
   display: none;
@@ -286,26 +810,29 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
-  border: 1px solid #dcdfe6;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  color: var(--ink-2);
 }
 .trace-dot.user {
-  background: #e8f0fe;
-  border-color: #b9d3fb;
+  background: var(--glaze-faint);
+  border-color: var(--glaze-soft);
+  color: var(--glaze);
 }
 .trace-dot.ai {
-  background: #f0f2f5;
+  background: var(--porcelain);
 }
 .trace-dot.tool {
-  background: #fff7e6;
-  border-color: #ffd591;
+  background: var(--sand);
+  border-color: var(--sand-line);
+  color: var(--warn);
 }
 .trace-role {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #8492a6;
+  color: var(--ink-3);
   margin-bottom: 6px;
   flex-wrap: wrap;
 }
@@ -319,24 +846,27 @@ body {
   border: 1px solid transparent;
 }
 .trace-bubble.user {
-  background: #eef4ff;
-  border-color: #d6e4ff;
-  color: #1f2f3d;
+  background: var(--glaze-faint);
+  border-color: var(--glaze-soft);
+  color: var(--ink);
 }
 .trace-bubble.ai {
-  background: #fff;
-  border-color: #ebeef5;
-  color: #303133;
+  background: var(--card);
+  border-color: var(--line);
+  color: var(--ink);
 }
 .trace-tool {
-  background: #fffaf0;
-  border: 1px solid #ffe0a3;
+  background: var(--sand);
+  border: 1px solid var(--sand-line);
   border-radius: 8px;
   padding: 4px 10px 8px;
 }
+.trace-tool b {
+  color: var(--warn);
+}
 .trace-json {
-  background: #1f2f3d;
-  color: #d5e0ee;
+  background: #14231f;
+  color: #cfe0da;
   border-radius: 6px;
   padding: 10px 12px;
   font-size: 12px;
@@ -349,6 +879,32 @@ body {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
-.el-table {
-  --el-table-header-bg-color: #f7f9fc;
+/* ---------- 响应式 ---------- */
+@media (max-width: 960px) {
+  .login-side {
+    display: none;
+  }
+  .chat-wrap {
+    flex-direction: column;
+    height: auto;
+  }
+  .chat-side {
+    width: auto;
+    max-height: 200px;
+  }
+  .chat-msgs {
+    height: 420px;
+  }
+  .hero {
+    padding: 22px 18px;
+  }
+  .hero-art {
+    display: none;
+  }
+  .detail-layout {
+    flex-direction: column;
+  }
+  .price-card {
+    position: static;
+  }
 }

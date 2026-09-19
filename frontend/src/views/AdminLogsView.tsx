@@ -35,7 +35,7 @@ export default function AdminLogsView() {
     { title: '操作人', width: 110, render: (_, r) => `uid=${r.operatorId ?? '-'}` },
     {
       title: '明细',
-      render: (_, r) => <span style={{ color: '#606266', fontSize: 12 }}>{r.detail || '-'}</span>
+      render: (_, r) => <span style={{ color: '#4a5c56', fontSize: 12 }}>{r.detail || '-'}</span>
     }
   ]
 
@@ -43,7 +43,7 @@ export default function AdminLogsView() {
     <div className="page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 className="page-title">操作留痕</h2>
-        <span style={{ color: '#909399', fontSize: 12 }}>共 {list.total} 条 · 日志只读</span>
+        <span style={{ color: '#82948e', fontSize: 12 }}>共 {list.total} 条 · 日志只读</span>
       </div>
       <Table
         rowKey="id"

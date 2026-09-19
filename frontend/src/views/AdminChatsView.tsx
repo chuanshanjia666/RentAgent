@@ -14,6 +14,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
+import { IconWrench } from '../components/icons'
 import { fmtTime, SCENE_COLOR, USER_ROLE } from '../constants'
 import type { AdminChatDetail, AdminChatMessage, AdminChatSession } from '../types'
 
@@ -77,12 +78,16 @@ export default function AdminChatsView() {
       render: (_, r) => (
         <>
           <div style={{ fontWeight: 600, marginBottom: 2 }}>
-            {r.toolCallCount > 0 && <span title="含工具调用">🔧 </span>}
+            {r.toolCallCount > 0 && (
+              <span title="含工具调用">
+                <IconWrench size={12} style={{ verticalAlign: '-2px', marginRight: 3 }} />
+              </span>
+            )}
             {r.title || '（无标题）'}
           </div>
           <Space size={4} wrap>
             <Tag color={SCENE_COLOR[r.scene]}>{r.sceneName}</Tag>
-            <span style={{ color: '#909399', fontSize: 12 }}>#{r.id}</span>
+            <span style={{ color: '#82948e', fontSize: 12 }}>#{r.id}</span>
             {r.isTransferred === 1 && <Tag color="volcano">转人工</Tag>}
           </Space>
         </>
@@ -99,7 +104,7 @@ export default function AdminChatsView() {
               <Tag style={{ marginLeft: 6 }}>{USER_ROLE[r.userRole] || r.userRole}</Tag>
             )}
           </div>
-          <div style={{ color: '#909399', fontSize: 12 }}>
+          <div style={{ color: '#82948e', fontSize: 12 }}>
             {r.username} · {r.phone} · uid={r.userId}
           </div>
         </>
@@ -115,7 +120,9 @@ export default function AdminChatsView() {
           </Tooltip>
           <Tag>{r.messageCount} 条</Tag>
           <Tooltip title="工具调用次数">
-            <Tag color={r.toolCallCount > 0 ? 'orange' : 'default'}>🔧 {r.toolCallCount}</Tag>
+            <Tag color={r.toolCallCount > 0 ? 'orange' : 'default'} icon={<IconWrench size={11} />}>
+              {r.toolCallCount}
+            </Tag>
           </Tooltip>
         </Space>
       )
@@ -125,7 +132,7 @@ export default function AdminChatsView() {
       title: '最后一条',
       width: 240,
       render: (_, r) => (
-        <span style={{ color: '#606266', fontSize: 12 }}>{r.lastMessage || '（暂无消息）'}</span>
+        <span style={{ color: '#4a5c56', fontSize: 12 }}>{r.lastMessage || '（暂无消息）'}</span>
       )
     },
     {
@@ -149,7 +156,7 @@ export default function AdminChatsView() {
     <div className="page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 className="page-title">AI 对话审计</h2>
-        <span style={{ color: '#909399', fontSize: 12 }}>共 {total} 个会话 · 日志只读</span>
+        <span style={{ color: '#82948e', fontSize: 12 }}>共 {total} 个会话 · 日志只读</span>
       </div>
 
       <div className="trace-filter">
@@ -228,7 +235,7 @@ export default function AdminChatsView() {
         width={980}
         open={!!detail}
         onClose={() => setDetail(null)}
-        styles={{ body: { background: '#f7f9fc' } }}
+        styles={{ body: { background: '#eef5f3' } }}
       >
         {detail && <TracePanel detail={detail} />}
       </Drawer>
@@ -275,7 +282,7 @@ function TracePanel({ detail }: { detail: AdminChatDetail }) {
         <Descriptions title="智能体设定" size="small" column={1} bordered>
           <Descriptions.Item label="当前生效引擎">
             <Tag color="geekblue">{detail.currentEngine}</Tag>
-            <span style={{ color: '#909399', fontSize: 12, marginLeft: 8 }}>
+            <span style={{ color: '#82948e', fontSize: 12, marginLeft: 8 }}>
               引擎为查看时刻生效值，历史消息未逐条快照
             </span>
           </Descriptions.Item>
@@ -304,14 +311,14 @@ function TracePanel({ detail }: { detail: AdminChatDetail }) {
           <StatLine label="平均回答时延" value={`${stats.avgLatencyMs} ms`} />
         </Space>
         <div>
-          <span style={{ color: '#8492a6', fontSize: 12, marginRight: 8 }}>工具使用：</span>
+          <span style={{ color: '#82948e', fontSize: 12, marginRight: 8 }}>工具使用：</span>
           {stats.tools.length === 0 ? (
-            <span style={{ color: '#909399', fontSize: 12 }}>本会话未调用工具</span>
+            <span style={{ color: '#82948e', fontSize: 12 }}>本会话未调用工具</span>
           ) : (
             stats.tools.map(t => (
               <Tooltip key={t.name} title={`调用 ${t.count} 次 · 平均耗时 ${t.avgLatencyMs} ms`}>
-                <Tag color="orange" style={{ marginBottom: 4 }}>
-                  🔧 {t.name} ×{t.count}
+                <Tag color="orange" icon={<IconWrench size={11} />} style={{ marginBottom: 4 }}>
+                  {t.name} ×{t.count}
                 </Tag>
               </Tooltip>
             ))
@@ -319,7 +326,7 @@ function TracePanel({ detail }: { detail: AdminChatDetail }) {
         </div>
       </div>
 
-      <h4 style={{ margin: '16px 0 10px', color: '#303133' }}>多轮对话与工具调用（按时间顺序）</h4>
+      <h4 style={{ margin: '16px 0 10px', color: '#1d2c28' }}>多轮对话与工具调用（按时间顺序）</h4>
       {detail.messages.length === 0 ? (
         <Empty description="该会话尚无消息" />
       ) : (
@@ -332,8 +339,8 @@ function TracePanel({ detail }: { detail: AdminChatDetail }) {
 function StatLine({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{ color: '#8492a6', fontSize: 12 }}>{label}</div>
-      <div style={{ fontSize: 16, fontWeight: 600, color: '#1f2f3d' }}>{value}</div>
+      <div style={{ color: '#82948e', fontSize: 12 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 600, color: '#1d2c28' }}>{value}</div>
     </div>
   )
 }
@@ -343,9 +350,11 @@ function TraceStep({ m }: { m: AdminChatMessage }) {
   if (m.role === 3) {
     return (
       <div className="trace-step">
-        <span className="trace-dot tool">🔧</span>
+        <span className="trace-dot tool">
+          <IconWrench size={11} />
+        </span>
         <div className="trace-role">
-          <b style={{ color: '#d48806' }}>工具调用</b>
+          <b style={{ color: '#d98a1f' }}>工具调用</b>
           <Tag color="orange">{m.toolName}</Tag>
           {m.latencyMs != null && <span>耗时 {m.latencyMs} ms</span>}
           <span>#{m.id}</span>
@@ -376,9 +385,9 @@ function TraceStep({ m }: { m: AdminChatMessage }) {
   const isUser = m.role === 1
   return (
     <div className="trace-step">
-      <span className={'trace-dot ' + (isUser ? 'user' : 'ai')}>{isUser ? '🙋' : '🤖'}</span>
+      <span className={'trace-dot ' + (isUser ? 'user' : 'ai')}>{isUser ? '问' : '答'}</span>
       <div className="trace-role">
-        <b style={{ color: isUser ? '#1f6feb' : '#303133' }}>{m.roleName}</b>
+        <b style={{ color: isUser ? '#0d6b5b' : '#1d2c28' }}>{m.roleName}</b>
         {m.latencyMs ? <span>回答耗时 {m.latencyMs} ms</span> : null}
         {m.tokenCount ? <span>tokens {m.tokenCount}</span> : null}
         <span>#{m.id}</span>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button, Descriptions, Empty, Input, message, Modal, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
+import { IconBot } from '../components/icons'
 import { fmtMoney, HOUSE_STATUS, HOUSE_STATUS_TYPE } from '../constants'
 import type { House } from '../types'
 import { usePagedList } from '../usePagedList'
@@ -24,7 +25,7 @@ export default function AdminAuditView() {
     setDetect(vo)
   }
 
-  const riskColor = (s: number) => (s >= 70 ? '#e6392f' : s >= 40 ? '#fa8c16' : '#52c41a')
+  const riskColor = (s: number) => (s >= 70 ? '#bc4a1d' : s >= 40 ? '#d98a1f' : '#3d8f63')
 
   const columns: ColumnsType<House> = [
     {
@@ -32,10 +33,10 @@ export default function AdminAuditView() {
       render: (_, row) => (
         <>
           <b>{row.title}</b>
-          <div style={{ color: '#909399', fontSize: 12 }}>
+          <div style={{ color: '#82948e', fontSize: 12 }}>
             {row.district} · {row.community} · {row.layout} · {row.area}㎡
           </div>
-          <div style={{ color: '#606266', fontSize: 12 }}>
+          <div style={{ color: '#4a5c56', fontSize: 12 }}>
             {(row.description || '').slice(0, 60)}…
           </div>
         </>
@@ -68,8 +69,13 @@ export default function AdminAuditView() {
           >
             驳回
           </Button>
-          <Button size="small" style={{ marginLeft: 6 }} onClick={() => fakeDetect(row)}>
-            🤖 虚假检测
+          <Button
+            size="small"
+            style={{ marginLeft: 6 }}
+            icon={<IconBot size={13} />}
+            onClick={() => fakeDetect(row)}
+          >
+            虚假检测
           </Button>
         </>
       )
@@ -89,7 +95,7 @@ export default function AdminAuditView() {
           total: list.total,
           onChange: p => list.reload(p)
         }}
-        locale={{ emptyText: <Empty description="没有待审核房源 🎉" /> }}
+        locale={{ emptyText: <Empty description="没有待审核房源" /> }}
         columns={columns}
       />
 
@@ -106,7 +112,7 @@ export default function AdminAuditView() {
       </Modal>
 
       <Modal
-        title="🤖 虚假房源检测（辅助审核）"
+        title="虚假房源检测（辅助审核）"
         open={!!detect}
         footer={null}
         width={520}
@@ -118,7 +124,7 @@ export default function AdminAuditView() {
               <span style={{ fontSize: 40, fontWeight: 700, color: riskColor(detect.riskScore) }}>
                 {detect.riskScore}
               </span>
-              <div style={{ color: '#909399' }}>风险分（0~100）</div>
+              <div style={{ color: '#82948e' }}>风险分（0~100）</div>
             </div>
             {detect.suspicions.length ? (
               <ul style={{ paddingLeft: 20, lineHeight: 2 }}>
@@ -132,7 +138,7 @@ export default function AdminAuditView() {
             <Descriptions bordered size="small" column={1}>
               <Descriptions.Item label="处理建议">{detect.suggestion}</Descriptions.Item>
             </Descriptions>
-            <p style={{ color: '#909399', fontSize: 12, marginTop: 8 }}>
+            <p style={{ color: '#82948e', fontSize: 12, marginTop: 8 }}>
               AI 输出仅辅助排序与提示，管理员保留最终裁决权。
             </p>
           </>

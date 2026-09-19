@@ -52,9 +52,9 @@ export default function NotificationsView() {
           </Tag>
           <div style={{ flex: 1 }}>
             <b>{n.title}</b>
-            <div style={{ color: '#606266', fontSize: 13, marginTop: 2 }}>{n.content}</div>
+            <div style={{ color: '#4a5c56', fontSize: 13, marginTop: 2 }}>{n.content}</div>
           </div>
-          <span style={{ color: '#c0c4cc', fontSize: 12 }}>{fmtTime(n.createdAt)}</span>
+          <span style={{ color: '#a5b3ae', fontSize: 12 }}>{fmtTime(n.createdAt)}</span>
           {!n.isRead && <Badge dot />}
         </div>
       ))}

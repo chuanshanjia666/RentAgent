@@ -4,6 +4,14 @@ import { useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
 import http from '../api'
 import { useAuth } from '../auth'
+import {
+  FloorPlanArt,
+  IconArrowLeft,
+  IconCalendar,
+  IconFile,
+  IconHeart,
+  IconStar
+} from '../components/icons'
 import { fmtMoney, fmtTime, HOUSE_STATUS, HOUSE_STATUS_TYPE } from '../constants'
 import { assetUrl } from '../runtime'
 import type { HouseDetail, PageResult, ReviewRow } from '../types'
@@ -107,8 +115,13 @@ export default function HouseDetailView() {
 
   return (
     <div className="page">
-      <Button type="text" onClick={() => history.back()} style={{ marginBottom: 10 }}>
-        ← 返回
+      <Button
+        type="text"
+        icon={<IconArrowLeft />}
+        onClick={() => history.back()}
+        style={{ marginBottom: 10 }}
+      >
+        返回
       </Button>
       <div className="detail-layout">
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -116,7 +129,7 @@ export default function HouseDetailView() {
             {item.images && item.images.length ? (
               <img src={assetUrl(item.images[0].url)} alt="" />
             ) : (
-              <span style={{ fontSize: 90 }}>🏠</span>
+              <FloorPlanArt width={150} />
             )}
           </div>
           <Title level={3} style={{ marginTop: 16 }}>
@@ -142,31 +155,36 @@ export default function HouseDetailView() {
             <Descriptions.Item label="押付方式">{item.house.depositType}</Descriptions.Item>
             <Descriptions.Item label="房东">{item.landlordName}</Descriptions.Item>
             <Descriptions.Item label="评分">
-              {item.house.avgScore ? `⭐ ${item.house.avgScore}` : '暂无'}（{item.reviewCount}{' '}
-              条评价）
+              {item.house.avgScore ? (
+                <>
+                  <IconStar size={13} style={{ color: '#d98a1f', verticalAlign: '-2px' }} />{' '}
+                  {item.house.avgScore}
+                </>
+              ) : (
+                '暂无'
+              )}{' '}
+              （{item.reviewCount} 条评价）
             </Descriptions.Item>
           </Descriptions>
 
-          <h4 style={{ marginTop: 18 }}>设施</h4>
+          <h4 className="detail-label">设施</h4>
           {facilities.map(f => (
             <Tag key={f} style={{ marginBottom: 8 }}>
               {f}
             </Tag>
           ))}
-          <h4>房源描述</h4>
-          <Paragraph style={{ color: '#303133' }}>{item.house.description || '暂无描述'}</Paragraph>
+          <h4 className="detail-label">房源描述</h4>
+          <Paragraph style={{ color: '#4a5c56' }}>{item.house.description || '暂无描述'}</Paragraph>
 
-          <h4>评价（{reviews.length}）</h4>
+          <h4 className="detail-label">评价（{reviews.length}）</h4>
           {reviews.map(r => (
             <div key={r.id} className="review-item">
               <b>{r.tenantName}</b>
-              <span style={{ color: '#faad14', marginLeft: 8 }}>
-                {'★'.repeat(r.houseScore ?? 0)}
-              </span>
-              <span style={{ color: '#909399', fontSize: 12, marginLeft: 8 }}>
+              <span className="stars">{'★'.repeat(r.houseScore ?? 0)}</span>
+              <span style={{ color: '#82948e', fontSize: 12, marginLeft: 8 }}>
                 {fmtTime(r.createdAt)}
               </span>
-              <p style={{ margin: '4px 0 0' }}>{r.content}</p>
+              <p>{r.content}</p>
             </div>
           ))}
           {reviews.length === 0 && <Empty imageStyle={{ height: 60 }} description="暂无评价" />}
@@ -178,24 +196,36 @@ export default function HouseDetailView() {
               {fmtMoney(item.house.rent)}
               <small> /月</small>
             </div>
-            <div style={{ color: '#8492a6', fontSize: 13, margin: '4px 0 14px' }}>
+            <div style={{ color: '#82948e', fontSize: 13, margin: '4px 0 14px' }}>
               押付：{item.house.depositType}
             </div>
             {isTenant ? (
               <>
-                <Button type="primary" size="large" block onClick={() => setApptOpen(true)}>
-                  📅 预约看房
+                <Button
+                  type="primary"
+                  size="large"
+                  block
+                  icon={<IconCalendar />}
+                  onClick={() => setApptOpen(true)}
+                >
+                  预约看房
                 </Button>
                 <Button
                   size="large"
                   block
+                  icon={<IconFile />}
                   style={{ margin: '10px 0 0' }}
                   onClick={() => setContractOpen(true)}
                 >
-                  📝 发起在线签约
+                  发起在线签约
                 </Button>
                 <Button type="text" block style={{ marginTop: 10 }} onClick={toggleFav}>
-                  {item.favorited ? '♥ 已收藏' : '♡ 收藏房源'}
+                  <IconHeart
+                    size={15}
+                    filled={item.favorited}
+                    style={{ color: item.favorited ? '#bc4a1d' : undefined, verticalAlign: '-2px' }}
+                  />{' '}
+                  {item.favorited ? '已收藏' : '收藏房源'}
                 </Button>
                 <Button type="text" size="small" block onClick={() => setReportOpen(true)}>
                   举报该房源

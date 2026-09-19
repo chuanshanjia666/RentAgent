@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Alert, Button, Descriptions, Empty, message, Modal, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
+import { IconAlert, IconChat } from '../components/icons'
 import { useAuth } from '../auth'
 import { CONTRACT_STATUS, CONTRACT_STATUS_TYPE, fmtMoney, parseJsonList } from '../constants'
 import type { ContractRow } from '../types'
@@ -83,8 +84,13 @@ export default function ContractsView() {
               签署
             </Button>
           )}
-          <Button size="small" style={{ marginLeft: 6 }} onClick={() => interpret(r)}>
-            🤖 AI 解读
+          <Button
+            size="small"
+            style={{ marginLeft: 6 }}
+            icon={<IconChat size={13} />}
+            onClick={() => interpret(r)}
+          >
+            AI 解读
           </Button>
           {r.contract.status === 2 && (
             <Button size="small" style={{ marginLeft: 6 }} onClick={() => terminate(r)}>
@@ -151,12 +157,12 @@ export default function ContractsView() {
                   {i + 1}. {cl.title}
                 </b>
                 {riskIdx.includes(i) ? (
-                  <Tag color="red" style={{ marginLeft: 6 }}>
-                    ⚠ 风险条款
+                  <Tag color="red" icon={<IconAlert size={11} />} style={{ marginLeft: 6 }}>
+                    风险条款
                   </Tag>
                 ) : null}
                 <p
-                  style={{ margin: '4px 0 0', color: riskIdx.includes(i) ? '#e6392f' : '#303133' }}
+                  style={{ margin: '4px 0 0', color: riskIdx.includes(i) ? '#bc4a1d' : undefined }}
                 >
                   {cl.text}
                 </p>
@@ -173,7 +179,7 @@ export default function ContractsView() {
       </Modal>
 
       <Modal
-        title="🤖 合同智能解读"
+        title="合同智能解读"
         open={!!interp}
         footer={null}
         width={760}
@@ -183,11 +189,14 @@ export default function ContractsView() {
           interp.items.map((it: any) => (
             <div key={it.index} className="clause">
               <b>条款 {it.index + 1}</b>
-              <Tag color={it.risk ? 'red' : 'green'} style={{ marginLeft: 6 }}>
-                {it.risk ? '⚠ 风险条款' : '常规条款'}
+              <Tag
+                color={it.risk ? 'red' : 'green'}
+                icon={it.risk ? <IconAlert size={11} /> : undefined}
+              >
+                {it.risk ? '风险条款' : '常规条款'}
               </Tag>
-              <p style={{ margin: '4px 0', color: '#606266' }}>{it.clause}</p>
-              <p style={{ margin: 0, color: '#303133' }}>💬 {it.explanation}</p>
+              <p style={{ margin: '4px 0' }}>{it.clause}</p>
+              <p className="clause-explain">{it.explanation}</p>
             </div>
           ))}
         {interp && (

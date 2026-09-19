@@ -3,6 +3,7 @@ import { Button, Empty, Input, Pagination, Select, Switch } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import http from '../api'
 import HouseCard from '../components/HouseCard'
+import { FloorPlanArt, IconBot, IconSearch } from '../components/icons'
 import { DISTRICTS, LAYOUTS } from '../constants'
 import type { House, PageResult } from '../types'
 
@@ -114,70 +115,82 @@ export default function HomeView() {
 
   return (
     <div className="page">
-      <div className="search-bar">
-        <Input
-          size="large"
-          style={{ maxWidth: 420 }}
-          placeholder="输入小区 / 标题 / 地址关键词，或试试 AI 助手"
-          value={q.keyword}
-          onChange={e => set('keyword', e.target.value)}
-          onPressEnter={search}
-        />
-        <Select
-          size="large"
-          allowClear
-          placeholder="区域"
-          style={{ width: 130 }}
-          value={q.district}
-          options={DISTRICTS.map(d => ({ value: d, label: d }))}
-          onChange={v => set('district', v)}
-        />
-        <Select
-          size="large"
-          allowClear
-          placeholder="户型"
-          style={{ width: 120 }}
-          value={q.layout}
-          options={LAYOUTS.map(l => ({ value: l, label: l }))}
-          onChange={v => set('layout', v)}
-        />
-        <Input
-          size="large"
-          style={{ width: 110 }}
-          type="number"
-          placeholder="租金上限"
-          value={q.rentMax}
-          onChange={e => set('rentMax', e.target.value)}
-        />
-        <Select
-          size="large"
-          style={{ width: 140 }}
-          value={q.sort}
-          onChange={v => set('sort', v)}
-          options={[
-            { value: 'new', label: '默认排序' },
-            { value: 'rent_asc', label: '租金从低到高' },
-            { value: 'rent_desc', label: '租金从高到低' },
-            { value: 'hot', label: '最热优先' }
-          ]}
-        />
-        <Button type="primary" size="large" onClick={search}>
-          搜索
-        </Button>
-        <Button size="large" onClick={() => nav('/app/ai')}>
-          🤖 AI 找房
-        </Button>
+      {/* Hero：一句话说清产品的核心用法（对话找房 + 自助筛选） */}
+      <div className="hero">
+        <div className="hero-art">
+          <FloorPlanArt width={230} />
+        </div>
+        <h1>说说你想怎么住</h1>
+        <p className="hero-sub">一句话让 AI 帮你找房，也可以自己按区域、预算、户型筛选</p>
+        <div className="search-bar">
+          <Input
+            size="large"
+            style={{ maxWidth: 420 }}
+            placeholder="输入小区 / 标题 / 地址关键词，或试试 AI 助手"
+            value={q.keyword}
+            onChange={e => set('keyword', e.target.value)}
+            onPressEnter={search}
+          />
+          <Select
+            size="large"
+            allowClear
+            placeholder="区域"
+            style={{ width: 130 }}
+            value={q.district}
+            options={DISTRICTS.map(d => ({ value: d, label: d }))}
+            onChange={v => set('district', v)}
+          />
+          <Select
+            size="large"
+            allowClear
+            placeholder="户型"
+            style={{ width: 120 }}
+            value={q.layout}
+            options={LAYOUTS.map(l => ({ value: l, label: l }))}
+            onChange={v => set('layout', v)}
+          />
+          <Input
+            size="large"
+            style={{ width: 110 }}
+            type="number"
+            placeholder="租金上限"
+            value={q.rentMax}
+            onChange={e => set('rentMax', e.target.value)}
+          />
+          <Select
+            size="large"
+            style={{ width: 140 }}
+            value={q.sort}
+            onChange={v => set('sort', v)}
+            options={[
+              { value: 'new', label: '默认排序' },
+              { value: 'rent_asc', label: '租金从低到高' },
+              { value: 'rent_desc', label: '租金从高到低' },
+              { value: 'hot', label: '最热优先' }
+            ]}
+          />
+          <Button type="primary" size="large" icon={<IconSearch />} onClick={search}>
+            搜索房源
+          </Button>
+          <Button
+            size="large"
+            ghost
+            type="primary"
+            icon={<IconBot />}
+            onClick={() => nav('/app/ai')}
+          >
+            问 AI 助手
+          </Button>
+        </div>
       </div>
 
       {!searched && recommend.length > 0 && (
         <>
           <h3 className="sec-title">
-            ✨ 为你推荐
-            <span style={{ fontSize: 12, color: '#909399', marginLeft: 8 }}>
-              基于你的收藏与看房记录
-            </span>
+            为你推荐
+            <span className="sec-note">基于你的收藏与看房记录</span>
             <Switch
-              style={{ float: 'right' }}
+              style={{ marginLeft: 'auto', fontWeight: 400 }}
               checked={mapMode}
               onChange={toggleMap}
               checkedChildren="地图"
@@ -196,7 +209,7 @@ export default function HomeView() {
         <div className="map-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <b>地图找房（演示版按经纬度散点展示）</b>
-            <span style={{ color: '#909399', fontSize: 12 }}>
+            <span style={{ color: '#82948e', fontSize: 12 }}>
               共 {mapPoints.length} 套在租房源，点击圆点查看详情
             </span>
           </div>
@@ -204,7 +217,7 @@ export default function HomeView() {
             viewBox={`0 0 ${MAP_W} ${MAP_H}`}
             width="100%"
             height={460}
-            style={{ background: 'linear-gradient(160deg,#eaf2fc,#f7fbff)', borderRadius: 8 }}
+            style={{ background: '#eef4f2', borderRadius: 8 }}
           >
             {mapPoints.map(p => (
               <g
@@ -212,9 +225,9 @@ export default function HomeView() {
                 style={{ cursor: 'pointer' }}
                 onClick={() => nav(`/app/houses/${p.id}`)}
               >
-                <circle cx={p.x} cy={p.y} r="10" fill="rgba(31,111,235,.18)" />
-                <circle cx={p.x} cy={p.y} r="5" fill="#1f6feb" />
-                <text x={p.x + 11} y={p.y + 4} fontSize="12" fill="#303133">
+                <circle cx={p.x} cy={p.y} r="10" fill="rgba(13,107,91,.16)" />
+                <circle cx={p.x} cy={p.y} r="5" fill="#0d6b5b" />
+                <text x={p.x + 11} y={p.y + 4} fontSize="12" fill="#1d2c28">
                   {p.rent}元
                 </text>
               </g>
@@ -224,9 +237,9 @@ export default function HomeView() {
       ) : (
         <>
           <h3 className="sec-title">
-            在租房源 <span style={{ color: '#909399', fontSize: 13 }}>共 {total} 套</span>
+            在租房源 <span className="sec-note">共 {total} 套</span>
             <Switch
-              style={{ float: 'right' }}
+              style={{ marginLeft: 'auto', fontWeight: 400 }}
               checked={mapMode}
               onChange={toggleMap}
               checkedChildren="地图"

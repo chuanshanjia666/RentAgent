@@ -35,7 +35,7 @@ export default function AdminUsersView() {
       width: 110,
       render: (_, u) =>
         u.role === 3 ? (
-          <span style={{ color: '#c0c4cc' }}>管理员不可禁用</span>
+          <span style={{ color: '#a5b3ae' }}>管理员不可禁用</span>
         ) : (
           <Button size="small" danger={u.status === 1} onClick={() => toggle(u)}>
             {u.status === 1 ? '禁用' : '启用'}

@@ -17,6 +17,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
+import { IconTrend, IconWand } from '../components/icons'
 import {
   DEPOSIT_TYPES,
   DISTRICTS,
@@ -221,7 +222,7 @@ export default function LandlordHousesView() {
       render: (_, row) => (
         <>
           <b>{row.title}</b>
-          <div style={{ color: '#909399', fontSize: 12 }}>
+          <div style={{ color: '#82948e', fontSize: 12 }}>
             {row.district} · {row.community} · {row.layout}
           </div>
         </>
@@ -238,7 +239,7 @@ export default function LandlordHousesView() {
     {
       title: '浏览/评分',
       width: 120,
-      render: (_, row) => `${row.viewCount} 次${row.avgScore ? ` / ⭐${row.avgScore}` : ''}`
+      render: (_, row) => `${row.viewCount} 次${row.avgScore ? ` / ★${row.avgScore}` : ''}`
     },
     {
       title: '操作',
@@ -264,8 +265,13 @@ export default function LandlordHousesView() {
               下架
             </Button>
           )}
-          <Button size="small" style={{ marginLeft: 6 }} onClick={() => pricing(row)}>
-            🤖 定价建议
+          <Button
+            size="small"
+            style={{ marginLeft: 6 }}
+            icon={<IconTrend size={13} />}
+            onClick={() => pricing(row)}
+          >
+            定价建议
           </Button>
         </>
       )
@@ -401,8 +407,14 @@ export default function LandlordHousesView() {
               value={form.description}
               onChange={e => set('description', e.target.value)}
             />
-            <Button size="small" type="primary" ghost onClick={aiFill}>
-              🤖 AI 智能填充描述与设施
+            <Button
+              size="small"
+              type="primary"
+              ghost
+              icon={<IconWand size={13} />}
+              onClick={aiFill}
+            >
+              AI 智能填充描述与设施
             </Button>
           </Form.Item>
           <Form.Item label="房源图片（首图自动作为封面，支持 jpg/png/webp）">
@@ -455,7 +467,7 @@ export default function LandlordHousesView() {
       </Modal>
 
       <Modal
-        title="🤖 智能定价建议"
+        title="智能定价建议"
         open={priceOpen}
         footer={null}
         width={460}
@@ -464,10 +476,10 @@ export default function LandlordHousesView() {
         {price && (
           <>
             <div style={{ textAlign: 'center', margin: '10px 0 16px' }}>
-              <span style={{ fontSize: 28, color: '#e6392f', fontWeight: 700 }}>
+              <span style={{ fontSize: 28, color: '#bc4a1d', fontWeight: 700 }}>
                 ¥{price.low} ~ ¥{price.high}
               </span>
-              <div style={{ color: '#909399', marginTop: 4 }}>样本均价 ¥{price.avg}</div>
+              <div style={{ color: '#82948e', marginTop: 4 }}>样本均价 ¥{price.avg}</div>
             </div>
             <Descriptions bordered size="small" column={1}>
               <Descriptions.Item label="依据">{price.basis}</Descriptions.Item>
