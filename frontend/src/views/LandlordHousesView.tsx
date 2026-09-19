@@ -286,7 +286,7 @@ export default function LandlordHousesView() {
           type="warning"
           showIcon
           style={{ marginBottom: 14 }}
-          message="您尚未通过实名认证，发布房源前请先到「个人中心」完成实名认证（FR-03）"
+          message="您尚未通过实名认证，发布房源前请先到「个人中心」完成实名认证"
         />
       )}
 
@@ -402,7 +402,7 @@ export default function LandlordHousesView() {
               onChange={e => set('description', e.target.value)}
             />
             <Button size="small" type="primary" ghost onClick={aiFill}>
-              🤖 AI 智能填充描述与设施（FR-08）
+              🤖 AI 智能填充描述与设施
             </Button>
           </Form.Item>
           <Form.Item label="房源图片（首图自动作为封面，支持 jpg/png/webp）">
@@ -455,7 +455,7 @@ export default function LandlordHousesView() {
       </Modal>
 
       <Modal
-        title="🤖 智能定价建议（FR-15）"
+        title="🤖 智能定价建议"
         open={priceOpen}
         footer={null}
         width={460}

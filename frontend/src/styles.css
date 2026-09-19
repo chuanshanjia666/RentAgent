@@ -209,6 +209,15 @@ body {
   color: #303133;
   border-top-left-radius: 2px;
 }
+/* AI 气泡里的房源详情页链接：主色可辨识，悬停下划线 */
+.msg-row.ai .bubble a {
+  color: #1f6feb;
+  font-weight: 600;
+  text-decoration: none;
+}
+.msg-row.ai .bubble a:hover {
+  text-decoration: underline;
+}
 .msg-row.me .bubble {
   background: #1f6feb;
   color: #fff;

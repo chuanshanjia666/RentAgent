@@ -42,7 +42,7 @@ export default function AdminLogsView() {
   return (
     <div className="page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 className="page-title">操作留痕（FR-07/22/23）</h2>
+        <h2 className="page-title">操作留痕</h2>
         <span style={{ color: '#909399', fontSize: 12 }}>共 {list.total} 条 · 日志只读</span>
       </div>
       <Table

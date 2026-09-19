@@ -600,12 +600,12 @@ CLASS_FIGS = {
         "         String resultJson, int latencyMs): void",
         "- 写 role=3 工具消息（tool_name / args / result / latency）",
         "- JSON 列合法性校验与超长预览兜底"], "#eaf6ea", "#5c9c5c"),
-     ("HousingTools", "工具注册表（@Tool）", ["- houseMapper / kbService"], [
-        "+ searchHouses(Integer maxRent, String layoutKeyword,",
-        "               String district, String keyword, Boolean subway): String",
-        "+ searchKnowledge(String question): String",
-        "+ getHouseDetail / createAppointment / suggestPrice",
-        "+ detectFakeHouse / analyzeContract"], "#eef4fb", "#4a7ebb"),
+     ("HousingTools", "工具注册表（@Tool）", ["- searchService / houseService / kbService"], [
+        "+ searchHouses(minRent, maxRent, layoutKeyword,",
+        "               district, keyword, subway,",
+        "               facilities, sort): String",
+        "+ getHouseDetail(houseId): String",
+        "+ searchKnowledge(question): String"], "#eef4fb", "#4a7ebb"),
      ("AiChatSession / AiChatMessage / AiAnalysis", "Entity", [
         "AiChatSession：user_id, scene, title, context_summary, is_transferred",
         "AiChatMessage：session_id, role, content, tool_name/tool_args/tool_result, citations, latency_ms",
@@ -785,7 +785,7 @@ def fig_agent_structure():
     fillcolor="#eef4fb"; color="#4a7ebb"; margin=10;
     prov [label="HousingToolProvider（工具提供器）\n向 AiServices 注册 @Tool 规格\n并把执行包装为\n计时 → 执行 → 留痕 → 返回",
            fillcolor="#eef4fb", color="#4a7ebb", width=4.6];
-    tools [label="HousingTools（业务工具，@Tool 注册）\nsearchHouses(maxRent, layoutKeyword,\n　　　　　　　district, keyword, subway)\ngetHouseDetail · createAppointment\nsuggestPrice · detectFakeHouse · analyzeContract",
+    tools [label="HousingTools（业务工具，@Tool 注册）\nsearchHouses(minRent, maxRent, layoutKeyword,\n　　　　　　　district, keyword, subway,\n　　　　　　　facilities, sort) → total + 卡片\ngetHouseDetail(houseId) · searchKnowledge",
            fillcolor="#eef4fb", color="#4a7ebb", width=4.8];
     rag [label="RAG 检索\nsearchKnowledge(question) → 切片 + 来源引用\n首版关键词命中 + 计分；向量升级位已预留",
          fillcolor="#eef4fb", color="#4a7ebb", width=4.8];
@@ -906,6 +906,108 @@ def fig_er():
     render("fig_4_1_er", d, dpi=150)
 
 
+def fig_arch_layered():
+    """图2-2 系统分层架构图：自上而下五层（客户端 / 接入 / 业务 / AI / 数据）+ 外部模型网关。"""
+    d = '''digraph arch_layered {
+  rankdir=TB; nodesep=0.30; ranksep=0.50; splines=spline;
+  graph [fontname="''' + CN + '''", bgcolor="white", compound=true, margin=0.15];
+  node  [fontname="''' + CN + '''", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.16,0.10"];
+  edge  [fontname="''' + CN + '''", fontsize=9.5, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+
+  subgraph cluster_client {
+    label="① 客户端层 —— 一套代码（frontend/dist），两种分发"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=9;
+    web      [label="浏览器 Web 版\\nReact 18 + TS + antd 5 + ECharts\\nHashRouter · api.ts · ssePost"];
+    electron [label="Electron 桌面端\\n同一构建产物以 file:// 加载\\n预注入后端 API 地址"];
+  }
+
+  subgraph cluster_access {
+    label="② 接入层（Spring Boot 3.3.4 · :8080）"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=9;
+    access [label="REST /api/v1/*（统一响应 R{code, message, data}）\\nJWT 过滤器 + @RequireRole 角色拦截器\\nSSE 流式 · 静态图片 /uploads/**"];
+  }
+
+  subgraph cluster_biz {
+    label="③ 业务层（controller → service → mapper）"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=9;
+    m1 [label="用户 / 实名认证"];
+    m2 [label="房源（种子 + 图片）"];
+    m3 [label="预约 / 合同 / 订单"];
+    m4 [label="评价 / 举报 / 收藏"];
+    m5 [label="通知 / 后台管理"];
+    m6 [label="知识库 KB"];
+    m1 -> m4 [style=invis]; m2 -> m5 [style=invis]; m3 -> m6 [style=invis];
+  }
+
+  subgraph cluster_ai {
+    label="④ AI 层（全部真调模型，零兜底）"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=9;
+    chat  [label="ChatService：SSE 编排\\n消息 / 留痕落库"];
+    agent [label="AgentEngine = LlmAgent\\n系统提示词（房源链接协议）\\n+ 12 轮会话记忆"];
+    tools [label="HousingToolProvider（留痕 role=3）\\nHousingTools：searchHouses\\ngetHouseDetail · searchKnowledge\\n（detailUrl 由代码统一拼装）", fillcolor="#f7f0e6", color="#b08a5c"];
+    gw    [label="LlmGateway：三协议适配器全部自研\\nopenai-chat-completions（当前）\\nanthropic-messages · openai-responses\\n正文与 tool_calls 分别累积后合并"];
+    jsonc [label="AiJsonClient：定价 / 虚假检测\\n合同解读 / 智能填充\\njson_schema(strict) 强约束", fillcolor="#f7f0e6", color="#b08a5c"];
+    chat -> agent -> tools -> gw [style=invis];
+  }
+
+  subgraph cluster_data {
+    label="⑤ 数据层"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=9;
+    mysql   [label="MySQL 8 · 18 张表\\nhouse / house_image / ai_chat_message …"];
+    redis   [label="Redis\\n验证码 · 登录失败计数"];
+    uploads [label="uploads 图片目录\\nseed-*.jpg"];
+  }
+
+  ext [label="外部：聚合模型网关（按 UA 放行）\\ndeepseek / deepseek-v4.1-flash",
+       fillcolor="#f7e7e7", color="#c07070"];
+
+  web      -> access [label="HTTP /api/v1"];
+  electron -> access [label="HTTP（注入基址）"];
+  access   -> m2     [label="业务请求"];
+  access   -> chat   [label="找房 / 客服 SSE"];
+  chat     -> agent  [label="编排"];
+  agent    -> gw     [label="流式对话"];
+  agent    -> tools  [label="Function Calling"];
+  tools    -> mysql  [label="检索已上架房源"];
+  m2       -> mysql;
+  m5       -> mysql  [style=dotted];
+  m6       -> mysql  [style=dotted];
+  jsonc    -> gw     [label="结构化分析", style=dashed];
+  gw       -> ext    [label="HTTPS 出网"];
+}
+'''
+    render("fig_2_2_arch", d, dpi=150)
+
+
+def fig_agent_flow():
+    """AI 找房智能体工作时序图：一次找房请求的 9 步全过程（含工具留痕与链接协议）。"""
+    d = '''digraph agent_flow {
+  rankdir=TB; nodesep=0.30; ranksep=0.40; splines=spline;
+  graph [fontname="''' + CN + '''", bgcolor="white", margin=0.15];
+  node  [fontname="''' + CN + '''", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.16,0.10"];
+  edge  [fontname="''' + CN + '''", fontsize=9.5, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+
+  f1 [label="1. 租客在 AI 助手发送需求\\n（scene=1 找房场景）"];
+  f2 [label="2. ssePost 建立流式连接\\nChatService 组装：系统提示词\\n+ 12 轮记忆 + 工具清单", fillcolor="#eaf6ea", color="#5c9c5c"];
+  f3 [label="3. LlmAgent → LlmGateway → deepseek\\n自研适配器逐字累积正文\\n并同时捕获 tool_calls", fillcolor="#fdeeee", color="#c07070"];
+  f4 [label="4. 模型决策调用工具（不凭空作答）\\nsearchHouses(maxRent=2500,\\nlayoutKeyword=1室, subway=true)", fillcolor="#fdeeee", color="#c07070"];
+  f5 [label="5. HousingToolProvider 包装执行\\n计时 → 执行 → 留痕 role=3\\n（tool_name / args / result / 耗时）", fillcolor="#f7f0e6", color="#b08a5c"];
+  f6 [label="6. SearchService 查 MySQL（仅已上架）\\n返回 {total, list:[卡片…\\ncoverUrl, detailUrl:#/app/houses/4]}", fillcolor="#f7f0e6", color="#b08a5c"];
+  f7 [label="7. 工具结果回填模型 → 生成推荐正文\\n逐套输出 Markdown 链接 [标题](detailUrl)\\n不得编造房源与链接", fillcolor="#fdeeee", color="#c07070"];
+  f8 [label="8. SSE 流式返回：delta 逐字推送\\ndone{messageId, citations,\\ntransferred, latencyMs}", fillcolor="#eaf6ea", color="#5c9c5c"];
+  f9 [label="9. 前端 renderWithLinks 渲染可点击 <a>\\n点击直达房源详情页\\n消息全量落库（审计可回放）"];
+  fb [label="可靠性兜底：本轮没执行任何工具且回答像过程语，\\n或 429 / 5xx / 超时 / 空返回 → 非流式重跑一次（同一会话记忆）；\\n4xx 如实报错 4001，无正文无工具调用绝不伪造回答",
+      fillcolor="#f7e7e7", color="#c07070", style="filled,rounded,dashed"];
+
+  f1 -> f2 -> f3 -> f4 -> f5 -> f6 -> f7 -> f8 -> f9;
+  f6 -> f3 [label="结果回填，继续生成", style=dashed, constraint=false, color="#b08a5c"];
+}
+'''
+    render("fig_3_agent_flow", d, dpi=150)
+
+
 if __name__ == "__main__":
     fig_system()
     for key, name, frs, c, s, m, en in MODULES:
@@ -915,4 +1017,6 @@ if __name__ == "__main__":
     for key in CLASS_FIGS:
         fig_class(key)
     fig_er()
+    fig_arch_layered()
+    fig_agent_flow()
     print("all figures done ->", OUT)

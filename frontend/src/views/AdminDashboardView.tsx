@@ -68,7 +68,7 @@ export default function AdminDashboardView() {
   return (
     <div className="page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 className="page-title">数据统计看板（FR-24）</h2>
+        <h2 className="page-title">数据统计看板</h2>
         <Radio.Group
           value={granularity}
           buttonStyle="solid"

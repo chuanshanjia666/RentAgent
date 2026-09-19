@@ -83,10 +83,10 @@ LangChain4j AiServices 编排
 计时 → 执行 → 留痕 → 返回",
            fillcolor="#eef4fb", color="#4a7ebb", width=4.6];
     tools [label="HousingTools（业务工具，@Tool 注册）
-searchHouses(maxRent, layoutKeyword,
-　　　　　　　district, keyword, subway)
-getHouseDetail · createAppointment
-suggestPrice · detectFakeHouse · analyzeContract",
+searchHouses(minRent, maxRent, layoutKeyword,
+　　　　　　　district, keyword, subway,
+　　　　　　　facilities, sort) → total + 卡片
+getHouseDetail(houseId) · searchKnowledge",
            fillcolor="#eef4fb", color="#4a7ebb", width=4.8];
     rag [label="RAG 检索
 searchKnowledge(question) → 切片 + 来源引用

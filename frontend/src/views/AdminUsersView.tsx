@@ -46,7 +46,7 @@ export default function AdminUsersView() {
 
   return (
     <div className="page">
-      <h2 className="page-title">用户管理（FR-22）</h2>
+      <h2 className="page-title">用户管理</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         <Input
           style={{ width: 260 }}

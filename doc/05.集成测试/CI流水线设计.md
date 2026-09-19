@@ -1,6 +1,7 @@
 # RentAgent CI 流水线设计
 
 > 项目名称：RentAgent —— 基于 AI 智能体的房屋租赁系统
+> 文档版本：v1.5（v1.5 于 2026-09-19 同步找房智能体升级：集成冒烟断言数 130 → **131 条**——新增「找房回答直接附房源详情页链接」（`searchHouses` 卡片带 `detailUrl`、提示词约定链接协议、前端气泡渲染站内链接），关联《概要设计》v1.11、《测试用例设计》v1.5）
 > 文档版本：v1.4（v1.4 于 2026-09-18 按前后端协同代码评审结论更新：断言数 127 → **130 条**、后端单测基线 182 → **190 条**；补记 `AI_MAX_TOKENS` 可调项（单轮 token 上限默认 4096，需给推理模型留余量）；补记「模型调用失败不再伪装成回答为空」的排障口径——流式分支此前不校验 HTTP 状态码，且把「正文与工具调用全空」伪造为一句可读提示，导致 CI 只表现为三条互不相关的 FR-13 失败断言；现改为如实报错 + 可自愈故障非流式重跑一次）
 > 文档版本：v1.3（v1.3 于 2026-09-18 补记前端静态检查门禁与断言计数更新：`frontend-test` 作业新增 ESLint 与 Prettier 两步；集成冒烟断言数随代码评审由 125 条增至 127 条，§一/§二/§四 描述与流程图同步）
 > 文档版本：v1.2（v1.2 于 2026-09-17 修正 BUG-02 根因：流式工具调用丢失是客户端解析问题（langchain4j 0.35 组装器在正文非空时丢弃 tool_calls），非网关截断；排障口径与断言口径相应更新）
@@ -34,7 +35,7 @@
 | 前端静态检查与格式 | `npm run lint` + `npm run format:check`（ESLint + Prettier） | 死导入与未使用变量、hook 依赖数组遗漏、缩进引号等风格漂移 |
 | 前端单测 | `npm test`（vitest，20 条） | 运行时地址解析、状态字典、SSE 流式解析 |
 | 前端类型与构建 | `npm run build:web`（`tsc --noEmit` + vite） | TS 严格模式下的类型错误、构建失败 |
-| 集成冒烟 | `bash scripts/ci-smoke.sh`（130 条断言） | 跨模块业务闭环、真实 MySQL/Redis 语义、鉴权链路、**真实模型**的工具调用与引用来源 |
+| 集成冒烟 | `bash scripts/ci-smoke.sh`（131 条断言） | 跨模块业务闭环、真实 MySQL/Redis 语义、鉴权链路、**真实模型**的工具调用与引用来源 |
 | 反向门禁 | `bash scripts/ci-no-model-check.sh`（6 条，账号无合同时合同解读项跳过） | "未配置模型时 AI 能力必须硬报错"——防止模拟/规则兜底被重新引入 |
 
 ---
@@ -82,7 +83,7 @@
 | 初始化库 | 安装 `mysql-client` → 等 MySQL 就绪 → 执行 `docker/mysql-init/01_schema.sql` → 打印表数量（应 18） |
 | 构建 | `mvn -B -ntp -DskipTests package`（产出可执行 jar） |
 | 启动 | 后台启动 jar（注入 `MYSQL_*`/`REDIS_*`/`JWT_SECRET`/`AES_KEY`），轮询直到**接口可用且种子数据已提交**（先探 `/api/v1/ai/engine`，再探查库的 `/api/v1/houses?size=1` 且 `total ≥ 1`，最多 3 分钟），超时打印后端日志尾部 |
-| 冒烟 | `bash scripts/ci-smoke.sh`（130 条断言，失败即非 0 退出） |
+| 冒烟 | `bash scripts/ci-smoke.sh`（131 条断言，失败即非 0 退出） |
 | 无模型校验 | 另起一个不注入模型凭据的实例（`SERVER_PORT=8081`），执行 `scripts/ci-no-model-check.sh`，校验 AI 能力全部返回 4001 |
 | 归档 | 失败时上传 `/tmp/backend.log` 与 SSE 原始输出 |
 
@@ -125,7 +126,7 @@ push / PR / 手动
         ├── backend-test      JDK17 ── mvn test（190 条）────────────────────────────────────────┐
         ├── frontend-test     Node20 ── npm ci → lint → format:check → vitest → build:web ───────┤ 并行
         └── integration-smoke JDK17 + mysql:8.0 + redis:7                                        │
-                              └─ 建表 → 打包 → 启动 → ci-smoke.sh（130 条）                      ┘
+                              └─ 建表 → 打包 → 启动 → ci-smoke.sh（131 条）                      ┘
                                         ↓
                           全部成功 = 门禁通过；任一失败 = 阻断合并
 ```

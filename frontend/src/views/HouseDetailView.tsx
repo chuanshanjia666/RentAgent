@@ -233,7 +233,7 @@ export default function HouseDetailView() {
       </Modal>
 
       <Modal
-        title="发起在线签约（FR-18）"
+        title="发起在线签约"
         open={contractOpen}
         onOk={submitContract}
         confirmLoading={contracting}

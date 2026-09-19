@@ -78,7 +78,7 @@ export default function AdminAuditView() {
 
   return (
     <div className="page">
-      <h2 className="page-title">审核工作台（FR-07 · AI 辅助 FR-16）</h2>
+      <h2 className="page-title">审核工作台</h2>
       <Table
         rowKey="id"
         dataSource={list.rows}
@@ -106,7 +106,7 @@ export default function AdminAuditView() {
       </Modal>
 
       <Modal
-        title="🤖 虚假房源检测（FR-16 · 辅助审核）"
+        title="🤖 虚假房源检测（辅助审核）"
         open={!!detect}
         footer={null}
         width={520}
@@ -133,7 +133,7 @@ export default function AdminAuditView() {
               <Descriptions.Item label="处理建议">{detect.suggestion}</Descriptions.Item>
             </Descriptions>
             <p style={{ color: '#909399', fontSize: 12, marginTop: 8 }}>
-              AI 输出仅辅助排序与提示，管理员保留最终裁决权（FR-16 验收标准）。
+              AI 输出仅辅助排序与提示，管理员保留最终裁决权。
             </p>
           </>
         )}

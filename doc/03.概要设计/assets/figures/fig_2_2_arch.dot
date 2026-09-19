@@ -1,0 +1,68 @@
+digraph arch_layered {
+  rankdir=TB; nodesep=0.30; ranksep=0.50; splines=spline;
+  graph [fontname="Microsoft YaHei", bgcolor="white", compound=true, margin=0.15];
+  node  [fontname="Microsoft YaHei", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.16,0.10"];
+  edge  [fontname="Microsoft YaHei", fontsize=9.5, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+
+  subgraph cluster_client {
+    label="① 客户端层 —— 一套代码（frontend/dist），两种分发"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=9;
+    web      [label="浏览器 Web 版\nReact 18 + TS + antd 5 + ECharts\nHashRouter · api.ts · ssePost"];
+    electron [label="Electron 桌面端\n同一构建产物以 file:// 加载\n预注入后端 API 地址"];
+  }
+
+  subgraph cluster_access {
+    label="② 接入层（Spring Boot 3.3.4 · :8080）"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=9;
+    access [label="REST /api/v1/*（统一响应 R{code, message, data}）\nJWT 过滤器 + @RequireRole 角色拦截器\nSSE 流式 · 静态图片 /uploads/**"];
+  }
+
+  subgraph cluster_biz {
+    label="③ 业务层（controller → service → mapper）"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=9;
+    m1 [label="用户 / 实名认证"];
+    m2 [label="房源（种子 + 图片）"];
+    m3 [label="预约 / 合同 / 订单"];
+    m4 [label="评价 / 举报 / 收藏"];
+    m5 [label="通知 / 后台管理"];
+    m6 [label="知识库 KB"];
+    m1 -> m4 [style=invis]; m2 -> m5 [style=invis]; m3 -> m6 [style=invis];
+  }
+
+  subgraph cluster_ai {
+    label="④ AI 层（全部真调模型，零兜底）"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=9;
+    chat  [label="ChatService：SSE 编排\n消息 / 留痕落库"];
+    agent [label="AgentEngine = LlmAgent\n系统提示词（房源链接协议）\n+ 12 轮会话记忆"];
+    tools [label="HousingToolProvider（留痕 role=3）\nHousingTools：searchHouses\ngetHouseDetail · searchKnowledge\n（detailUrl 由代码统一拼装）", fillcolor="#f7f0e6", color="#b08a5c"];
+    gw    [label="LlmGateway：三协议适配器全部自研\nopenai-chat-completions（当前）\nanthropic-messages · openai-responses\n正文与 tool_calls 分别累积后合并"];
+    jsonc [label="AiJsonClient：定价 / 虚假检测\n合同解读 / 智能填充\njson_schema(strict) 强约束", fillcolor="#f7f0e6", color="#b08a5c"];
+    chat -> agent -> tools -> gw [style=invis];
+  }
+
+  subgraph cluster_data {
+    label="⑤ 数据层"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=9;
+    mysql   [label="MySQL 8 · 18 张表\nhouse / house_image / ai_chat_message …"];
+    redis   [label="Redis\n验证码 · 登录失败计数"];
+    uploads [label="uploads 图片目录\nseed-*.jpg"];
+  }
+
+  ext [label="外部：聚合模型网关（按 UA 放行）\ndeepseek / deepseek-v4.1-flash",
+       fillcolor="#f7e7e7", color="#c07070"];
+
+  web      -> access [label="HTTP /api/v1"];
+  electron -> access [label="HTTP（注入基址）"];
+  access   -> m2     [label="业务请求"];
+  access   -> chat   [label="找房 / 客服 SSE"];
+  chat     -> agent  [label="编排"];
+  agent    -> gw     [label="流式对话"];
+  agent    -> tools  [label="Function Calling"];
+  tools    -> mysql  [label="检索已上架房源"];
+  m2       -> mysql;
+  m5       -> mysql  [style=dotted];
+  m6       -> mysql  [style=dotted];
+  jsonc    -> gw     [label="结构化分析", style=dashed];
+  gw       -> ext    [label="HTTPS 出网"];
+}

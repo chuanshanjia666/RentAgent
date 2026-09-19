@@ -174,7 +174,7 @@ export default function HomeView() {
           <h3 className="sec-title">
             ✨ 为你推荐
             <span style={{ fontSize: 12, color: '#909399', marginLeft: 8 }}>
-              基于你的收藏与看房记录（FR-11）
+              基于你的收藏与看房记录
             </span>
             <Switch
               style={{ float: 'right' }}
@@ -195,7 +195,7 @@ export default function HomeView() {
       {mapMode ? (
         <div className="map-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <b>地图找房（FR-10 · 演示版按经纬度散点展示）</b>
+            <b>地图找房（演示版按经纬度散点展示）</b>
             <span style={{ color: '#909399', fontSize: 12 }}>
               共 {mapPoints.length} 套在租房源，点击圆点查看详情
             </span>

@@ -368,6 +368,10 @@ REPLY=$(sed -n 's/^data: *//p' /tmp/ci_smoke_sse.txt | jq -r '.delta // empty' 2
 expect_true "FR-12 助手返回非空回答（真实模型流式输出）" "$([[ ${#REPLY} -ge 20 ]] && echo 0 || echo 1)"
 expect_true "FR-12 回答未走失败兜底文案" \
   "$([[ "$REPLY" == *"智能助手调用失败"* ]] && echo 1 || echo 0)"
+# 房源卡片带 detailUrl（HousingTools 统一拼装），系统提示词要求模型原样引用输出 Markdown 链接：
+# 前端据此把链接渲染成可点击跳转详情页的 <a>；模型不遵守链接协议时在此显形
+expect_true "FR-12 找房回答直接附房源详情页链接" \
+  "$([[ "$REPLY" == *"#/app/houses/"* ]] && echo 0 || echo 1)"
 
 TRACE=$(req GET "/admin/chats/$SID" "$T_ADMIN")
 expect_eq "管理员查看会话轨迹" "$(code_of "$TRACE")" "0"

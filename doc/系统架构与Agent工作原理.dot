@@ -1,0 +1,98 @@
+digraph rentagent_overview {
+  graph [fontname="Microsoft YaHei", rankdir=TB, bgcolor="white", compound=true,
+         label="RentAgent 系统架构 与 Agent 工作原理（2026-09-19）",
+         labelloc=t, fontsize=20, nodesep=0.35, ranksep=0.55];
+  node  [fontname="Microsoft YaHei", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.16,0.10"];
+  edge  [fontname="Microsoft YaHei", fontsize=9.5, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+
+  /* ───────────────── 上半：系统总体架构 ───────────────── */
+
+  subgraph cluster_client {
+    label="① 客户端层 —— 一套代码（frontend/dist），两种分发"; labeljust=l; fontsize=13;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=10;
+    web      [label="浏览器 Web 版\nReact 18 + TS strict + antd 5 + ECharts\nHashRouter · api.ts 统一请求 · ssePost 流式"];
+    electron [label="Electron 桌面端\n同一份构建产物以 file:// 加载\n预注入后端 API 地址"];
+  }
+
+  subgraph cluster_access {
+    label="② 接入层（Spring Boot 3.3.4 · :8080）"; labeljust=l; fontsize=13;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=10;
+    access [label="REST /api/v1/*（统一响应 R{code, message, data}）\nJWT 过滤器 + @RequireRole 角色拦截器\nSSE 流式 /ai/sessions/{id}/messages　·　静态图片 /uploads/**"];
+  }
+
+  subgraph cluster_biz {
+    label="③ 业务层（controller → service → mapper，规则/留痕/通知都在 service）"; labeljust=l; fontsize=13;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=10;
+    m1 [label="用户 / 实名认证\n登录注册 · JWT"];
+    m2 [label="房源\n17 套种子房源 + 图片"];
+    m3 [label="预约 / 合同\n订单 / 租金账单"];
+    m4 [label="评价 / 举报\n收藏 / 个性化推荐"];
+    m5 [label="通知 / 后台管理\n审核 · 审计 · 数据看板"];
+    m6 [label="知识库 KB\n12 篇平台规则"];
+  }
+
+  subgraph cluster_ai {
+    label="④ AI 层（全部真调模型，零兜底）"; labeljust=l; fontsize=13;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=10;
+    chat  [label="ChatService\nSSE 编排 · 消息/留痕落库\n对话审计数据源"];
+    agent [label="AgentEngine = LlmAgent\n系统提示词（含房源链接协议）\n+ 12 轮会话记忆"];
+    tools [label="HousingToolProvider（包装执行 → 留痕 role=3）\nHousingTools：searchHouses / getHouseDetail / searchKnowledge\n（detailUrl 由代码统一拼装，模型只转述）", fillcolor="#f7f0e6", color="#b08a5c"];
+    gw    [label="LlmGateway —— 三种协议适配器全部自研\nopenai-chat-completions（当前）· anthropic-messages · openai-responses\n同一轮正文与 tool_calls 分别累积后合并"];
+    jsonc [label="AiJsonClient：定价 / 虚假检测 / 合同解读 / 智能填充\nresponse_format=json_schema(strict) 强约束", fillcolor="#f7f0e6", color="#b08a5c"];
+  }
+
+  subgraph cluster_data {
+    label="⑤ 数据层"; labeljust=l; fontsize=13;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=10;
+    mysql   [label="MySQL 8 · 18 张表\nhouse / house_image / ai_chat_message\ncontract / lease_order / kb_chunk …"];
+    redis   [label="Redis\n验证码 TTL · 登录失败计数"];
+    uploads [label="uploads 图片目录\nseed-*.jpg 种子图片"];
+  }
+
+  ext [label="外部：聚合模型网关（按 UA 放行）\ndeepseek / deepseek-v4.1-flash",
+       fillcolor="#f7e7e7", color="#c07070"];
+
+  /* 层间调用关系 */
+  web      -> access [label="HTTP /api/v1（localhost CORS 白名单）"];
+  electron -> access [label="HTTP（注入基址）"];
+  access   -> m2     [label="业务请求"];
+  access   -> chat   [label="找房 / 客服 SSE"];
+  chat     -> agent  [label="编排"];
+  agent    -> gw     [label="流式对话"];
+  agent    -> tools  [label="Function Calling"];
+  tools    -> mysql  [label="检索已上架房源"];
+  m2       -> mysql;
+  m5       -> mysql  [style=dotted];
+  m6       -> mysql  [style=dotted];
+  jsonc    -> gw     [label="结构化分析", style=dashed];
+  gw       -> ext    [label="HTTPS 出网"];
+
+  /* 压住层级走向 */
+
+  /* ───────────────── 下半：Agent 工作原理 ───────────────── */
+
+  subgraph cluster_flow {
+    label="⑥ Agent 怎么工作 —— 一次找房请求的全过程（以「预算2500以内，要一居室，近地铁」为例）";
+    labeljust=l; fontsize=13; style="rounded,filled"; fillcolor="#fbf9f4"; color="#b08a5c"; margin=12;
+
+    f1 [label="1. 租客在 AI 助手发送需求\n（scene=1 找房场景）", fillcolor="#eef4fb", color="#4a7ebb"];
+    f2 [label="2. ssePost 建立流式连接\nChatService 组装：系统提示词 + 12 轮记忆 + 工具清单", fillcolor="#eaf6ea", color="#5c9c5c"];
+    f3 [label="3. LlmAgent → LlmGateway → deepseek\n自研适配器逐字累积正文，并同时捕获 tool_calls", fillcolor="#fdeeee", color="#c07070"];
+    f4 [label="4. 模型决策调用工具（不是凭空作答）\nsearchHouses(maxRent=2500, layoutKeyword=1室, subway=true)", fillcolor="#fdeeee", color="#c07070"];
+    f5 [label="5. HousingToolProvider 包装执行\n计时 → 执行 → 留痕（tool_name/args/result/耗时 → role=3）", fillcolor="#f7f0e6", color="#b08a5c"];
+    f6 [label="6. SearchService 查 MySQL（仅 status=3 已上架）\n返回 {total:2, list:[卡片… coverUrl, detailUrl:#/app/houses/4]}", fillcolor="#f7f0e6", color="#b08a5c"];
+    f7 [label="7. 工具结果回填模型 → 生成推荐正文\n逐套输出 Markdown 链接 [标题](detailUrl)，不得编造房源与链接", fillcolor="#fdeeee", color="#c07070"];
+    f8 [label="8. SSE 流式返回：delta 逐字推送\n终止事件 done{messageId, citations, transferred, latencyMs}", fillcolor="#eaf6ea", color="#5c9c5c"];
+    f9 [label="9. 前端 renderWithLinks 把链接渲染成可点击 <a>\n点击直达房源详情页 · 用户/助手/工具消息全量落库（审计可回放）", fillcolor="#eef4fb", color="#4a7ebb"];
+    fb [label="可靠性兜底：本轮没执行任何工具且回答像过程语 / 429·5xx·超时·空返回\n→ 非流式重跑一次（同一会话记忆）；4xx 如实报错 4001，无正文无工具调用绝不伪造回答",
+        fillcolor="#f7e7e7", color="#c07070", shape=box, style="filled,rounded,dashed"];
+
+    f1 -> f2 -> f3 -> f4 -> f5 -> f6 -> f7 -> f8 -> f9;
+    f6 -> f3 [label="结果回填，继续生成", style=dashed, constraint=false, color="#b08a5c"];
+    fb -> f3 [style=dashed, arrowhead=none, color="#c07070"];
+  }
+
+  /* 面板衔接 */
+  uploads -> f1 [style=invis, weight=10];
+}

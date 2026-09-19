@@ -86,7 +86,7 @@ export default function ProfileView() {
         </Form>
       </Card>
 
-      <Card title="实名认证（房东发布房源前置条件 · FR-03）" style={{ marginBottom: 16 }}>
+      <Card title="实名认证（房东发布房源前置条件）" style={{ marginBottom: 16 }}>
         {auth.role === 2 ? (
           <>
             {realname && realname.status === 1 && (

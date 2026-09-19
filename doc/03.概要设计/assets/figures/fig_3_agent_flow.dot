@@ -1,0 +1,22 @@
+digraph agent_flow {
+  rankdir=TB; nodesep=0.30; ranksep=0.40; splines=spline;
+  graph [fontname="Microsoft YaHei", bgcolor="white", margin=0.15];
+  node  [fontname="Microsoft YaHei", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.16,0.10"];
+  edge  [fontname="Microsoft YaHei", fontsize=9.5, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+
+  f1 [label="1. 租客在 AI 助手发送需求\n（scene=1 找房场景）"];
+  f2 [label="2. ssePost 建立流式连接\nChatService 组装：系统提示词\n+ 12 轮记忆 + 工具清单", fillcolor="#eaf6ea", color="#5c9c5c"];
+  f3 [label="3. LlmAgent → LlmGateway → deepseek\n自研适配器逐字累积正文\n并同时捕获 tool_calls", fillcolor="#fdeeee", color="#c07070"];
+  f4 [label="4. 模型决策调用工具（不凭空作答）\nsearchHouses(maxRent=2500,\nlayoutKeyword=1室, subway=true)", fillcolor="#fdeeee", color="#c07070"];
+  f5 [label="5. HousingToolProvider 包装执行\n计时 → 执行 → 留痕 role=3\n（tool_name / args / result / 耗时）", fillcolor="#f7f0e6", color="#b08a5c"];
+  f6 [label="6. SearchService 查 MySQL（仅已上架）\n返回 {total, list:[卡片…\ncoverUrl, detailUrl:#/app/houses/4]}", fillcolor="#f7f0e6", color="#b08a5c"];
+  f7 [label="7. 工具结果回填模型 → 生成推荐正文\n逐套输出 Markdown 链接 [标题](detailUrl)\n不得编造房源与链接", fillcolor="#fdeeee", color="#c07070"];
+  f8 [label="8. SSE 流式返回：delta 逐字推送\ndone{messageId, citations,\ntransferred, latencyMs}", fillcolor="#eaf6ea", color="#5c9c5c"];
+  f9 [label="9. 前端 renderWithLinks 渲染可点击 <a>\n点击直达房源详情页\n消息全量落库（审计可回放）"];
+  fb [label="可靠性兜底：本轮没执行任何工具且回答像过程语，\n或 429 / 5xx / 超时 / 空返回 → 非流式重跑一次（同一会话记忆）；\n4xx 如实报错 4001，无正文无工具调用绝不伪造回答",
+      fillcolor="#f7e7e7", color="#c07070", style="filled,rounded,dashed"];
+
+  f1 -> f2 -> f3 -> f4 -> f5 -> f6 -> f7 -> f8 -> f9;
+  f6 -> f3 [label="结果回填，继续生成", style=dashed, constraint=false, color="#b08a5c"];
+}

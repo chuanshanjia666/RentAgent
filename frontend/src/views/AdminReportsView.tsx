@@ -64,7 +64,7 @@ export default function AdminReportsView() {
 
   return (
     <div className="page">
-      <h2 className="page-title">举报处理（FR-23）</h2>
+      <h2 className="page-title">举报处理</h2>
       <Segmented
         style={{ marginBottom: 14 }}
         value={tab}

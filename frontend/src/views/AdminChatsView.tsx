@@ -148,7 +148,7 @@ export default function AdminChatsView() {
   return (
     <div className="page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 className="page-title">AI 对话审计（NFR-05 可追溯 · FR-24 AI 对话量）</h2>
+        <h2 className="page-title">AI 对话审计</h2>
         <span style={{ color: '#909399', fontSize: 12 }}>共 {total} 个会话 · 日志只读</span>
       </div>
 

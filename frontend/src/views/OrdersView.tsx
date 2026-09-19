@@ -175,7 +175,7 @@ export default function OrdersView() {
       />
 
       <Modal
-        title="评价本次租房（FR-20）"
+        title="评价本次租房"
         open={!!reviewRow}
         onOk={submitReview}
         okText="提交评价"
