@@ -23,7 +23,7 @@ digraph mod_house {
   }
 
   subgraph cluster_1 {
-    label="Service 业务层"; fontsize=11; fontcolor="#2f6b2f";
+    label="Service 业务层"; fontsize=11; fontcolor="#2f6b2f"; labeljust="l";
     style="rounded,filled"; fillcolor="#f4fbf4"; color="#5c9c5c"; margin=10;
   s0 [label="HouseService", fillcolor="#eaf6ea", color="#5c9c5c"];
   {rank=same; s0;}
@@ -31,7 +31,7 @@ digraph mod_house {
   }
 
   subgraph cluster_2 {
-    label="Mapper 持久化层"; fontsize=11; fontcolor="#5c4478";
+    label="Mapper 持久化层"; fontsize=11; fontcolor="#5c4478"; labeljust="l";
     style="rounded,filled"; fillcolor="#f8f5fc"; color="#8a6fb0"; margin=10;
   p0 [label="HouseMapper", fillcolor="#efe9f7", color="#8a6fb0"];
   p1 [label="HouseImageMapper", fillcolor="#efe9f7", color="#8a6fb0"];
@@ -40,7 +40,7 @@ digraph mod_house {
   }
 
   subgraph cluster_3 {
-    label="实体 / 数据载体"; fontsize=11; fontcolor="#7a5a30";
+    label="实体 / 数据载体"; fontsize=11; fontcolor="#7a5a30"; labeljust="l";
     style="rounded,filled"; fillcolor="#fdfaf6"; color="#b08a5c"; margin=10;
   e0 [label="House", fillcolor="#f7f0e6", color="#b08a5c", shape=box, style=filled];
   e1 [label="HouseImage", fillcolor="#f7f0e6", color="#b08a5c", shape=box, style=filled];

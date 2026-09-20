@@ -53,21 +53,21 @@ def fig_system():
   }}
 
   subgraph cluster_gate {{
-    label="接入层"; fontsize=11; fontcolor="#31527a"; style="rounded,dashed";
+    label="接入层"; fontsize=11; fontcolor="#31527a"; labeljust="l"; style="rounded,dashed";
     color="#a8c4e0"; margin=8;
     ng [label="Nginx：静态资源托管 · HTTPS 终止 · /api 反向代理 → server:8080 · /uploads 图片卷",
         fillcolor="#e7f2e7", color="#5c9c5c", width=5.6];
   }}
 
   subgraph cluster_api {{
-    label="接口层（RESTful API，统一前缀 /api/v1）"; fontsize=11; fontcolor="#31527a";
+    label="接口层（RESTful API，统一前缀 /api/v1）"; fontsize=11; fontcolor="#31527a"; labeljust="l";
     style="rounded,dashed"; color="#a8c4e0"; margin=8;
     api [label="统一响应 R&lt;T&gt;{{code,message,data}} · JWT 鉴权过滤器 · @RequireRole 角色拦截器\\n全局异常处理 · 参数校验 · SSE 流式端点",
          fillcolor="#fdf3dc", color="#d1a542", width=5.6];
   }}
 
   subgraph cluster_biz {{
-    label="业务模块层（七大模块，详见第 3 章）"; fontsize=11; fontcolor="#31527a";
+    label="业务模块层（七大模块，详见第 3 章）"; fontsize=11; fontcolor="#31527a"; labelloc="b";
     style="rounded,dashed"; color="#a8c4e0"; margin=8;
     m1 [label="用户与权限\\nFR-01~04", fillcolor="#dceaf8", width=1.5];
     m2 [label="房源管理\\nFR-05~08", fillcolor="#dceaf8", width=1.5];
@@ -204,21 +204,21 @@ def fig_module_structure(key, name, frs, ctrls, svcs, mappers, entities):
   }}
 
   subgraph cluster_1 {{
-    label="Service 业务层"; fontsize=11; fontcolor="#2f6b2f";
+    label="Service 业务层"; fontsize=11; fontcolor="#2f6b2f"; labeljust="l";
     style="rounded,filled"; fillcolor="#f4fbf4"; color="#5c9c5c"; margin=10;
 {svc_nodes}
 {same_s}
   }}
 
   subgraph cluster_2 {{
-    label="Mapper 持久化层"; fontsize=11; fontcolor="#5c4478";
+    label="Mapper 持久化层"; fontsize=11; fontcolor="#5c4478"; labeljust="l";
     style="rounded,filled"; fillcolor="#f8f5fc"; color="#8a6fb0"; margin=10;
 {map_nodes}
 {same_p}
   }}
 
   subgraph cluster_3 {{
-    label="实体 / 数据载体"; fontsize=11; fontcolor="#7a5a30";
+    label="实体 / 数据载体"; fontsize=11; fontcolor="#7a5a30"; labeljust="l";
     style="rounded,filled"; fillcolor="#fdfaf6"; color="#b08a5c"; margin=10;
 {ent_nodes}
 {same_e}

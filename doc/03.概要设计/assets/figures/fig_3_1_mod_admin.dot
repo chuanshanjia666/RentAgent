@@ -21,7 +21,7 @@ digraph mod_admin {
   }
 
   subgraph cluster_1 {
-    label="Service 业务层"; fontsize=11; fontcolor="#2f6b2f";
+    label="Service 业务层"; fontsize=11; fontcolor="#2f6b2f"; labeljust="l";
     style="rounded,filled"; fillcolor="#f4fbf4"; color="#5c9c5c"; margin=10;
   s0 [label="AdminService", fillcolor="#eaf6ea", color="#5c9c5c"];
   s1 [label="AdminChatService\n(对话审计)", fillcolor="#eaf6ea", color="#5c9c5c"];
@@ -33,7 +33,7 @@ digraph mod_admin {
   }
 
   subgraph cluster_2 {
-    label="Mapper 持久化层"; fontsize=11; fontcolor="#5c4478";
+    label="Mapper 持久化层"; fontsize=11; fontcolor="#5c4478"; labeljust="l";
     style="rounded,filled"; fillcolor="#f8f5fc"; color="#8a6fb0"; margin=10;
   p0 [label="SysUserMapper", fillcolor="#efe9f7", color="#8a6fb0"];
   p1 [label="HouseMapper", fillcolor="#efe9f7", color="#8a6fb0"];
@@ -45,7 +45,7 @@ digraph mod_admin {
   }
 
   subgraph cluster_3 {
-    label="实体 / 数据载体"; fontsize=11; fontcolor="#7a5a30";
+    label="实体 / 数据载体"; fontsize=11; fontcolor="#7a5a30"; labeljust="l";
     style="rounded,filled"; fillcolor="#fdfaf6"; color="#b08a5c"; margin=10;
   e0 [label="AuditLog", fillcolor="#f7f0e6", color="#b08a5c", shape=box, style=filled];
   e1 [label="Report\n聚合查询(看板)", fillcolor="#f7f0e6", color="#b08a5c", shape=box, style=filled];

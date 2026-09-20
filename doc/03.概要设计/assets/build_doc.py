@@ -105,6 +105,27 @@ def set_para_runs(p, text, keep_format_of=0, font=None, size=None, bold=None):
     return p
 
 
+def set_tbl_widths(t, widths):
+    """按 cm 列表设定表格列宽：tblGrid 与 tblW 必须同步改，固定布局下二者才被 Word/LibreOffice 采信。"""
+    tbl = t._tbl
+    grid = tbl.find(qn_w("tblGrid"))
+    if grid is not None:
+        cols = grid.findall(qn_w("gridCol"))
+        if len(cols) == len(widths):
+            for gc, w in zip(cols, widths):
+                gc.set(qn_w("w"), str(int(Cm(w).twips)))
+    tw = tbl.tblPr.find(qn_w("tblW"))
+    if tw is None:
+        tw = OxmlElement("w:tblW")
+        tbl.tblPr.append(tw)
+    tw.set(qn_w("type"), "dxa")
+    tw.set(qn_w("w"), str(int(Cm(sum(widths)).twips)))
+    for row in t.rows:
+        for i, w in enumerate(widths):
+            if i < len(row.cells):
+                row.cells[i].width = Cm(w)
+
+
 # ── 文档级构件 ──────────────────────────────────────────────────────────────
 class Builder:
     def __init__(self, doc):
@@ -130,6 +151,12 @@ class Builder:
 
     def body(self, text):
         return self.para(text, style="正文缩进")
+
+    def body_keep(self, text):
+        """正文引导句（"…如下图所示 / 如下表所示"）：与其后紧随的图或表保持同页，避免图文分页割裂。"""
+        p = self.body(text)
+        p.paragraph_format.keep_with_next = True
+        return p
 
     def body_many(self, texts):
         for t in texts:
@@ -165,8 +192,8 @@ class Builder:
         p = self.doc.add_paragraph(style="Normal")
         set_para_runs(p._p, text, size=10.5)
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_before = Pt(3)
-        p.paragraph_format.space_after = Pt(9)
+        p.paragraph_format.space_before = Pt(2)
+        p.paragraph_format.space_after = Pt(6)
         return p
 
     def tcaption(self, text):
@@ -174,9 +201,19 @@ class Builder:
         p = self.doc.add_paragraph(style="Normal")
         set_para_runs(p._p, text, size=10.5)
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_before = Pt(9)
-        p.paragraph_format.space_after = Pt(3)
+        p.paragraph_format.space_before = Pt(6)
+        p.paragraph_format.space_after = Pt(2)
         p.paragraph_format.keep_with_next = True
+        return p
+
+    def spacer(self, pt=6):
+        """紧凑的分隔段：相邻两张表之间必须有段落，否则 Word 会把它们合并成一张表。"""
+        p = self.doc.add_paragraph(style="Normal")
+        set_para_runs(p._p, "")
+        pf = p.paragraph_format
+        pf.space_before = Pt(0)
+        pf.space_after = Pt(0)
+        pf.line_spacing = Pt(pt)
         return p
 
     def code(self, lines):
@@ -199,7 +236,7 @@ class Builder:
             height_cm = max_height_cm
         p = self.doc.add_paragraph(style="Normal")
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_before = Pt(6)
+        p.paragraph_format.space_before = Pt(3)
         p.paragraph_format.space_after = Pt(0)
         # 图与紧随其后的图题注保持同页，避免题注被挤到下一页页首
         p.paragraph_format.keep_with_next = True
@@ -235,6 +272,12 @@ class Builder:
                 th = OxmlElement("w:tblHeader")
                 trPr.append(th)
 
+    def _row_keep_next(self, row):
+        """整行与其后一行保持同页：表头行 / 标签行落在页底会与所辖数据行分页割裂。"""
+        for cell in row.cells:
+            for p in cell.paragraphs:
+                p.paragraph_format.keep_with_next = True
+
     def _cell(self, cell, text, bold=False, size=9, shade=None, center=False):
         cell.text = ""
         p = cell.paragraphs[0]
@@ -266,17 +309,19 @@ class Builder:
 
     def _widths(self, t, widths):
         t.autofit = False
-        for row in t.rows:
-            for i, w in enumerate(widths):
-                if i < len(row.cells):
-                    row.cells[i].width = Cm(w)
+        # 列宽必须同时写进 tblGrid：固定布局下 Word/LibreOffice 以 tblGrid 为准，
+        # 只设 tcW 会被建表时均分的 tblGrid 覆盖，导致全篇列宽不生效、长列被迫折行撑高表格
+        set_tbl_widths(t, widths)
 
     # ---- 接口函数规约表（对齐模板 5.2 的表格样式）----
     def spec_table(self, spec):
-        W = [1.7, 4.6, 2.1, 2.2, 6.39]
+        # 类型列 3.55cm：需容纳 AppointmentCreateReq / AppointmentActionReq
+        # （实测 20 字符 9pt ≈ 3.0cm，加单元格边距 0.38cm，留 0.17cm 余量，否则末字符被折到下一行）
+        W = [3.55, 2.3, 1.8, 2.2, 7.14]
         t = self.doc.add_table(rows=0, cols=5)
         t.alignment = WD_TABLE_ALIGNMENT.CENTER
         self._borders(t)
+        keep_rows = []          # 表头行 / 标签行：与后一行同页
 
         def add_row():
             return t.add_row().cells
@@ -290,12 +335,14 @@ class Builder:
             self._cell(m, val)
         # 参数标题行
         cells = add_row()
+        keep_rows.append(len(t.rows) - 1)
         m = cells[0]
         for c in cells[1:]:
             m = m.merge(c)
         self._cell(m, "参数", bold=True, shade="F2F2F2")
         # 参数表头
         cells = add_row()
+        keep_rows.append(len(t.rows) - 1)
         self._cell(cells[0], "类型", bold=True, center=True)
         self._cell(cells[1], "变量名", bold=True, center=True)
         self._cell(cells[2], "I/O", bold=True, center=True)
@@ -314,6 +361,7 @@ class Builder:
                                                   [f"{k}：{d}" if k else d for k, d in spec["ret_vals"]]]
         first_idx = len(t.rows)
         cells = add_row()
+        keep_rows.append(len(t.rows) - 1)
         self._cell(cells[0], "返回值", bold=True, shade="F2F2F2")
         self._cell(cells[1], "类型", bold=True, center=True)
         self._cell(cells[2], "OUT", center=True)
@@ -336,6 +384,7 @@ class Builder:
         # 详细说明
         for label, val in (("详细说明", spec["detail"]), ("使用注意事项", spec["notes"])):
             cells = add_row()
+            keep_rows.append(len(t.rows) - 1)
             m = cells[0]
             for c in cells[1:]:
                 m = m.merge(c)
@@ -345,6 +394,8 @@ class Builder:
             for c in cells[1:]:
                 m = m.merge(c)
             self._cell(m, val, size=9)
+        for ri in keep_rows:
+            self._row_keep_next(t.rows[ri])
         self._widths(t, W)
         self._no_split(t)
         return t
@@ -361,10 +412,25 @@ def set_core_props(doc, title_suffix):
     cp.comments = f"文档编号 {_C.DOC_NO}｜版本 {_C.DOC_VER}｜{_C.DOC_DATE}"
 
 
+def enable_widow_control(doc):
+    """为正文样式打开孤行控制（模板显式关闭了它）。
+
+    关闭时正文段落的末行会被单独留在下一页页首（视觉验收在 3.1 小节抓到过这种孤行）；
+    实测打开后页数与底部留白均无变化（59 页 / 均白 2.07cm），故采用。
+    """
+    for name in ("Normal", "正文缩进"):
+        pPr = doc.styles[name].element.get_or_add_pPr()
+        if pPr.find(qn_w("widowControl")) is None:
+            e = OxmlElement("w:widowControl")
+            e.set(qn_w("val"), "1")
+            pPr.append(e)
+
+
 # ── 主流程 ──────────────────────────────────────────────────────────────────
 def build(out_path, toc_pages=None, total_pages=None):
     ensure_tpl()
     doc = Document(str(TPL))
+    enable_widow_control(doc)
     set_core_props(doc, "概要设计")
     body = doc.element.body
 
@@ -425,6 +491,9 @@ def build(out_path, toc_pages=None, total_pages=None):
     trPr = t.rows[0]._tr.get_or_add_trPr()
     if not trPr.findall(qn_w("tblHeader")):
         trPr.append(OxmlElement("w:tblHeader"))
+    # 模板原表宽 14.76cm（"修改条款及内容"列仅 6.94cm），长变更说明被迫折行把记录撑到 5 页多；
+    # 拉到与正文表格同宽 16.99cm，主要增益给说明列
+    set_tbl_widths(t, [2.26, 2.4, 9.5, 2.83])
 
     # ── 3. 页眉版本号 ───────────────────────────────────────────────────────
     for sec in doc.sections:
@@ -497,12 +566,17 @@ def section1(b):
 
 # ── 第 2 章 ─────────────────────────────────────────────────────────────────
 def section2(b):
-    b.heading(1, "2", "系统结构图", break_before=True)
+    # 章节不强制另起页：与《概要设计参考示例》体例一致（该示例中第 3 章紧接图2-1 同页），
+    # 内容连续流排才不会出现"整页只有一张图"的空松页
+    b.heading(1, "2", "系统结构图")
     b.body_many(C.SEC2_INTRO)
     b.figure("fig_2_1_system", "图2-1  系统结构图", width_cm=16.2)
 
 
 # ── 第 3 章 ─────────────────────────────────────────────────────────────────
+# 各模块结构图的限高（cm）：竖长版式按限高定宽，横版可放宽；数值按该模块页内可容纳的余量给
+MOD_FIG_H = {"ai": 16.0, "interact": 7.6}
+
 MOD_FIGS = {
     "auth": ("fig_3_1_mod_auth", "fig_3_1_cls_auth"),
     "house": ("fig_3_1_mod_house", "fig_3_1_cls_house"),
@@ -515,7 +589,7 @@ MOD_FIGS = {
 
 
 def section3(b):
-    b.heading(1, "3", "模块详细概述", break_before=True)
+    b.heading(1, "3", "模块详细概述")
     b.body_many(C.SEC3_INTRO)
     b.tcaption("表3-1 模块划分总览")
     b.table(["序号", "模块名称", "覆盖需求", "主要职责", "主要实现组件"], C.MODULE_OVERVIEW,
@@ -525,7 +599,7 @@ def section3(b):
     tbl_n = 1
     for idx, m in enumerate(C.MODULES_CONTENT, start=1):
         num = f"3.{idx}"
-        b.heading(2, num, m["title"], break_before=True)
+        b.heading(2, num, m["title"])
         b.body_many(m["intro"])
 
         b.heading(3, f"{num}.1", f"{m['title']}功能定义")
@@ -537,27 +611,32 @@ def section3(b):
         # 模块名本身可能已含"模块"（如"AI 智能体服务模块"），此处去掉后缀避免"模块模块结构"
         mod_name = m['title'].removesuffix('模块')
         b.heading(3, f"{num}.2", f"{mod_name}模块结构")
-        b.body(f"{m['title']}的模块结构如下图所示。")
+        b.body_keep(f"{m['title']}的模块结构如下图所示。")
         fig_n += 1
         mod_fig, cls_fig = MOD_FIGS[m["key"]]
+        # 结构图为竖长版式：限高而非限宽，竖图在大页宽下会撑满整页
         wid = 16.2 if m["key"] == "ai" else 12.6
-        b.figure(mod_fig, f"图3-{fig_n}  {mod_name}模块结构图", width_cm=wid)
+        b.figure(mod_fig, f"图3-{fig_n}  {mod_name}模块结构图", width_cm=wid,
+                 max_height_cm=MOD_FIG_H.get(m["key"], 11.5))
+
+        # 接口清单紧接模块结构：结构图 + 接口表合占一页，类图块（含说明）独占下一页，
+        # 这样每个模块正好排满 3 页；图号/表号不受影响（表号仍按 功能定义→接口说明 递增）
+        b.body("模块对外接口函数清单如下表所示，函数级规约见第 5.2 节。")
+        tbl_n += 1
+        b.tcaption(f"表3-{tbl_n} {m['title']}接口说明")
+        b.table(["序号", "模块名称", "接口函数", "函数说明"], m["apis"],
+                [1.4, 2.8, 6.6, 6.19], align_center_cols=(0,))
 
         b.heading(3, f"{num}.3", f"{m['title']}类图")
         fig_n += 1
         # 类图信息密度最高（十余个类框），按正文栏宽上限出图，避免等比缩小后框内文字过小
         b.figure(cls_fig, f"图3-{fig_n}  {m['title']}类图", width_cm=16.2)
         b.body(m["cls_note"])
-        b.body("模块对外接口函数清单如下表所示，函数级规约见第 5.2 节。")
-        tbl_n += 1
-        b.tcaption(f"表3-{tbl_n} {m['title']}接口说明")
-        b.table(["序号", "模块名称", "接口函数", "函数说明"], m["apis"],
-                [1.0, 2.8, 6.6, 6.59], align_center_cols=(0,))
 
 
 # ── 第 4 章 ─────────────────────────────────────────────────────────────────
 def section4(b):
-    b.heading(1, "4", "数据库设计", break_before=True)
+    b.heading(1, "4", "数据库设计")
     b.heading(2, "4.1", "数据库引擎概述")
     b.body_many(C.SEC41_ENGINE)
 
@@ -570,17 +649,17 @@ def section4(b):
     b.figure("fig_4_1_er", "图4-1  数据库表间关系图", width_cm=16.2)
     b.tcaption("表4-1 业务表清单与关键字段")
     b.table(["序号", "表名", "中文名", "主键", "外键", "关键字段与约束"], C.TABLE_LIST,
-            [0.9, 3.3, 1.5, 0.9, 2.7, 7.69], size=8, align_center_cols=(0, 3))
+            [1.15, 3.25, 1.5, 1.05, 2.7, 7.34], size=8, align_center_cols=(0, 3))
     b.tcaption("表4-2 全局物理约定")
     b.table(["项目", "约定", "依据"], C.PHYS_CONV, [3.0, 7.0, 6.99])
     b.tcaption("表4-3 关键索引设计")
     b.table(["表名", "索引", "类型", "设计依据"], C.INDEX_DESIGN,
-            [3.4, 5.4, 1.8, 6.39], align_center_cols=(2,))
+            [3.4, 5.4, 2.2, 5.99], align_center_cols=(2,))
 
 
 # ── 第 5 章 ─────────────────────────────────────────────────────────────────
 def section5(b):
-    b.heading(1, "5", "接口设计", break_before=True)
+    b.heading(1, "5", "接口设计")
     b.heading(2, "5.1", "全局变量")
     b.body_many(C.SEC51_INTRO)
     b.tcaption("表5-1 业务状态字典")
@@ -592,7 +671,7 @@ def section5(b):
             align_center_cols=(0,))
     b.body_many(C.SEC51_TAIL)
     b.code(C.USER_CONTEXT_CODE)
-    b.body("")
+    b.spacer(4)
 
     b.heading(2, "5.2", "模块间接口函数设计")
     b.body("本节按模块列出接口函数的详细规约。函数名统一采用“动词 + 业务对象”命名，"
@@ -607,9 +686,9 @@ def section5(b):
         b.body(f"{mod}共包含 {len(specs)} 个对外接口函数，规约如下。")
         for j, s in enumerate(specs, start=1):
             if j > 1:
-                b.body("")
+                b.spacer(8)
             b.spec_table(s)
-            b.body("")
+        b.spacer(4)
 
     b.heading(2, "5.3", "关键数据结构定义")
     b.body_many(C.SEC53_INTRO)
