@@ -25,10 +25,26 @@ public class AdminDto {
     public record ReportHandleReq(String remark) {
     }
 
+    /**
+     * 实名认证审核：与房源审核同口径，{@code pass} 必填（缺字段返回 1000），
+     * 驳回必须给出理由（控制器侧校验），避免漏传字段被当成"驳回"误伤用户。
+     */
+    public record RealnameAuditReq(@NotNull(message = "缺少审核结论 pass") Boolean pass, String reason) {
+    }
+
     // ── 响应 VO（record 化：OpenAPI 有 schema，前端类型可对齐）──
 
     /** 举报列表行：举报实体 + 被举报对象的展示标题 */
     public record ReportVO(Report report, String targetTitle) {
+    }
+
+    /**
+     * 实名认证审核列表行：{@code maskedIdCard} 是脱敏后的身份证号，
+     * 明文只以 AES 密文落库（id_card_no_enc），接口任何时候都不回吐密文或明文。
+     */
+    public record RealnameRow(Long id, Long userId, String nickname, String phone, String realName,
+                              String maskedIdCard, Integer status, String rejectReason,
+                              LocalDateTime auditTime, LocalDateTime createdAt) {
     }
 
     /** 账号展示 VO：只暴露前端需要的字段，不把实体（含 password/deleted 等）整条吐出去 */

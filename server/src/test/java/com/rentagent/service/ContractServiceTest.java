@@ -92,6 +92,9 @@ class ContractServiceTest {
         when(userMapper.selectById(TENANT)).thenReturn(tenant);
         when(userMapper.selectById(LANDLORD)).thenReturn(landlord);
         when(houseMapper.selectById(101L)).thenReturn(house(HouseService.ST_ONLINE));
+        // 状态跃迁走"带前置状态的条件更新"，默认桩成影响 1 行（跃迁成功）；
+        // 影响 0 行 = 并发下已被别人抢先跃迁，由 UT-CONTRACT-21 单独覆盖
+        when(contractMapper.update(any(), any())).thenReturn(1);
     }
 
     @AfterEach
@@ -185,14 +188,14 @@ class ContractServiceTest {
     }
 
     @Test
-    @DisplayName("UT-CONTRACT-05 同房源同租客已有进行中合同不可重复发起（3003）")
+    @DisplayName("UT-CONTRACT-05 房源已有进行中合同不可重复发起（3003，按房源维度判重）")
     void rejectsDuplicateActiveContract() {
         when(contractMapper.selectCount(any())).thenReturn(1L);
 
         BizException e = assertThrows(BizException.class, () -> service.create(101L,
                 LocalDate.now().plusDays(1), LocalDate.now().plusMonths(12), TENANT));
         assertEquals(3003, e.getCode());
-        assertTrue(e.getMessage().contains("已存在进行中的合同"));
+        assertTrue(e.getMessage().contains("已有进行中的合同"));
         verify(contractMapper, never()).insert(any(Contract.class));
     }
 
@@ -237,7 +240,8 @@ class ContractServiceTest {
         assertEquals(ContractService.ST_LANDLORD_CONFIRM, c.getStatus());
         assertNotNull(c.getSignedTenantAt());
         assertEquals(ContractService.ST_LANDLORD_CONFIRM, result.status());
-        verify(contractMapper).updateById(c);
+        // 跃迁由条件更新（update(null, wrapper)）完成，不再整行 updateById
+        verify(contractMapper).update(any(), any());
         verify(notification).send(eq(LANDLORD), eq(3), eq("租客已确认合同"), anyString(), eq("contract"), eq(88L));
     }
 
@@ -518,5 +522,19 @@ class ContractServiceTest {
         assertEquals(tenantSigned, c.getSignedTenantAt());
         assertNotNull(c.getSignedLandlordAt());
         assertTrue(!c.getSignedLandlordAt().isBefore(tenantSigned));
+    }
+
+    @Test
+    @DisplayName("UT-CONTRACT-21 并发重复签署：条件更新影响 0 行即判为已被抢先跃迁（3003），不重复派生订单")
+    void concurrentSignLosesWhenConditionalUpdateAffectsNoRow() {
+        Contract c = contract(ContractService.ST_LANDLORD_CONFIRM,
+                LocalDate.now().plusDays(1), LocalDate.now().plusMonths(12));
+        when(contractMapper.selectById(88L)).thenReturn(c);
+        // 另一个请求已经把状态改成"已生效"：本条条件更新（where status=1）影响 0 行
+        when(contractMapper.update(any(), any())).thenReturn(0);
+
+        assertCode(3003, () -> service.act(88L, "sign", LANDLORD, 2));
+        // 没有派生订单，也就不会撞 lease_order 的 uk_contract 唯一键（那条路径表现为 500）
+        verify(orderMapper, never()).insert(any(LeaseOrder.class));
     }
 }

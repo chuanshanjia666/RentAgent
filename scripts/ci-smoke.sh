@@ -159,6 +159,15 @@ expect_eq "未登录访问需登录接口（无角色注解，靠上下文兜底
 expect_eq "未登录访问管理员接口被角色拦截器拒绝" "$(code_of "$(req GET /admin/dashboard -)")" "1002"
 expect_eq "租客越权访问后台审计" "$(code_of "$(req GET /admin/chats "$T_TENANT")")" "1007"
 
+# 注册角色白名单：role=3（管理员）必须在入参校验层被拒。
+# 角色拦截器完全信任 JWT 里的 role，而注册接口是公开的——一旦 role 可自选，
+# 任何人都能注册成管理员，整条鉴权链失效（提权路径的集成回归）
+ROLE_PHONE="199$(printf '%08d' $(( ($(date +%s) + 7) % 100000000 )))"
+expect_eq "注册管理员角色被入参校验拒绝（不可自助提权）" \
+  "$(code_of "$(req POST /auth/register - "$(jq -nc --arg p "$ROLE_PHONE" '{phone:$p,captcha:"246810",password:"123456",role:3}')")")" "1000"
+expect_eq "被拒的管理员角色未建号（同手机号登录返回 1002）" \
+  "$(code_of "$(login "$ROLE_PHONE")" || true)" "1002"
+
 # ── 2. FR-05/07 房源发布与审核（实名门禁 + 状态机） ─────────────
 say "2. FR-05/07 房源发布与审核"
 expect_eq "未实名房东发布房源被拒" "$(code_of "$(req POST /houses "$T_WANG" \
@@ -255,6 +264,10 @@ require_id "创建合同返回的 contractId" "$CID"
 expect_eq "租客发起签约" "$(code_of "$CONTRACT_RESP")" "0"
 expect_eq "合同初始为待租客确认" "$(data_of "$CONTRACT_RESP" | jq -r '.status')" "0"
 expect_eq "同房源同租客不可重复发起" "$(code_of "$(req POST /contracts "$T_TENANT" "$BODY_C")")" "3003"
+# 判重按**房源**维度：房源要到合同生效才置"已出租"，只按租客判重时，
+# A 的合同还在待确认、B 就能再签一份，房东把两份都签了就是同一套房两个订单
+expect_eq "同房源其他用户也不可重复发起（按房源维度判重）" \
+  "$(code_of "$(req POST /contracts "$T_WANG" "$BODY_C")")" "3003"
 expect_eq "房东不可抢先签署（须租客先签）" "$(code_of "$(req PATCH "/contracts/$CID" "$T_LI" '{"action":"sign"}')")" "3003"
 expect_eq "租客签署后待房东确认" "$(req PATCH "/contracts/$CID" "$T_TENANT" '{"action":"sign"}' | jq -r '.data.status')" "1"
 
@@ -418,7 +431,41 @@ require_id "新注册用户 userId" "$NEW_UID"
 NEW_PHONE="$PHONE"
 expect_eq "注册房东并自动登录" "$(code_of "$REG")" "0"
 expect_eq "未提交实名时查询返回空" "$(req GET /users/me/realname "$T_NEW" | jq -c '.data')" "null"
-expect_eq "提交实名认证" "$(code_of "$(req POST /users/me/realname "$T_NEW" '{"realName":"李建国","idCardNo":"210102198001011234"}')")" "0"
+# 身份证号每次运行唯一：同一证件不允许被两个账号认证通过（唯一性校验在"通过"时才触发）
+IDCARD="210202$(printf '%012d' $((RANDOM * 100000 + RANDOM)))"
+RN_BODY="$(jq -nc --arg i "$IDCARD" '{realName:"李建国",idCardNo:$i}')"
+expect_eq "提交实名认证" "$(code_of "$(req POST /users/me/realname "$T_NEW" "$RN_BODY")")" "0"
+# FR-03 门禁闭环：新注册房东在管理员审核通过前不得发布房源（此前实名链路缺审核入口，
+# 真实注册的房东永远卡在 1008，只有种子账号能发房）
+expect_eq "审核中重复提交实名被拒" "$(code_of "$(req POST /users/me/realname "$T_NEW" "$RN_BODY")")" "1009"
+expect_eq "实名未通过前不可发布房源（FR-03 门禁）" "$(code_of "$(req POST /houses "$T_NEW" \
+  "$(jq -nc '{title:"冒烟实名房源",community:"凌水小镇",city:"大连市",district:"甘井子区",address:"测试路 2 号",layout:"1室1厅",area:40,rent:1900,depositType:"押一付三",lng:121.53,lat:38.88}')")")" "1008"
+REALNAMES=$(data_of "$(req GET '/admin/realnames?status=0&size=50' "$T_ADMIN")")
+RNID=$(jq -r --argjson u "$NEW_UID" '[.list[] | select(.userId == $u)][0].id // empty' <<<"$REALNAMES")
+require_id "待审核实名记录 id" "$RNID"
+expect_match "FR-03 后台实名列表身份证脱敏（不回明文/密文）" \
+  "$(jq -r --argjson u "$NEW_UID" '[.list[] | select(.userId == $u)][0].maskedIdCard' <<<"$REALNAMES")" \
+  '^[0-9]{4}\*{10}[0-9Xx]{4}$'
+expect_eq "FR-03 管理员审核通过实名认证" "$(code_of "$(req PATCH "/admin/realnames/$RNID/audit" "$T_ADMIN" '{"pass":true,"reason":""}')")" "0"
+expect_eq "FR-03 同一实名记录不可重复审核" "$(code_of "$(req PATCH "/admin/realnames/$RNID/audit" "$T_ADMIN" '{"pass":true,"reason":""}')")" "1000"
+expect_eq "FR-03 实名通过后可发布房源（闭环）" "$(code_of "$(req POST /houses "$T_NEW" \
+  "$(jq -nc '{title:"冒烟实名房源",community:"凌水小镇",city:"大连市",district:"甘井子区",address:"测试路 2 号",layout:"1室1厅",area:40,rent:1900,depositType:"押一付三",lng:121.53,lat:38.88}')")")" "0"
+expect_true "FR-03 实名审核留痕（audit_log 记 REALNAME_PASS）" \
+  "$(req GET '/admin/audits?size=20' "$T_ADMIN" | jq -r 'if ([.data.list[].action] | index("REALNAME_PASS")) != null then 0 else 1 end')"
+# 驳回路径：另一申请人 → 驳回必须给理由 → 申请人看得见理由且可改后重新提交
+P2="198$(printf '%08d' $(( ($(date +%s) + 3) % 100000000 )))"
+req POST /auth/captcha - "$(jq -nc --arg p "$P2" '{phone:$p}')" >/dev/null
+T_REJ=$(data_of "$(req POST /auth/register - "$(jq -nc --arg p "$P2" '{phone:$p,captcha:"246810",password:"123456",role:2,nickname:"冒烟驳回房东"}')")" | jq -r '.token // empty')
+require_id "第二个申请人 token" "$T_REJ"
+IDCARD2="210203$(printf '%012d' $((RANDOM * 100000 + RANDOM)))"
+RN_BODY2="$(jq -nc --arg i "$IDCARD2" '{realName:"王小明",idCardNo:$i}')"
+expect_eq "第二个申请人提交实名" "$(code_of "$(req POST /users/me/realname "$T_REJ" "$RN_BODY2")")" "0"
+RNID2=$(req GET '/admin/realnames?status=0&size=50' "$T_ADMIN" | jq -r '[.data.list[] | select(.realName == "王小明")][0].id // empty')
+require_id "第二条待审核实名记录 id" "$RNID2"
+expect_eq "FR-03 驳回缺理由被拒" "$(code_of "$(req PATCH "/admin/realnames/$RNID2/audit" "$T_ADMIN" '{"pass":false,"reason":""}')")" "1000"
+expect_eq "FR-03 管理员驳回实名认证" "$(code_of "$(req PATCH "/admin/realnames/$RNID2/audit" "$T_ADMIN" '{"pass":false,"reason":"证件照片不清晰"}')")" "0"
+expect_eq "FR-03 驳回后申请人可见驳回理由" "$(req GET /users/me/realname "$T_REJ" | jq -r '.data.rejectReason')" "证件照片不清晰"
+expect_eq "FR-03 驳回后可重新提交（回到待审核）" "$(code_of "$(req POST /users/me/realname "$T_REJ" "$RN_BODY2")")" "0"
 MASKED=$(req GET /users/me/realname "$T_NEW" | jq -r '.data.maskedIdCard')
 expect_match "身份证号脱敏展示（AES-GCM 解密回归）" "$MASKED" '^[0-9]{4}\*{10}[0-9Xx]{4}$'
 

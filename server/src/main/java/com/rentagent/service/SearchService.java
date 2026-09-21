@@ -2,6 +2,8 @@ package com.rentagent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.rentagent.common.BizException;
+import com.rentagent.common.ErrorCode;
 import com.rentagent.dto.HouseDto;
 import com.rentagent.entity.Favorite;
 import com.rentagent.entity.House;
@@ -12,6 +14,10 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /** 检索（FR-09/10）与收藏（FR-25） */
 @Service
@@ -74,6 +80,10 @@ public class SearchService {
 
     /** FR-25：收藏/取消收藏 */
     public void addFavorite(long uid, long houseId) {
+        if (houseMapper.selectById(houseId) == null) {
+            // 不存在的房源会让插入撞外键约束而返回 500，这里提前给出业务码
+            throw new BizException(ErrorCode.HOUSE_NOT_FOUND);
+        }
         try {
             Favorite f = new Favorite();
             f.setUserId(uid);
@@ -89,12 +99,25 @@ public class SearchService {
                 .eq(Favorite::getUserId, uid).eq(Favorite::getHouseId, houseId));
     }
 
+    /**
+     * 我的收藏（服务端分页）。
+     * <p>
+     * 记录必须**按收藏时间还原顺序**并丢掉已下架/已删除的房源：
+     * 早先直接 {@code selectBatchIds} 返回，顺序变成主键序（与收藏时间无关），
+     * 且逻辑删除的房源被过滤后一页只回几条，与 total 明显对不上。
+     */
     public Page<House> favorites(long uid, long page, long size) {
         Page<Favorite> favPage = favoriteMapper.selectPage(new Page<>(page, size),
                 new LambdaQueryWrapper<Favorite>().eq(Favorite::getUserId, uid).orderByDesc(Favorite::getId));
         List<Long> ids = favPage.getRecords().stream().map(Favorite::getHouseId).toList();
         Page<House> result = new Page<>(favPage.getCurrent(), favPage.getSize(), favPage.getTotal());
-        result.setRecords(ids.isEmpty() ? List.of() : houseMapper.selectBatchIds(ids));
+        if (ids.isEmpty()) {
+            result.setRecords(List.of());
+            return result;
+        }
+        Map<Long, House> byId = houseMapper.selectBatchIds(ids).stream()
+                .collect(Collectors.toMap(House::getId, Function.identity()));
+        result.setRecords(ids.stream().map(byId::get).filter(Objects::nonNull).toList());
         return result;
     }
 

@@ -11,7 +11,7 @@
 PROJECT = "RentAgent —— 基于 AI 智能体的房屋租赁系统"
 DOC_NO = "D0000-PPC-RA2026-PPD-2026"
 PROJ_NO = "RA2026"
-DOC_VER = "V1.8"
+DOC_VER = "V1.9"
 DOC_DATE = "2026-09-20"
 ORG = "大连理工大学创新实践基地"
 AUTHOR = "王硕"
@@ -103,6 +103,19 @@ CHANGE_ROWS = [
      "（13.8 → 11.5cm 高，评价与消息 9.9 → 7.6cm 高），使结构图与接口表合占一页；⑤ 序号 / 类型等窄列加宽，"
      "消除表头汉字竖排折行；⑥ 图题 / 表题 / 代码块间距收紧，5.2 节表间空段改紧凑分隔段；⑦ 文件修改控制表"
      "拉到正文同宽 16.99cm（说明列 6.94 → 9.5cm）。全篇 74 页 → 59 页，正文页平均底部留白 4.0cm → 1.9cm",
+     "2026-09-20"),
+    ("10", "V1.9",
+     "按代码审查整改同步实现口径（设计内容与需求基线不变，FR-01~25 与 NFR-01~10 不变）："
+     "① 3.1 用户与权限模块补记**注册角色白名单**（role 仅允许 1 租客 / 2 房东，服务层再兜一次；"
+     "此前只校验非空且服务端原样采信，任何人都能注册成管理员）与**实名提交去重**（审核中 1009、已通过 1000、"
+     "被驳回可重新提交），3.7 后台管理模块新增**实名认证审核**功能项与两个接口函数（realnames / auditRealname），"
+     "5.2 补两份对应接口规约（含身份证仅回脱敏串、通过时校验证件唯一、驳回必须给理由、通知与留痕口径）；"
+     "② 3.5 交易与合同模块补记**按房源维度判重**与**状态跃迁条件更新**（update … where id=? and status=?，"
+     "影响 0 行返回 3003），修正同一房源可被两个租客各签一份、重复签署撞唯一键报 500 的两处缺陷；"
+     "③ 第 4 章 AI 智能体层补记**工具执行护栏**（单轮工具调用上限 8 次、客户端断开/超时取消本轮、"
+     "工具以会话身份执行、工具失败返回显式错误体而非空结果）与 `ai.max-tokens` 在 chat-completions 协议下真正下发；"
+     "④ 第 5 章接口函数清单同步新增两个后台接口；⑤ 第八章 NFR-04 补记默认凭据启动自检。"
+     "全篇 59 页 → 62 页",
      "2026-09-20"),
 ]
 
@@ -231,12 +244,12 @@ MODULES_CONTENT = [
         ],
         apis=[
             ("1", "用户与权限", "sendCaptcha(CaptchaReq)", "下发注册 / 登录验证码"),
-            ("2", "用户与权限", "register(RegisterReq)", "注册并自动登录，返回 JWT"),
+            ("2", "用户与权限", "register(RegisterReq)", "注册并自动登录，返回 JWT（角色仅允许 1 租客 / 2 房东）"),
             ("3", "用户与权限", "login(LoginReq)", "账号密码登录，含失败计数与锁定"),
             ("4", "用户与权限", "currentUser()", "查询当前登录用户资料"),
             ("5", "用户与权限", "updateProfile(UpdateProfileReq)", "修改昵称 / 邮箱 / 头像"),
             ("6", "用户与权限", "changePassword(ChangePasswordReq)", "修改密码（校验原密码）"),
-            ("7", "用户与权限", "submitRealname(RealnameReq)", "提交实名认证（加密存储）"),
+            ("7", "用户与权限", "submitRealname(RealnameReq)", "提交实名认证（加密存储；审核中重复提交 1009、已通过 1000、被驳回可重提）"),
             ("8", "用户与权限", "realnameOf(long uid)", "查询实名认证状态（发布房源前置校验依据）"),
         ],
         cls_note="本模块类图如图 3-2 所示。AuthController 只负责参数校验与响应封装，业务规则集中在 AuthService；"
@@ -502,6 +515,10 @@ MODULES_CONTENT = [
             ("10", "后台管理", "chats(keyword, scene, transferred, userId, page, size)",
              "AI 会话审计列表（全站，支持关键词 / 场景 / 转人工 / 用户过滤）"),
             ("11", "后台管理", "chatDetail(long id)", "AI 会话详情（多轮消息 + 工具调用轨迹 + 人物与角色设定）"),
+            ("12", "后台管理", "realnames(int status, page, size)",
+             "实名认证审核列表（status -1 全部 / 0 待审核 / 1 通过 / 2 驳回；身份证仅回脱敏串）"),
+            ("13", "后台管理", "auditRealname(long id, boolean pass, String reason)",
+             "实名认证审核通过 / 驳回（通过时校验证件唯一，驳回必须给理由；通知申请人并写审计留痕）"),
         ],
         cls_note="本模块类图如图 3-14 所示。AdminService 承担用户管理、审核与看板聚合，AdminChatService 承担"
                  "AI 对话审计的读模型（会话列表与会话轨迹，按会话聚合以避免逐会话查询），ReportService 承担举报"
@@ -693,9 +710,12 @@ SPECS = [
          ret_type="R<TokenResp>",
          ret_vals=[("成功", "code = 0，data = { token, userId, role, nickname }"),
                    ("失败", "code = 1001 手机号已注册；code = 1005 验证码错误或已过期；code = 1000 参数校验失败")],
-         detail="依次执行参数校验、验证码比对（读取 Redis）、手机号唯一性校验；通过后以 BCrypt 哈希密码并写入 "
-                "sys_user，随后直接签发 JWT 返回，前端据 role 跳转对应角色首页。",
-         notes="注册与登录共用同一账号体系，注册完成后无需再次登录；角色仅允许租客或房东，管理员账号由初始化脚本预置。"),
+         detail="依次执行参数校验（含角色取值域：仅 1 租客 / 2 房东）、验证码比对（读取 Redis）、手机号唯一性校验；"
+                "通过后以 BCrypt 哈希密码并写入 sys_user，随后直接签发 JWT 返回，前端据 role 跳转对应角色首页。",
+         notes="注册与登录共用同一账号体系，注册完成后无需再次登录；角色取值域由 DTO 注解（@Min(1) @Max(2)）"
+               "与服务层白名单双重限制——注册接口是公开的，而角色拦截器完全信任 JWT 里的 role，"
+               "角色一旦可自选即等于任何人可自助提权为管理员（2026-09-20 代码审查整改项）；"
+               "管理员账号由初始化脚本预置、只允许运维直接落库。"),
     dict(module="用户与权限模块", name="login", file="AuthController.java / AuthService.java",
          summary="账号密码登录，含失败计数与锁定策略",
          params=[("LoginReq", "req", "IN", "username（用户名或手机号）、password")],
@@ -710,10 +730,14 @@ SPECS = [
          params=[("long", "uid", "IN", "当前登录用户 ID（取自 UserContext）"),
                  ("RealnameReq", "req", "IN", "realName 真实姓名、idCardNo 身份证号（17 位数字 + 校验位）")],
          ret_type="R<Void>", ret_vals=[("成功", "code = 0，认证记录状态为待审核"),
-                                      ("失败", "code = 1000 身份证号格式不正确")],
+                                      ("失败", "code = 1000 身份证号格式不正确、已完成实名认证无需重复提交；"
+                                               "code = 1009 实名认证审核中，请稍候")],
          detail="身份证号以 AES 加密后写入 realname_auth.id_card_no_enc，同时计算 SHA-256 写入 id_card_hash "
-                "用于同人比对；姓名以明文存储供审核核对。房东发布房源前由 HouseService 调用 realnamePassed 校验。",
-         notes="同一用户可多次提交（驳回后重新提交），认证状态以最新一条记录为准；"
+                "用于同人比对；姓名以明文存储供审核核对。提交前先查最新一条记录：审核中重复提交返回 1009、"
+                "已通过再提交返回 1000，被驳回（status = 2）允许重新提交。房东发布房源前由 HouseService "
+                "调用 realnamePassed 校验，该状态由管理员在后台“实名认证”页审核后置位。",
+         notes="同一用户可多次提交（驳回后重新提交），认证状态以最新一条记录为准；重复提交被拒是为了避免堆出多条"
+               "待审记录，否则“同一证件是否已被认证”将不可判断；"
                "AI 对话上下文不携带证件号与手机号，满足 NFR-04 的隐私合规要求。"),
     dict(module="用户与权限模块", name="currentUser", file="AuthController.java / AuthService.java",
          summary="查询当前登录用户的资料与实名认证状态",
@@ -927,11 +951,14 @@ SPECS = [
                  ("long", "tenantId", "IN", "当前登录租客 ID")],
          ret_type="R<Contract>",
          ret_vals=[("成功", "code = 0，data 为新建合同（status = 0 待租客确认）"),
-                   ("失败", "code = 2002 房源状态不允许签约；code = 1000 租期参数非法")],
+                   ("失败", "code = 2002 房源状态不允许签约、该房源已有进行中的合同；code = 1000 租期参数非法")],
          detail="读取房源与双方用户信息，渲染合同条款模板为 clauses JSON，按月租金与押金写入合同主表，"
-                "同时生成风险条款集合 risk_flags 供解读标红；初始状态为待租客确认。",
+                "同时生成风险条款集合 risk_flags 供解读标红；初始状态为待租客确认。"
+                "发起前按**房源维度**校验是否已有进行中的合同（状态 0/1/2），冲突即返回 3003。",
          notes="合同条款以 JSON 数组存储，便于逐条解读与风险标注；"
-               "生成合同不改变房源状态，须待双方签署生效后才置为已出租。"),
+               "生成合同不改变房源状态，须待双方签署生效后才置为已出租，因此判重必须按房源而不是按（房源, 租客）——"
+               "只按租客判重时，A 的合同还在待确认、B 就能再发起一份，房东把两份都签了就是同一套房两个订单两套账单"
+               "（2026-09-20 代码审查整改项）。"),
     dict(module="交易与合同模块", name="signContract", file="ContractController.java / ContractService.java",
          summary="合同签署：租客签署后待房东确认，双方签署后合同生效并派生订单",
          params=[("long", "id", "IN", "合同 ID"),
@@ -940,12 +967,16 @@ SPECS = [
                  ("int", "role", "IN", "当前登录用户角色")],
          ret_type="R<Map>",
          ret_vals=[("成功", "code = 0，返回合同当前状态及派生订单编号（生效时）"),
-                   ("失败", "code = 3003 合同当前状态不允许该操作；code = 1007 无权限执行该操作")],
+                   ("失败", "code = 3003 合同当前状态不允许该操作（含并发下已被抢先跃迁）；code = 1007 无权限执行该操作")],
          detail="租客 sign 后合同流转为待房东确认并记录签署时间；房东 sign 后合同生效，"
                 "在同一事务内派生租赁订单（contract_id 唯一）、按月生成租金账单计划、"
-                "将房源状态置为已出租，并通知双方。账单生成以 UNIQUE(lease_order_id, period_no) 保证幂等。",
+                "将房源状态置为已出租，并通知双方。账单生成以 UNIQUE(lease_order_id, period_no) 保证幂等。"
+                "状态跃迁统一写成带前置状态的**条件更新**（update … where id = ? and status = ?）并校验影响行数，"
+                "影响 0 行即判为已被抢先跃迁并返回 3003；副作用（通知、派生订单、房源回上架）只在跃迁成功后执行。",
          notes="合同生效是整条交易链路的汇聚点，四个动作必须同事务完成，任一失败整体回滚；"
-               "terminate 仅对已生效合同开放，终止后房源恢复可上架状态。"),
+               "terminate 仅对已生效合同开放，终止后房源恢复可上架状态。条件更新是为了防止读-判-写之间的竞态："
+               "房东双击“签署”会让两个请求同时通过内存里的状态判断，重复派生订单并撞 uk_contract 抛"
+               "DuplicateKeyException（对用户表现为 500），改为条件更新后只有一次跃迁成功（2026-09-20 代码审查整改项）。"),
     dict(module="交易与合同模块", name="generateBills", file="ContractService.java",
          summary="按租期逐月生成租金账单计划，重复执行保持幂等",
          params=[("LeaseOrder", "order", "IN", "已生效的租赁订单（含租期、月租与押金）"),
@@ -1096,6 +1127,50 @@ SPECS = [
         notes="会话历史未逐条快照所用模型，故 currentEngine 表示查看时刻生效的引擎；系统同一时刻只有一个生效模型"
               "系统同一时刻只有一个生效模型（配置驱动），跨模型的会话需结合配置变更时间人工判读；"
               "如日后需要逐条快照，需给 ai_chat_message 增加 model 列。",
+    ),
+    dict(
+        module="后台管理模块",
+        name="realnames",
+        file="AdminController.java / AuthService.java",
+        summary="实名认证审核列表：默认只看待审核，覆盖全部 / 已通过 / 已驳回",
+        params=[
+            ("int", "status", "IN", "认证状态（-1 全部 / 0 待审核 / 1 已通过 / 2 已驳回，默认 0）"),
+            ("long", "page / size", "IN", "分页参数（默认 10 条，上限 50，由分页插件统一夹取）"),
+        ],
+        ret_type="R<PageVO<AdminDto.RealnameRow>>",
+        ret_vals=[
+            ("成功", "code = 0，data = { list[], total, page, size }；每行含 id、userId、nickname、phone、"
+                     "realName、maskedIdCard、status、rejectReason、auditTime、createdAt"),
+            ("失败", "code = 1007 无权限执行该操作（非管理员）"),
+        ],
+        detail="按状态过滤后以（status 升序、id 降序）返回审核队列，待审核排在最前、最新提交优先；"
+               "申请人昵称与手机号按 user_id 集合批量取回，避免逐行回表。身份证号只返回脱敏串"
+               "（前 4 位 + 10 个星号 + 后 4 位），明文仅以 AES 密文落库、密文本身也不出接口。",
+        notes="该接口是 FR-03 的闭环入口：此前没有实名审核入口，真实注册的房东 realnamePassed 恒为 false、"
+              "发布房源一律返回 1008，只有种子账号能发房；管理端“实名认证”页与该接口同日落地。",
+    ),
+    dict(
+        module="后台管理模块",
+        name="auditRealname",
+        file="AdminController.java / AuthService.java",
+        summary="实名认证审核：通过或驳回（通过后房主方可发布房源）",
+        params=[
+            ("long", "id", "IN", "实名认证记录 ID（路径参数）"),
+            ("RealnameAuditReq", "req", "IN", "pass 审核结论（必填）、reason 驳回理由（驳回时必填）"),
+            ("long", "adminId", "IN", "当前登录管理员 ID（取自 UserContext）"),
+        ],
+        ret_type="R<Void>",
+        ret_vals=[
+            ("成功", "code = 0，记录置为已通过 / 已驳回并通知申请人"),
+            ("失败", "code = 1000 参数校验失败（缺 pass）、驳回未填理由、该记录已处理、身份证号已被其他账号认证通过；"
+                     "code = 1006 实名认证记录不存在"),
+        ],
+        detail="先校验记录存在且仍为待审核（重复审核返回 1000，避免覆盖既有结论）；审核通过时校验证件哈希唯一——"
+               "同一身份证号不得被两个账号同时认证通过。随后写入 status、reject_reason、audit_by 与 audit_time，"
+               "向申请人发站内信（notification.type = 2）并写 audit_log（REALNAME_PASS / REALNAME_REJECT），"
+               "通知与留痕都在服务层完成，与房源审核、举报处理同一口径。",
+        notes="驳回后申请人可修改后重新提交（认证状态以最新一条记录为准）；"
+              "审核通过是房东发布房源的前置条件，校验点在 HouseService.create 中执行。",
     ),
 ]
 

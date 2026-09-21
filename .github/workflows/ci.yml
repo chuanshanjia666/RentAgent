@@ -25,6 +25,8 @@ jobs:
   backend-test:
     name: 后端单测（JUnit 5 + Mockito）
     runs-on: ubuntu-latest
+    # 单测不连库不联网，正常 2~3 分钟；卡死时按默认 360 分钟挂着会白占并发名额
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: server
@@ -53,6 +55,7 @@ jobs:
   frontend-test:
     name: 前端单测与构建（vitest + tsc + vite）
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
@@ -97,6 +100,9 @@ jobs:
   integration-smoke:
     name: 集成冒烟（真实 MySQL/Redis）
     runs-on: ubuntu-latest
+    # 该作业起两个 JVM 并做十余次真实模型调用（单次上限 60s~180s）；
+    # 没有上限时会一直挂到 GitHub 默认的 6 小时才回收
+    timeout-minutes: 25
 
     # 服务容器：与 docker-compose.yml 同版本同账号，保证 CI 与本地一致
     services:

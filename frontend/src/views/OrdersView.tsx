@@ -142,7 +142,9 @@ export default function OrdersView() {
     <div className="page">
       <h2 className="page-title">{isLandlord ? '出租订单管理' : '我的租单'}</h2>
       <Table
-        rowKey="key"
+        // 订单行没有 key 字段（OrderRow 就是 OrderVo + bills）：写 rowKey="key" 时所有行
+        // 的 key 都是 undefined，展开任意一行会让整页一起展开
+        rowKey={r => r.order.id}
         columns={columns}
         dataSource={rows}
         loading={list.loading}

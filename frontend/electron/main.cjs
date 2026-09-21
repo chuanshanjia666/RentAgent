@@ -45,7 +45,10 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // 渲染进程跑在沙箱里：preload 只用 contextBridge/ipcRenderer（沙箱下仍可用），
+      // 页面拿到的最多是暴露出去的一个 apiBase，拿不到 Node 能力
+      sandbox: true
     }
   })
 
@@ -53,6 +56,17 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // 只拦截"整窗跳转"：允许本应用的 file:// 产物与开发服务器，
+  // 其余（页面里的普通链接、后端返回的跳转）一律交给系统浏览器。
+  // 不加这道闸，页面内任意一个 <a href> 就能把整个应用窗口导航到外部站点
+  win.webContents.on('will-navigate', (event, url) => {
+    const allowed = url.startsWith('file://') || (DEV_MODE && url.startsWith(DEV_SERVER_URL))
+    if (!allowed) {
+      event.preventDefault()
+      if (/^https?:/.test(url)) shell.openExternal(url)
+    }
   })
 
   if (DEV_MODE) {

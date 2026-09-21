@@ -16,6 +16,7 @@ import LandlordHousesView from './views/LandlordHousesView'
 import AdminAuditView from './views/AdminAuditView'
 import AdminChatsView from './views/AdminChatsView'
 import AdminUsersView from './views/AdminUsersView'
+import AdminRealnamesView from './views/AdminRealnamesView'
 import AdminReportsView from './views/AdminReportsView'
 import AdminDashboardView from './views/AdminDashboardView'
 import AdminLogsView from './views/AdminLogsView'
@@ -174,6 +175,14 @@ export default function App() {
           element={
             <Require roles={[3]}>
               <AdminUsersView />
+            </Require>
+          }
+        />
+        <Route
+          path="/admin/realnames"
+          element={
+            <Require roles={[3]}>
+              <AdminRealnamesView />
             </Require>
           }
         />

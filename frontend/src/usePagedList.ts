@@ -32,19 +32,28 @@ export function usePagedList<T = any>(
   const paramsKey = JSON.stringify(params)
   const current = useRef({ page: 1 })
   current.current.page = page
+  // 请求序号：关键词类筛选每击键都会发请求，先发的可能后到。
+  // 没有这道闸，晚到的旧响应会把新筛选结果覆盖回去（输入 abc，列表停在第 1 个字符的结果）
+  const seq = useRef(0)
 
   const load = useCallback(
     async (p = current.current.page) => {
+      const mine = ++seq.current
       setLoading(true)
       try {
         const data = await http.get<PageResult<T>>(url, {
           params: { ...JSON.parse(paramsKey), page: p, size }
         })
+        if (mine !== seq.current) {
+          return // 已有更新的请求在途：丢弃这次过期响应
+        }
         setRows(data.list)
         setTotal(data.total)
         setPage(p)
       } finally {
-        setLoading(false)
+        if (mine === seq.current) {
+          setLoading(false)
+        }
       }
     },
     [url, paramsKey, size]

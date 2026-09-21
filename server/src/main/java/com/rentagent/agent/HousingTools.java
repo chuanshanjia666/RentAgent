@@ -1,8 +1,10 @@
 package com.rentagent.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rentagent.common.BizException;
 import com.rentagent.dto.HouseDto;
 import com.rentagent.entity.House;
+import com.rentagent.security.UserContext;
 import com.rentagent.service.HouseService;
 import com.rentagent.service.KbService;
 import com.rentagent.service.SearchService;
@@ -16,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * 智能体工具集（Function Calling）：新增工具只需新增 @Tool 方法（NFR-09）。
@@ -34,6 +37,44 @@ public class HousingTools {
 
     /** 单次检索返回的房源数上限：足够模型做对比推荐，又不至于把上下文撑爆 */
     private static final int SEARCH_LIMIT = 8;
+
+    /**
+     * 工具失败时的返回体：必须让模型知道"这次没查到"，而不是让它把失败当业务结论转述。
+     * <p>
+     * 早先失败一律返回 {@code {"total":0,"list":[]}} / {@code "[]"} / "该房源不存在或已下架"，
+     * 数据库抖动或工具自身 bug 会被讲成"暂无符合条件的房源""这个问题我还没学会"——
+     * 与全仓"AI 不得伪造回答"的口径直接冲突，后台审计里也看不出这次调用其实失败了。
+     */
+    private static final String SEARCH_FAILED =
+            "{\"error\":\"房源检索失败，本次未取得任何结果\",\"hint\":\"请如实告知用户检索服务暂时不可用、稍后重试；"
+            + "不要编造房源，也不要回答“没有符合条件的房源”\"}";
+
+    private static final String KNOWLEDGE_FAILED =
+            "{\"error\":\"知识库检索失败\",\"hint\":\"请如实告知用户暂时查不到平台规则、稍后重试；"
+            + "不要说“这个问题我还没学会”，那会让用户以为平台真的没有该规则\"}";
+
+    private static final String DETAIL_FAILED =
+            "房源详情查询失败（服务异常）：请如实告知用户暂时无法查看该房源，不要编造房源信息。";
+
+    /** 当前工具调用的浏览身份（工具在模型回调线程执行，那里没有 UserContext），null 表示匿名 */
+    private static final ThreadLocal<UserContext.User> VIEWER = new ThreadLocal<>();
+
+    /**
+     * 以指定身份执行一次工具调用（由 {@link HousingToolProvider} 在调用线程上包裹）。
+     * 身份只用于"能否看到未上架房源"与浏览计数两处判定；本工具集全部为只读工具。
+     */
+    static <T> T withViewer(UserContext.User viewer, Supplier<T> action) {
+        VIEWER.set(viewer);
+        try {
+            return action.get();
+        } finally {
+            VIEWER.remove();
+        }
+    }
+
+    private static UserContext.User viewer() {
+        return VIEWER.get();
+    }
 
     private final SearchService searchService;
     private final HouseService houseService;
@@ -63,7 +104,7 @@ public class HousingTools {
             return objectMapper.writeValueAsString(body);
         } catch (Exception e) {
             log.warn("searchHouses 工具执行失败: {}", e.getMessage());
-            return "{\"total\":0,\"list\":[]}";
+            return SEARCH_FAILED;
         }
     }
 
@@ -75,7 +116,7 @@ public class HousingTools {
             return "缺少 houseId 参数";
         }
         try {
-            HouseDto.Item item = houseService.detail(houseId);
+            HouseDto.Item item = houseService.detail(houseId, viewer());
             Map<String, Object> d = new HashMap<>();
             House h = item.house();
             d.put("id", h.getId());
@@ -96,9 +137,12 @@ public class HousingTools {
             d.put("landlordName", item.landlordName());
             d.put("reviewCount", item.reviewCount());
             return objectMapper.writeValueAsString(d);
+        } catch (BizException e) {
+            // 业务事实（不存在 / 未上架 / 无权查看）：如实转述即可，不算工具故障
+            return "该房源当前不可查看：" + e.getMessage();
         } catch (Exception e) {
             log.warn("getHouseDetail 工具执行失败: {}", e.getMessage());
-            return "该房源不存在或已下架，无法查看详情。";
+            return DETAIL_FAILED;
         }
     }
 
@@ -124,7 +168,8 @@ public class HousingTools {
         try {
             return objectMapper.writeValueAsString(kbService.search(question, 3));
         } catch (Exception e) {
-            return "[]";
+            log.warn("searchKnowledge 工具执行失败: {}", e.getMessage());
+            return KNOWLEDGE_FAILED;
         }
     }
 

@@ -22,7 +22,6 @@ import java.util.Iterator;
 public final class JsonSchemas {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final JsonSchemaGenerator GENERATOR = new JsonSchemaGenerator(MAPPER);
 
     private JsonSchemas() {
     }
@@ -38,7 +37,10 @@ public final class JsonSchemas {
     /** 由类型生成 strict 模式 JSON Schema */
     public static JsonNode strict(JavaType type) {
         try {
-            JsonNode node = MAPPER.valueToTree(GENERATOR.generateSchema(type));
+            // JsonSchemaGenerator 不是线程安全的（generateSchema 会改写自己的 _visitor 字段），
+            // 静态共享时两项分析并发（如定价与风控同时点）会互相串状态，故按调用新建。
+            // 生成一个 Schema 是微秒级开销，相对随之而来的模型调用可以忽略，不值得为它加缓存与同步
+            JsonNode node = MAPPER.valueToTree(new JsonSchemaGenerator(MAPPER).generateSchema(type));
             return normalize(node);
         } catch (JsonMappingException e) {
             // 目标类型都在本模块内定义（record + 基本类型），生成失败属编码错误而非运行时输入问题

@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -277,9 +278,13 @@ public class AdminChatService {
     }
 
     private List<Map<String, Object>> sessionsPerPeriod(String fmt) {
+        // 与 AdminService.trend 同一口径：按周期倒序取**最近** 30 个再翻正。
+        // 早先写成 orderByAsc + LIMIT，库龄超过 30 天后看板上的会话趋势会永远停在最早那段区间。
         QueryWrapper<AiChatSession> w = new QueryWrapper<AiChatSession>()
                 .select("DATE_FORMAT(created_at, '" + fmt + "') AS period", "COUNT(*) AS cnt")
-                .groupBy("period").orderByAsc("period").last("LIMIT 30");
-        return sessionMapper.selectMaps(w);
+                .groupBy("period").orderByDesc("period").last("LIMIT 30");
+        List<Map<String, Object>> rows = new ArrayList<>(sessionMapper.selectMaps(w));
+        Collections.reverse(rows);
+        return rows;
     }
 }

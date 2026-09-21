@@ -72,6 +72,11 @@ public class HouseService {
     @Transactional
     public void update(long id, HouseDto.SaveReq req, long uid) {
         House house = owned(id, uid);
+        // 出租中的房源不能被编辑：编辑会把状态重置为待审核，等于绕过生效合同静默退租，
+        // 且改完重新上架后同一套房会同时存在"在租"与"待租"两种事实
+        if (house.getStatus() == ST_RENTED) {
+            throw new BizException(ErrorCode.HOUSE_STATUS_INVALID.getCode(), "房源出租中，请先办理退租后再编辑");
+        }
         copy(req, house);
         house.setStatus(ST_PENDING);
         house.setRejectReason(null);
@@ -131,26 +136,39 @@ public class HouseService {
                 Map.of("pass", pass, "reason", reason == null ? "" : reason), null);
     }
 
-    /** 房源详情：租客侧仅可见已上架；浏览计数（FR-11 推荐热度因子） */
+    /**
+     * 房源详情（当前登录身份，取 UserContext）。
+     */
     public HouseDto.Item detail(long id) {
+        return detail(id, UserContext.get());
+    }
+
+    /**
+     * 房源详情（显式身份，供 AI 工具等没有 UserContext 的调用方使用）。
+     * <p>
+     * 可见性：已上架/已出租对所有人可见，其余状态（待审核/已驳回/已下架）只有**房主本人与管理员**可见。
+     * 早先条件是"role 既不是 3 也不是 2 才检查状态"，等于任意房东都能读到别人待审核的房源与驳回理由。
+     * <p>
+     * 浏览计数只统计"别人来看"：房主本人、管理员、以及匿名（viewer 为 null，典型场景是 AI 工具
+     * 在模型回调线程上查详情——那里没有 ThreadLocal 身份）都不累加，否则推荐位（按 view_count 排序）
+     * 会被自家房东与 AI 的检索行为刷高。
+     */
+    public HouseDto.Item detail(long id, UserContext.User viewer) {
         House house = houseMapper.selectById(id);
         if (house == null) {
             throw new BizException(ErrorCode.HOUSE_NOT_FOUND);
         }
-        UserContext.User user = UserContext.get();
-        if (user == null || user.getRole() != 3 && user.getRole() != 2) {
-            if (house.getStatus() != ST_ONLINE && house.getStatus() != ST_RENTED) {
-                throw new BizException(ErrorCode.HOUSE_NOT_FOUND);
-            }
+        boolean isOwner = viewer != null && viewer.getId().equals(house.getLandlordId());
+        boolean isAdmin = viewer != null && Integer.valueOf(3).equals(viewer.getRole());
+        boolean listed = house.getStatus() == ST_ONLINE || house.getStatus() == ST_RENTED;
+        if (!listed && !isOwner && !isAdmin) {
+            throw new BizException(ErrorCode.HOUSE_NOT_FOUND);
         }
-        // 只有"别人来看"才算浏览量：房东翻自己的房源、管理员审自己的台账都会走到这里，
-        // 一律累加会让房东/管理员的日常操作把房源热度刷上去（推荐位按 view_count 排序，直接受影响）。
-        boolean ownView = user != null && (user.getId().equals(house.getLandlordId()) || user.getRole() == 3);
-        if (!ownView) {
+        if (!isOwner && !isAdmin) {
             houseMapper.update(null, new LambdaUpdateWrapper<House>()
                     .eq(House::getId, id).setSql("view_count = view_count + 1"));
         }
-        return toItem(house, user);
+        return toItem(house, viewer);
     }
 
     public Page<House> myHouses(long uid, long page, long size) {
@@ -229,23 +247,26 @@ public class HouseService {
 
     /** FR-11 个性化推荐：同区域/同户型偏好加权 + 热度兜底（返回已上架房源） */
     public List<House> recommend(Long uid, int limit) {
+        // limit 来自查询串，必须夹到合理区间：负值或极大值会让 "LIMIT" + (limit*3) 生成
+        // 非法 SQL（负 LIMIT 语法错、int 乘法溢出成负数）而返回 500
+        int safeLimit = Math.max(1, Math.min(limit, 20));
         LambdaQueryWrapper<House> base = new LambdaQueryWrapper<House>().eq(House::getStatus, ST_ONLINE);
-        List<House> hot = houseMapper.selectList(base.orderByDesc(House::getViewCount).last("LIMIT " + (limit * 3)));
+        List<House> hot = houseMapper.selectList(base.orderByDesc(House::getViewCount).last("LIMIT " + (safeLimit * 3)));
         if (uid == null) {
-            return hot.stream().limit(limit).toList();
+            return hot.stream().limit(safeLimit).toList();
         }
-        // 用户偏好：收藏 + 已预约房源的 district/layout 分布
-        Map<String, Long> districtWeight = weightOf(uid, limit);
+        // 用户偏好：收藏房源的 district 分布（同区域加权）
+        Map<String, Long> districtWeight = weightOf(uid);
         if (districtWeight.isEmpty()) {
-            return hot.stream().limit(limit).toList();
+            return hot.stream().limit(safeLimit).toList();
         }
         return hot.stream()
                 .sorted((a, b) -> Double.compare(score(b, districtWeight), score(a, districtWeight)))
-                .limit(limit)
+                .limit(safeLimit)
                 .toList();
     }
 
-    private Map<String, Long> weightOf(long uid, int limit) {
+    private Map<String, Long> weightOf(long uid) {
         List<Long> houseIds = new ArrayList<>();
         favoriteMapper.selectList(new LambdaQueryWrapper<Favorite>().eq(Favorite::getUserId, uid))
                 .forEach(f -> houseIds.add(f.getHouseId()));

@@ -268,8 +268,25 @@ export interface AdminUserRow {
   phone?: string
   email?: string
   nickname?: string
+  avatarUrl?: string
   role?: number
   status?: number
+  createdAt?: string
+  [key: string]: any
+}
+
+/** 实名认证审核行：GET /admin/realnames（后端 AdminDto.RealnameRow；身份证只回脱敏串） */
+export interface RealnameRow {
+  id: number
+  userId: number
+  nickname?: string
+  phone?: string
+  realName?: string
+  maskedIdCard?: string
+  status: number
+  rejectReason?: string
+  auditTime?: string
+  createdAt?: string
   [key: string]: any
 }
 

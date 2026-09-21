@@ -88,6 +88,14 @@ public class LlmAgent implements AgentEngine {
     }
 
     /**
+     * 取消本轮（客户端断开 / SSE 超时由 ChatService 触发）。
+     * 在途的上游请求不会被中断，但工具轮次会立刻停止、非流式兜底重跑会被跳过。
+     */
+    public void cancel(long sessionId) {
+        housingToolProvider.cancelRound(sessionId);
+    }
+
+    /**
      * 单轮对话（流式）。工具调用与正文由适配器一并还原（见 {@link OpenAiChatCompletionsModel}），
      * 正常情况下本轮即可完成"调工具 → 出结论"。以下两种情况追加强化指令用非流式重跑一次：
      * <ol>
@@ -119,7 +127,11 @@ public class LlmAgent implements AgentEngine {
                     // NFR-05：知识库来源取自 searchKnowledge 工具的返回体（非 null 即说明本轮真的调用了工具）
                     String citations = housingToolProvider.takeKnowledgeCitations(sessionId);
                     Set<String> tools = housingToolProvider.takeRoundTools(sessionId);
-                    if (shouldFallbackToSync(scene, effective, tools)) {
+                    // 已取消（客户端断开/超时）就没必要再跑一轮：重跑只是继续烧 token，
+                    // 结果也没有人在等
+                    if (housingToolProvider.isCancelled(sessionId)) {
+                        log.info("本轮已取消，跳过兜底重跑");
+                    } else if (shouldFallbackToSync(scene, effective, tools)) {
                         log.warn("本轮未执行任何工具且回答疑似过程语（{} 字），改用非流式兜底重跑一次",
                                 effective.trim().length());
                         callback.onToken(effective.isBlank() ? "" : "\n\n");
@@ -135,7 +147,8 @@ public class LlmAgent implements AgentEngine {
                     // 本轮中断时清掉会话标记，避免残留污染下一轮的工具链判定
                     housingToolProvider.takeKnowledgeCitations(sessionId);
                     housingToolProvider.takeRoundTools(sessionId);
-                    if (!retryable(error)) {
+                    // 已取消就不再重跑；重跑的答案同样没人接收
+                    if (!retryable(error) || housingToolProvider.isCancelled(sessionId)) {
                         callback.onError(error);
                         return;
                     }

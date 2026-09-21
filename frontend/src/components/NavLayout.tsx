@@ -19,6 +19,7 @@ import {
   IconList,
   IconReceipt,
   IconShield,
+  IconUser,
   IconUsers
 } from './icons'
 
@@ -40,6 +41,7 @@ const MENUS: Record<number, [string, string, ReactNode][]> = {
   ],
   3: [
     ['/admin/audit', '审核工作台', <IconShield key="i" />],
+    ['/admin/realnames', '实名认证', <IconUser key="i" />],
     ['/admin/users', '用户管理', <IconUsers key="i" />],
     ['/admin/reports', '举报处理', <IconFlag key="i" />],
     ['/admin/logs', '操作留痕', <IconList key="i" />],

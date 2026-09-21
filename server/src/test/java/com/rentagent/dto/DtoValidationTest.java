@@ -73,10 +73,14 @@ class DtoValidationTest {
     }
 
     @Test
-    @DisplayName("UT-DTO-02 注册角色无取值域约束（现状记录：仅前端限制 1/2）")
-    void registerRoleHasNoRangeConstraint() {
-        // role=3（管理员）在 DTO 层不被拦截，属于既有实现的宽松点，集成用例不覆盖提权路径
-        assertFalse(invalid(register("13800000001", "246810", "123456", 3), "role"));
+    @DisplayName("UT-DTO-02 注册角色取值域限制为 1 租客 / 2 房东，管理员不可自助注册")
+    void registerRoleIsRestrictedToTenantOrLandlord() {
+        // role=3（管理员）必须在 DTO 层就被拦下：早先只校验 @NotNull，任何人都能
+        // 通过公开的 /auth/register 拿到管理员 JWT（角色拦截器完全信任 JWT 里的 role）
+        assertTrue(invalid(register("13800000001", "246810", "123456", 3), "role"));
+        assertTrue(invalid(register("13800000001", "246810", "123456", 0), "role"));
+        assertFalse(invalid(register("13800000001", "246810", "123456", 1), "role"));
+        assertFalse(invalid(register("13800000001", "246810", "123456", 2), "role"));
     }
 
     @Test

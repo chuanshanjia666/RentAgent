@@ -110,10 +110,13 @@ public class LlmGateway {
                 if (b.getUserAgent() != null && !b.getUserAgent().isBlank()) {
                     headers.put("User-Agent", b.getUserAgent());
                 }
-                // 不下发 max_tokens：推理型模型把思维链算进补全长度，写死上限会截断长回答（如多条款合同解读）
+                // max_tokens 下发配置值（ai.max-tokens，默认 4096）：推理型模型把思维链算进补全长度，
+                // 取值过紧会被 finish_reason=length 截断成"既无正文也无工具调用"。
+                // 该字段早先在此写死 null（不下发），于是 application.yml 里的 max-tokens 与
+                // 空返回提示里的"请调大 ai.max-tokens"在本协议下都不生效——配置与行为必须一致
                 OpenAiChatCompletionsModel model = new OpenAiChatCompletionsModel(
                         base, b.getApiKey(), b.getModel(),
-                        b.getTemperature(), null, timeout, headers);
+                        b.getTemperature(), b.getMaxTokens(), timeout, headers);
                 chatModel = model;
                 streamingModel = model;
             }

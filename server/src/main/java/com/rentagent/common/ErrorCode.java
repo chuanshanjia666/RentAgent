@@ -18,9 +18,10 @@ public enum ErrorCode {
     ACCOUNT_LOCKED(1003, "密码错误次数过多，账号已锁定 10 分钟"),
     ACCOUNT_DISABLED(1004, "该账号已被禁用"),
     CAPTCHA_INVALID(1005, "验证码错误或已过期"),
-    /** 1006 是"目标资源不存在"的公共码，message 说明具体对象（用户 / 举报等） */
+    /** 1006 是"目标资源不存在"的公共码，message 说明具体对象（用户 / 举报 / 实名记录等） */
     USER_NOT_FOUND(1006, "用户不存在"),
     REPORT_NOT_FOUND(1006, "举报不存在"),
+    REALNAME_NOT_FOUND(1006, "实名认证记录不存在"),
     FORBIDDEN(1007, "无权限执行该操作"),
     REALNAME_REQUIRED(1008, "请先完成实名认证"),
     REALNAME_PENDING(1009, "实名认证审核中，请稍候"),

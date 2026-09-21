@@ -14,6 +14,7 @@ import com.rentagent.security.UserContext;
 import com.rentagent.service.AdminChatService;
 import com.rentagent.service.AdminService;
 import com.rentagent.service.AnalysisService;
+import com.rentagent.service.AuthService;
 import com.rentagent.service.HouseService;
 import com.rentagent.service.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -41,6 +42,7 @@ public class AdminController {
     private final AdminService adminService;
     private final AdminChatService adminChatService;
     private final AnalysisService analysisService;
+    private final AuthService authService;
     private final ReportService reportService;
     private final HouseService houseService;
 
@@ -80,6 +82,24 @@ public class AdminController {
     @PostMapping("/houses/{id}/fake-detect")
     public R<AiDto.DetectVO> fakeDetect(@PathVariable long id) {
         return R.ok(analysisService.fakeDetect(id, UserContext.userId()));
+    }
+
+    @Operation(summary = "实名认证审核列表（默认仅待审核；FR-03）")
+    @GetMapping("/realnames")
+    public R<PageVO<AdminDto.RealnameRow>> realnames(@RequestParam(defaultValue = "0") int status,
+                                                     @RequestParam(defaultValue = "1") long page,
+                                                     @RequestParam(defaultValue = "10") long size) {
+        return R.ok(authService.realnames(status, page, size));
+    }
+
+    @Operation(summary = "实名认证审核：通过/驳回（通过后房东方可发布房源）")
+    @PatchMapping("/realnames/{id}/audit")
+    public R<Void> auditRealname(@PathVariable long id, @Valid @RequestBody AdminDto.RealnameAuditReq req) {
+        if (!req.pass() && (req.reason() == null || req.reason().isBlank())) {
+            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "驳回必须填写理由");
+        }
+        authService.auditRealname(id, req.pass(), req.reason(), UserContext.userId());
+        return R.ok();
     }
 
     @Operation(summary = "举报列表")

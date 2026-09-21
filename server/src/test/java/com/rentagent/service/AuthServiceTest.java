@@ -2,12 +2,15 @@ package com.rentagent.service;
 
 import com.rentagent.common.BizException;
 import com.rentagent.common.CryptoUtil;
+import com.rentagent.dto.AdminDto;
 import com.rentagent.dto.AuthDto;
+import com.rentagent.dto.PageVO;
 import com.rentagent.entity.RealnameAuth;
 import com.rentagent.entity.SysUser;
 import com.rentagent.mapper.RealnameAuthMapper;
 import com.rentagent.mapper.SysUserMapper;
 import com.rentagent.security.JwtUtil;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,12 +26,14 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -60,6 +65,10 @@ class AuthServiceTest {
     private StringRedisTemplate redis;
     @Mock
     private ValueOperations<String, String> valueOps;
+    @Mock
+    private NotificationService notification;
+    @Mock
+    private AuditLogService auditLogService;
 
     private AuthService service;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
@@ -67,7 +76,8 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         CryptoUtil crypto = new CryptoUtil(Base64.getEncoder().encodeToString(new byte[32]));
-        service = new AuthService(userMapper, realnameMapper, jwtUtil, redis, crypto, encoder);
+        service = new AuthService(userMapper, realnameMapper, jwtUtil, redis, crypto, encoder,
+                notification, auditLogService);
         ReflectionTestUtils.setField(service, "devCaptcha", CAPTCHA);
         when(redis.opsForValue()).thenReturn(valueOps);
         when(jwtUtil.issue(any(Long.class), any(Integer.class))).thenAnswer(
@@ -272,5 +282,150 @@ class AuthServiceTest {
 
         verify(valueOps).set("captcha:13800000009", CAPTCHA, Duration.ofMinutes(5));
         verify(valueOps, never()).get(anyString());
+    }
+
+    @Test
+    @DisplayName("UT-AUTH-14 注册角色白名单：role=3（管理员）在服务层同样被拒（1000）")
+    void rejectsAdminRoleOnRegister() {
+        // DTO 层已用 @Min/@Max 拦截，这里覆盖"绕过控制器直接调服务"的路径
+        BizException e = assertThrows(BizException.class, () -> service.register(
+                new AuthDto.RegisterReq("13800000009", CAPTCHA, "123456", 3, "小陈")));
+        assertEquals(1000, e.getCode());
+        verify(userMapper, never()).insert(any(SysUser.class));
+
+        BizException nullRole = assertThrows(BizException.class, () -> service.register(
+                new AuthDto.RegisterReq("13800000009", CAPTCHA, "123456", null, "小陈")));
+        assertEquals(1000, nullRole.getCode());
+    }
+
+    // ── FR-03/07 实名审核 ──
+
+    @Test
+    @DisplayName("UT-AUTH-15 实名重复提交：待审核 1009、已通过 1000，均不再插入新记录")
+    void rejectsDuplicateRealnameSubmission() {
+        RealnameAuth pending = new RealnameAuth();
+        pending.setId(9L);
+        pending.setUserId(7L);
+        pending.setStatus(0);
+        when(realnameMapper.selectList(any())).thenReturn(List.of(pending));
+
+        assertCode(1009, () -> service.submitRealname(7L, new AuthDto.RealnameReq("李建国", "210102198001011234")));
+
+        pending.setStatus(1);
+        assertCode(1000, () -> service.submitRealname(7L, new AuthDto.RealnameReq("李建国", "210102198001011234")));
+        verify(realnameMapper, never()).insert(any(RealnameAuth.class));
+    }
+
+    @Test
+    @DisplayName("UT-AUTH-16 实名被驳回后可重新提交（status=2 不阻止再次提交）")
+    void allowsResubmitAfterRejection() {
+        RealnameAuth rejected = new RealnameAuth();
+        rejected.setId(9L);
+        rejected.setUserId(7L);
+        rejected.setStatus(2);
+        when(realnameMapper.selectList(any())).thenReturn(List.of(rejected));
+
+        service.submitRealname(7L, new AuthDto.RealnameReq("李建国", "210102198001011234"));
+
+        verify(realnameMapper).insert(any(RealnameAuth.class));
+    }
+
+    @Test
+    @DisplayName("UT-AUTH-17 实名审核通过：置通过、记录审核人与时间、通知申请人并留痕")
+    void approvesRealname() {
+        RealnameAuth auth = new RealnameAuth();
+        auth.setId(9L);
+        auth.setUserId(7L);
+        auth.setStatus(0);
+        auth.setIdCardHash("a".repeat(64));
+        when(realnameMapper.selectById(9L)).thenReturn(auth);
+        when(realnameMapper.selectCount(any())).thenReturn(0L);
+
+        service.auditRealname(9L, true, null, 1L);
+
+        ArgumentCaptor<RealnameAuth> captor = ArgumentCaptor.forClass(RealnameAuth.class);
+        verify(realnameMapper).updateById(captor.capture());
+        RealnameAuth updated = captor.getValue();
+        assertEquals(1, updated.getStatus());
+        assertNull(updated.getRejectReason());
+        assertEquals(1L, updated.getAuditBy());
+        assertNotNull(updated.getAuditTime());
+        verify(notification).send(eq(7L), eq(2), eq("实名认证已通过"), anyString(), eq("realname"), eq(9L));
+        verify(auditLogService).log(eq(1L), eq("REALNAME_PASS"), eq("realname"), eq(9L), any(), eq(null));
+    }
+
+    @Test
+    @DisplayName("UT-AUTH-18 实名审核驳回：置驳回并保留理由，通知与留痕同步")
+    void rejectsRealname() {
+        RealnameAuth auth = new RealnameAuth();
+        auth.setId(9L);
+        auth.setUserId(7L);
+        auth.setStatus(0);
+        when(realnameMapper.selectById(9L)).thenReturn(auth);
+
+        service.auditRealname(9L, false, "证件照片不清晰", 1L);
+
+        assertEquals(2, auth.getStatus());
+        assertEquals("证件照片不清晰", auth.getRejectReason());
+        verify(notification).send(eq(7L), eq(2), eq("实名认证未通过"), anyString(), eq("realname"), eq(9L));
+        verify(auditLogService).log(eq(1L), eq("REALNAME_REJECT"), eq("realname"), eq(9L), any(), eq(null));
+    }
+
+    @Test
+    @DisplayName("UT-AUTH-19 已处理过的实名记录不可重复审核（1000），记录不存在返回 1006")
+    void rejectsRepeatRealnameAudit() {
+        when(realnameMapper.selectById(404L)).thenReturn(null);
+        assertCode(1006, () -> service.auditRealname(404L, true, null, 1L));
+
+        RealnameAuth done = new RealnameAuth();
+        done.setId(9L);
+        done.setStatus(1);
+        when(realnameMapper.selectById(9L)).thenReturn(done);
+        assertCode(1000, () -> service.auditRealname(9L, true, null, 1L));
+        verify(realnameMapper, never()).updateById(any(RealnameAuth.class));
+    }
+
+    @Test
+    @DisplayName("UT-AUTH-20 同一身份证号已被其他账号认证通过时拒绝再通过（1000）")
+    void rejectsDuplicateIdCardOnApproval() {
+        RealnameAuth auth = new RealnameAuth();
+        auth.setId(9L);
+        auth.setUserId(7L);
+        auth.setStatus(0);
+        auth.setIdCardHash("a".repeat(64));
+        when(realnameMapper.selectById(9L)).thenReturn(auth);
+        when(realnameMapper.selectCount(any())).thenReturn(1L);
+
+        BizException e = assertThrows(BizException.class, () -> service.auditRealname(9L, true, null, 1L));
+
+        assertEquals(1000, e.getCode());
+        assertTrue(e.getMessage().contains("已被其他账号认证通过"));
+        verify(realnameMapper, never()).updateById(any(RealnameAuth.class));
+    }
+
+    @Test
+    @DisplayName("UT-AUTH-21 审核列表：身份证只回脱敏串、带上申请人昵称与手机号")
+    void listsRealnameQueueWithMaskedIdCard() {
+        RealnameAuth auth = new RealnameAuth();
+        auth.setId(9L);
+        auth.setUserId(7L);
+        auth.setRealName("李建国");
+        auth.setStatus(0);
+        auth.setIdCardNoEnc(new CryptoUtil(Base64.getEncoder().encodeToString(new byte[32]))
+                .encrypt("210102198001011234"));
+        Page<RealnameAuth> page = new Page<>(1, 10, 1);
+        page.setRecords(List.of(auth));
+        when(realnameMapper.selectPage(any(), any())).thenReturn(page);
+        SysUser applicant = user(7L, 2, 1);
+        applicant.setNickname("王房东");
+        when(userMapper.selectBatchIds(any())).thenReturn(List.of(applicant));
+
+        PageVO<AdminDto.RealnameRow> result = service.realnames(0, 1, 10);
+
+        assertEquals(1, result.total());
+        AdminDto.RealnameRow row = result.list().get(0);
+        assertEquals("王房东", row.nickname());
+        assertEquals("2101**********1234", row.maskedIdCard());
+        assertFalse(row.maskedIdCard().contains("210102198001011234"), "接口不得回吐明文身份证");
     }
 }

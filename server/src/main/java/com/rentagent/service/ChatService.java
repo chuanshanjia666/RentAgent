@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rentagent.agent.AgentEngine;
+import com.rentagent.agent.HousingToolProvider;
 import com.rentagent.agent.LlmAgent;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
@@ -13,6 +14,7 @@ import com.rentagent.entity.AiChatMessage;
 import com.rentagent.entity.AiChatSession;
 import com.rentagent.mapper.AiChatMessageMapper;
 import com.rentagent.mapper.AiChatSessionMapper;
+import com.rentagent.security.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,17 +39,27 @@ public class ChatService {
     static final String MODEL_MISSING_MSG =
             "未配置大模型服务：请注入模型凭据（AI_API_KEY / AGGREGATOR_API_KEY 等环境变量）后重试";
 
+    /**
+     * SSE 最长等待时长。取 5 分钟：一轮回复可能是"多次工具调用 + 一次非流式兜底重跑"，
+     * 每次都受 {@code ai.timeout-seconds}（默认 60s）约束，2 分钟会在正常的长回答上误超时
+     * （超时后用户一个字都收不到，而模型还在继续跑）。
+     */
+    private static final long SSE_TIMEOUT_MS = 300_000L;
+
     private final AiChatSessionMapper sessionMapper;
     private final AiChatMessageMapper messageMapper;
     private final LlmAgent llmAgent;
+    private final HousingToolProvider housingToolProvider;
     private final ObjectMapper objectMapper;
     private final JsonColumns jsonColumns;
 
     public ChatService(AiChatSessionMapper sessionMapper, AiChatMessageMapper messageMapper,
-                       LlmAgent llmAgent, ObjectMapper objectMapper, JsonColumns jsonColumns) {
+                       LlmAgent llmAgent, HousingToolProvider housingToolProvider,
+                       ObjectMapper objectMapper, JsonColumns jsonColumns) {
         this.sessionMapper = sessionMapper;
         this.messageMapper = messageMapper;
         this.llmAgent = llmAgent;
+        this.housingToolProvider = housingToolProvider;
         this.objectMapper = objectMapper;
         this.jsonColumns = jsonColumns;
     }
@@ -97,7 +109,19 @@ public class ChatService {
         AiChatSession s = owned(sessionId, uid);
         saveMessage(s.getId(), 1, content, null, null, 0);
 
-        SseEmitter emitter = new SseEmitter(120_000L);
+        // 绑定本轮身份：工具在模型回调线程上执行，那里没有 UserContext（ThreadLocal），
+        // 只能在这里（Servlet 线程）取一次交给工具，避免 AI 查详情把自己当匿名访客而刷高浏览量
+        housingToolProvider.openRound(s.getId(), UserContext.get());
+
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+        // 三种"这一轮没人要了"的信号都置取消位：客户端断开导致 send 失败、SSE 超时、连接异常。
+        // 置位后工具轮次立刻停止、兜底重跑被跳过（在途的那次上游调用无法中断，见 HousingToolProvider）
+        emitter.onTimeout(() -> {
+            log.info("SSE 超时（{}ms），取消本轮工具轮次与兜底重跑", SSE_TIMEOUT_MS);
+            housingToolProvider.cancelRound(s.getId());
+        });
+        emitter.onError(e -> housingToolProvider.cancelRound(s.getId()));
+        emitter.onCompletion(() -> housingToolProvider.cancelRound(s.getId()));
         long start = System.currentTimeMillis();
         StringBuilder full = new StringBuilder();
         // token 用量：找房重试时模型会多次上报，累加计为本轮总消耗（NFR-05 留痕）
@@ -111,7 +135,9 @@ public class ChatService {
                     emitter.send(SseEmitter.event().name("delta")
                             .data(objectMapper.writeValueAsString(Map.of("delta", token))));
                 } catch (Exception e) {
+                    // 发送失败基本等价于"客户端已经走了"：立刻取消，别再让模型继续跑完整轮
                     log.debug("SSE 发送失败（客户端可能已断开）: {}", e.getMessage());
+                    housingToolProvider.cancelRound(s.getId());
                 }
             }
 

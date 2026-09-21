@@ -1,6 +1,7 @@
 package com.rentagent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
@@ -65,11 +66,14 @@ public class ContractService {
         if (!end.isAfter(start) || start.isBefore(LocalDate.now())) {
             throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "租期不合法：起止日期需晚于今天且起止有序");
         }
+        // 唯一性按**房源**维度判定，不能只按 (房源, 租客)：
+        // 房源要到合同生效才会置为"已出租"，只按租客判重的话，A 的合同还在待确认时
+        // B 可以再发起一份，房东把两份都签了就会得到两个订单、两套账单、同一套房被重复出租。
         long active = contractMapper.selectCount(new LambdaQueryWrapper<Contract>()
-                .eq(Contract::getHouseId, houseId).eq(Contract::getTenantId, tenantId)
+                .eq(Contract::getHouseId, houseId)
                 .in(Contract::getStatus, ST_TENANT_CONFIRM, ST_LANDLORD_CONFIRM, ST_EFFECTIVE));
         if (active > 0) {
-            throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID.getCode(), "已存在进行中的合同，请勿重复发起");
+            throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID.getCode(), "该房源已有进行中的合同，请勿重复发起");
         }
         SysUser tenant = userMapper.selectById(tenantId);
         SysUser landlord = userMapper.selectById(house.getLandlordId());
@@ -89,7 +93,14 @@ public class ContractService {
         return c;
     }
 
-    /** 双方签署：租客 sign 后进入待房东确认；房东 sign 后合同生效并派生订单 */
+    /**
+     * 双方签署：租客 sign 后进入待房东确认；房东 sign 后合同生效并派生订单。
+     * <p>
+     * 状态跃迁写成"带前置状态的条件更新"（{@code where id=? and status=?} 再校验影响行数）：
+     * 读-判-写之间没有锁，房东双击"签署"或双方同时操作时两个请求都会通过内存里的状态判断，
+     * 于是重复派生订单并撞 {@code uk_contract} 抛 DuplicateKeyException（对用户表现为 500）。
+     * 条件更新后只有一次跃迁能成功，失败方统一拿到 3003。
+     */
     @Transactional
     public TradeDto.ContractActionResult act(long id, String action, long uid, int role) {
         Contract c = contractMapper.selectById(id);
@@ -98,48 +109,76 @@ public class ContractService {
         }
         boolean isTenant = c.getTenantId() == uid;
         boolean isLandlord = c.getLandlordId() == uid;
-        Long orderId = null;
+        int from = c.getStatus();
+        int to;
         switch (action) {
             case "sign" -> {
-                if (isTenant && c.getStatus() == ST_TENANT_CONFIRM) {
-                    c.setStatus(ST_LANDLORD_CONFIRM);
-                    c.setSignedTenantAt(LocalDateTime.now());
-                    notification.send(c.getLandlordId(), 3, "租客已确认合同",
-                            "「" + houseTitle(c) + "」合同待您确认签署", "contract", c.getId());
-                } else if (isLandlord && c.getStatus() == ST_LANDLORD_CONFIRM) {
-                    c.setStatus(ST_EFFECTIVE);
-                    c.setSignedLandlordAt(LocalDateTime.now());
-                    orderId = createOrder(c).getId();
+                if (isTenant && from == ST_TENANT_CONFIRM) {
+                    to = ST_LANDLORD_CONFIRM;
+                } else if (isLandlord && from == ST_LANDLORD_CONFIRM) {
+                    to = ST_EFFECTIVE;
                 } else {
                     throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID);
                 }
             }
             case "reject" -> {
                 require(isTenant || isLandlord, ErrorCode.FORBIDDEN);
-                if (c.getStatus() != ST_TENANT_CONFIRM && c.getStatus() != ST_LANDLORD_CONFIRM) {
+                if (from != ST_TENANT_CONFIRM && from != ST_LANDLORD_CONFIRM) {
                     throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID);
                 }
-                c.setStatus(ST_VOIDED);
+                to = ST_VOIDED;
             }
             case "terminate" -> {
                 require(isTenant || isLandlord, ErrorCode.FORBIDDEN);
-                if (c.getStatus() != ST_EFFECTIVE) {
+                if (from != ST_EFFECTIVE) {
                     throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID);
                 }
-                c.setStatus(ST_TERMINATED);
-                LeaseOrder order = orderByContract(c.getId());
-                order.setStatus(1);
-                orderMapper.updateById(order);
-                House house = houseMapper.selectById(c.getHouseId());
-                house.setStatus(HouseService.ST_ONLINE);
-                houseMapper.updateById(house);
-                long other = isTenant ? c.getLandlordId() : c.getTenantId();
-                notification.send(other, 3, "合同已退租", "「" + houseTitle(c) + "」合同已退租，房源重新上架", "contract", c.getId());
-                orderId = order.getId();
+                to = ST_TERMINATED;
             }
             default -> throw new BizException(ErrorCode.PARAM_INVALID);
         }
-        contractMapper.updateById(c);
+
+        LambdaUpdateWrapper<Contract> move = new LambdaUpdateWrapper<Contract>()
+                .eq(Contract::getId, c.getId()).eq(Contract::getStatus, from)
+                .set(Contract::getStatus, to);
+        // 时间戳同时写内存对象与 SQL：内存对象供调用方继续使用，SQL 才是权威落库值
+        if (to == ST_LANDLORD_CONFIRM) {
+            c.setSignedTenantAt(LocalDateTime.now());
+            move.set(Contract::getSignedTenantAt, c.getSignedTenantAt());
+        } else if (to == ST_EFFECTIVE) {
+            c.setSignedLandlordAt(LocalDateTime.now());
+            move.set(Contract::getSignedLandlordAt, c.getSignedLandlordAt());
+        }
+        if (contractMapper.update(null, move) == 0) {
+            throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID);
+        }
+        c.setStatus(to);
+
+        // 副作用只在跃迁成功之后执行：通知、派生订单、房源重新上架
+        Long orderId = null;
+        switch (to) {
+            case ST_LANDLORD_CONFIRM -> notification.send(c.getLandlordId(), 3, "租客已确认合同",
+                    "「" + houseTitle(c) + "」合同待您确认签署", "contract", c.getId());
+            case ST_EFFECTIVE -> orderId = createOrder(c).getId();
+            case ST_TERMINATED -> {
+                LeaseOrder order = orderByContract(c.getId());
+                if (order != null) {
+                    order.setStatus(1);
+                    orderMapper.updateById(order);
+                    orderId = order.getId();
+                }
+                House house = houseMapper.selectById(c.getHouseId());
+                if (house != null) {
+                    house.setStatus(HouseService.ST_ONLINE);
+                    houseMapper.updateById(house);
+                }
+                long other = isTenant ? c.getLandlordId() : c.getTenantId();
+                notification.send(other, 3, "合同已退租", "「" + houseTitle(c) + "」合同已退租，房源重新上架", "contract", c.getId());
+            }
+            default -> {
+                // 拒签（作废）无派生副作用
+            }
+        }
         return new TradeDto.ContractActionResult(c.getId(), c.getStatus(), orderId);
     }
 

@@ -327,20 +327,27 @@ class HouseServiceTest {
     }
 
     @Test
-    @DisplayName("UT-HOUSE-15 房东与管理员可查看任意状态房源")
-    void letsLandlordAndAdminSeeAnyStatus() {
+    @DisplayName("UT-HOUSE-15 房主本人与管理员可查看任意状态房源，其他房东不可（2001）")
+    void letsOwnerAndAdminSeeAnyStatus() {
         when(houseMapper.update(any(), any())).thenReturn(1);
         when(imageMapper.selectList(any())).thenReturn(List.of());
         when(reviewMapper.selectCount(any())).thenReturn(0L);
         when(userMapper.selectById(7L)).thenReturn(null);
 
-        UserContext.set(new UserContext.User(9L, 2));
+        // 房主本人（101 的 landlordId = 7L）
+        UserContext.set(new UserContext.User(7L, 2));
         when(houseMapper.selectById(101L)).thenReturn(house(101L, 7L, HouseService.ST_PENDING));
         assertNotNull(service.detail(101L));
 
+        // 管理员
         UserContext.set(new UserContext.User(1L, 3));
         when(houseMapper.selectById(102L)).thenReturn(house(102L, 7L, HouseService.ST_REJECTED));
         assertNotNull(service.detail(102L));
+
+        // 另一个房东看别人待审核的房源：连驳回理由都不能看到，一律伪装成不存在
+        UserContext.set(new UserContext.User(9L, 2));
+        when(houseMapper.selectById(103L)).thenReturn(house(103L, 7L, HouseService.ST_PENDING));
+        assertCode(2001, () -> service.detail(103L));
     }
 
     @Test
