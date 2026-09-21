@@ -1,6 +1,8 @@
 # RentAgent CI 流水线设计
 
 > 项目名称：RentAgent —— 基于 AI 智能体的房屋租赁系统
+> 文档版本：v1.8（v1.8 于 2026-09-21 按代码审查整改（第三轮）同步计数：后端单测基线 210 → **212 条**（新增 `UT-TOOL-06`、`UT-AGENT-07`：工具阶段意外异常统一包装为 `ToolRoundAbortedException` 中止并清残缺会话记忆），§一/§2.1/流程图同步；集成冒烟断言数不变（**146 条**，本轮未改 `ci-smoke.sh`）；关联《单元测试用例设计》v1.7、《概要设计》v1.14）
+> 文档版本：v1.7（v1.7 于 2026-09-21 按代码审查整改（第二轮）同步计数：后端单测基线 199 → **210 条**（新增 `HousingToolProviderTest` 5 条、`UT-AGENT-06`、`UT-OPENAI-16~18`、`ChatServiceTest` 2 条），§一/§2.1/§2.3 与流程图同步；集成冒烟断言数不变（**146 条**，本轮未改 `ci-smoke.sh`）；关联《单元测试用例设计》v1.6、《概要设计》v1.13）
 > 文档版本：v1.6（v1.6 于 2026-09-20 按代码审查整改（安全/业务/AI 层/工程）更新：集成冒烟断言数 131 → **146 条**（IT-1 新增注册角色白名单 2 条、IT-5 新增房源维度判重 1 条、IT-10 实名认证 5 → 17 条）；后端单测基线 190 → **199 条**；三个作业分别补作业级 `timeout-minutes`（backend-test 15 / frontend-test 15 / integration-smoke 25）；新增 `server/Dockerfile` 与 `server/.dockerignore`、`docker-compose.yml` 补 `UPLOAD_DIR` 与 `AGGREGATOR_*` 透传；关联《测试用例设计》v1.6）
 > 文档版本：v1.5（v1.5 于 2026-09-19 同步找房智能体升级：集成冒烟断言数 130 → **131 条**——新增「找房回答直接附房源详情页链接」（`searchHouses` 卡片带 `detailUrl`、提示词约定链接协议、前端气泡渲染站内链接），关联《概要设计》v1.11、《测试用例设计》v1.5）
 > 文档版本：v1.4（v1.4 于 2026-09-18 按前后端协同代码评审结论更新：断言数 127 → **130 条**、后端单测基线 182 → **190 条**；补记 `AI_MAX_TOKENS` 可调项（单轮 token 上限默认 4096，需给推理模型留余量）；补记「模型调用失败不再伪装成回答为空」的排障口径——流式分支此前不校验 HTTP 状态码，且把「正文与工具调用全空」伪造为一句可读提示，导致 CI 只表现为三条互不相关的 FR-13 失败断言；现改为如实报错 + 可自愈故障非流式重跑一次）
@@ -43,7 +45,7 @@
 
 | 门禁 | 命令 | 拦截什么 |
 | ---- | ---- | -------- |
-| 后端单元测试 | `mvn -B -ntp test`（199 条） | 业务状态机、权限、金额/日期计算、加解密回归 |
+| 后端单元测试 | `mvn -B -ntp test`（212 条） | 业务状态机、权限、金额/日期计算、加解密回归 |
 | 前端静态检查与格式 | `npm run lint` + `npm run format:check`（ESLint + Prettier） | 死导入与未使用变量、hook 依赖数组遗漏、缩进引号等风格漂移 |
 | 前端单测 | `npm test`（vitest，26 条） | 运行时地址解析、状态字典、SSE 流式解析 |
 | 前端类型与构建 | `npm run build:web`（`tsc --noEmit` + vite） | TS 严格模式下的类型错误、构建失败 |
@@ -137,7 +139,7 @@
 ```
 push / PR / 手动
         │
-        ├── backend-test      JDK17 ── mvn test（199 条）────────────────────────────────────────┐
+        ├── backend-test      JDK17 ── mvn test（212 条）────────────────────────────────────────┐
         ├── frontend-test     Node20 ── npm ci → lint → format:check → vitest → build:web ───────┤ 并行
         └── integration-smoke JDK17 + mysql:8.0 + redis:7                                        │
                               └─ 建表 → 打包 → 启动 → ci-smoke.sh（146 条）                      ┘
@@ -238,6 +240,8 @@ push / PR / 手动
 | 代码评审后复跑（v1.3） | 前端静态检查：`npm run lint`（ESLint 扁平配置）与 `npm run format:check`（Prettier）本机均零报错；单元与集成：后端 `mvn test` → **182 条全过**、前端 `npm test` → **26 条全过**、`ci-smoke.sh` → **127 条断言全过、退出码 0**（连续两轮均全绿） |
 | 前后端协同评审后复跑（v1.4） | 后端 `mvn test` → **190 条全过**；前端 `npx tsc --noEmit` / `npm run lint` 零报错、`npm test` → **26 条全过**；`ci-smoke.sh` → **130 条断言全过、退出码 0**；`ci-no-model-check.sh`（8081 无凭据实例）→ **5 条通过 + 1 条跳过、退出码 0** |
 | 代码审查整改复跑（v1.6，2026-09-20） | 后端 `mvn test` → **199 条全过**；前端 `npm run check`（ESLint + Prettier + vitest **26 条**）与 `npm run build:web`（`tsc --noEmit` + vite）全过；`ci-smoke.sh` → **146 条断言全过、退出码 0**；`ci-no-model-check.sh`（8081 无凭据实例）→ **5 条通过**；未注入密钥的本机实例启动时按预期输出 4 条默认凭据告警（`StartupConfigCheck` 只告警不拒绝启动）。三个作业已补作业级 `timeout-minutes`（backend-test 15 / frontend-test 15 / integration-smoke 25） |
+| 代码审查整改（第二轮）复跑（v1.7，2026-09-21） | 后端 `mvn test` → **210 条全过**（新增 11 条：`HousingToolProviderTest` 5 条、`UT-AGENT-06`、`UT-OPENAI-16~18`、`ChatServiceTest` 2 条）；`UT-AGENT-06` 已按"去掉清会话记忆的修复即失败"验证过判据有效性。`ci-smoke.sh`（本机 MySQL 8 + Redis 7 + 运行中后端，真实模型通道）→ **146 条断言全过、退出码 0**，其中 IT-9 段（流式 delta+done、`searchHouses` / `searchKnowledge` 工具留痕、知识库引用、流内无失败载荷）证明被改的 AI 链路端到端可用；断言数未增删。本轮只改后端与文档，前端未改动故未复跑（前端基线仍 26 条） |
+| 代码审查整改（第三轮）复跑（v1.8，2026-09-21） | 后端 `mvn test` → **212 条全过**（新增 2 条：`UT-TOOL-06` 走真实 `DefaultToolExecutor` 的非法参数路径、`UT-AGENT-07` 验证工具阶段意外失败同样清残缺记忆）。`ci-smoke.sh`（本机 MySQL 8 + Redis 7 + 运行中后端，真实模型通道）→ **146 条断言全过、退出码 0**；插曲：连续复跑时真模型断言曾间歇失败，后端日志核实为聚合网关 429 限流，且失败路径符合"如实报 4001、不伪造回答"的设计（详见《测试用例设计》v1.8 复跑记录），等待限流窗口后单次复跑全绿。本轮只改后端与文档，前端未改动故未复跑（前端基线仍 26 条） |
 | 客服场景三条断言同时失败排障（v1.4，CI 实录） | 现象：`FR-13 客服返回非空回答` / `模型实际调用了 searchKnowledge 工具` / `NFR-05 客服回答附带知识库来源引用` 三条同时失败，而同轮 FR-12 找房场景全过，后端日志**一条 WARN 都没有**。定位：聚合通道为推理模型，流式分片里 `delta.reasoning` 先占满预算、`finish_reason=length` 时正文与工具调用可能全空；适配器只累积 `delta.content` 与 `tool_calls`，全空时返回一句伪造的「抱歉，这次没有生成有效回答」且一个 delta 都不发——前端只能看到空白气泡、CI 只看到「回答为空」；FR-12 未暴露是因为找房场景的兜底条件（scene==1 且回答过短）恰好会触发非流式重跑，客服场景按设计不重跑。修复：① 空返回改为抛错（携带 `finish_reason` 与用量）并按可自愈传输层故障（空返回 / 限流 / 5xx / 超时）非流式重跑一次、4xx 不重跑；② 流式分支补 HTTP 状态码校验与 `CompletionException` 解包；③ 正文只在终止消息里给出时补走 delta 通道；④ 单轮 token 上限 2048 → 4096；⑤ 冒烟脚本为找房与客服各加一条「流内无失败载荷」断言，把模型侧故障与那三条业务断言区分开 |
 | 集成冒烟 | 本机真实 MySQL 8 + Redis + 运行中后端 → **121 条断言全过，退出码 0**（连续 6 轮稳定） |
 | 失败路径 | `BASE_URL` 指向空端口 → 退出码 7 并提示后端未就绪，门禁有效 |

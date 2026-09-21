@@ -30,6 +30,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -56,6 +57,12 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
     private final Duration timeout;
     private final Map<String, String> customHeaders;
     private final ObjectMapper mapper = new ObjectMapper();
+    /**
+     * 推理型模型的模型名前缀：OpenAI 的 o 系列与 gpt-5 起。
+     * 它们拒收 {@code max_tokens} 与自定义 {@code temperature}（HTTP 400 unsupported parameter），
+     * 只认 {@code max_completion_tokens}；照经典协议下发会让每个 AI 入口都报 4001。
+     */
+    private static final Pattern REASONING_MODEL = Pattern.compile("^(o[1-9]\\d*|gpt-5).*");
     /** 非 2xx 时读多少行错误体用于异常信息（错误体通常只有一行 JSON，留几行防多行 HTML） */
     private static final long ERROR_BODY_LINES = 4;
     private final HttpClient http = HttpClient.newBuilder()
@@ -294,11 +301,14 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
                            ObjectNode responseFormat) {
         ObjectNode body = mapper.createObjectNode();
         body.put("model", model);
-        if (temperature != null) {
+        // 推理型模型（o 系列 / gpt-5 起）不接受采样参数：temperature 传非默认值会被 400 拒绝，
+        // 长度上限也只认 max_completion_tokens；识别不出的按经典协议下发，保证"换模型只改配置"两类都成立
+        boolean reasoning = reasoningModel();
+        if (temperature != null && !reasoning) {
             body.put("temperature", temperature);
         }
         if (maxTokens != null) {
-            body.put("max_tokens", maxTokens);
+            body.put(reasoning ? "max_completion_tokens" : "max_tokens", maxTokens);
         }
         ArrayNode msgArr = body.putArray("messages");
         for (ChatMessage m : messages) {
@@ -401,6 +411,13 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
 
     private static String trimSlash(String url) {
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+
+    /** 模型名可能是带厂商前缀的网关别名（如 openai/o3-mini），按最后一段判定是否推理型模型 */
+    private boolean reasoningModel() {
+        String name = model == null ? "" : model;
+        int slash = name.lastIndexOf('/');
+        return REASONING_MODEL.matcher(slash < 0 ? name : name.substring(slash + 1)).matches();
     }
 
     private static String abbreviate(String s) {

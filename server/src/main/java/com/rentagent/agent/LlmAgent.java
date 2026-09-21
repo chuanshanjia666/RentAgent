@@ -1,6 +1,7 @@
 package com.rentagent.agent;
 
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.service.AiServices;
@@ -12,7 +13,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -50,6 +53,17 @@ public class LlmAgent implements AgentEngine {
     private final LlmGateway llmGateway;
     private final HousingToolProvider housingToolProvider;
     private volatile Assistant assistant;
+
+    /** 会话记忆保留的消息条数（系统提示词之外） */
+    private static final int MEMORY_WINDOW = 12;
+
+    /**
+     * 会话记忆表：由本类持有（而不是让 AiServices 自己存），这样能在中止本轮时按会话整体清空。
+     * <p>
+     * 清空的场景见 {@link ToolCallLimitExceededException}：工具循环被硬停时，助手消息已带着
+     * {@code tool_calls} 进了记忆，而它的工具结果不会再补齐，留着会让该会话后续每一轮都被协议以 400 拒绝。
+     */
+    private final Map<Object, ChatMemory> memories = new ConcurrentHashMap<>();
 
     /** 兜底重试的强化指令：按场景指向该场景必需的工具（找房 → searchHouses，客服/合同 → searchKnowledge） */
     private static final String SEARCH_RETRY_HINT =
@@ -149,7 +163,7 @@ public class LlmAgent implements AgentEngine {
                     housingToolProvider.takeRoundTools(sessionId);
                     // 已取消就不再重跑；重跑的答案同样没人接收
                     if (!retryable(error) || housingToolProvider.isCancelled(sessionId)) {
-                        callback.onError(error);
+                        fail(sessionId, error, callback);
                         return;
                     }
                     log.warn("模型调用失败（可重试）：{}；改用非流式重跑一次", String.valueOf(error.getMessage()));
@@ -234,8 +248,26 @@ public class LlmAgent implements AgentEngine {
             housingToolProvider.takeRoundTools(sessionId);
             callback.onComplete(text, citations, text.contains(TRANSFER_MARK));
         } catch (Exception e) {
-            callback.onError(e);
+            fail(sessionId, e, callback);
         }
+    }
+
+    /**
+     * 如实上报本轮失败（流式与非流式两条路径共用）。
+     * <p>
+     * 工具阶段异常终止（{@link ToolRoundAbortedException}，含超上限硬停与工具执行的意外异常）时，
+     * 会话记忆里可能已留下"带着 tool_calls 却没有对应工具结果"的助手消息，这类消息会被
+     * OpenAI / Anthropic 协议以 400 拒绝，留着等于把该会话后续每一轮都弄失败，
+     * 故先整体清掉这段上下文再上报——丢一次上下文，好过会话从此不可用。
+     */
+    private void fail(long sessionId, Throwable error, Callback callback) {
+        if (error instanceof ToolRoundAbortedException) {
+            ChatMemory memory = memories.get(sessionId);
+            if (memory != null) {
+                memory.clear();
+            }
+        }
+        callback.onError(error);
     }
 
     private Assistant assistant() {
@@ -246,7 +278,8 @@ public class LlmAgent implements AgentEngine {
                             .streamingChatLanguageModel(llmGateway.streaming())
                             .chatLanguageModel(llmGateway.chat())
                             .toolProvider(housingToolProvider)
-                            .chatMemoryProvider(memoryId -> MessageWindowChatMemory.withMaxMessages(12))
+                            .chatMemoryProvider(memoryId -> memories.computeIfAbsent(memoryId,
+                                    id -> MessageWindowChatMemory.withMaxMessages(MEMORY_WINDOW)))
                             .build();
                 }
             }

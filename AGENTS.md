@@ -23,7 +23,7 @@ docker compose up -d mysql redis
 # 后端（8080）
 cd server && mvn -q compile            # 改完先编译，避免 spring-boot:run 跑旧 class
 ./run-dev.sh                            # 本地开发脚本，含个人 API Key（已 gitignore，勿提交）
-mvn test                                # 单测 190 条，不连库/缓存/网络
+mvn test                                # 单测 212 条，不连库/缓存/网络
 mvn -Dtest=HouseServiceTest test        # 单测单类（配合 -DfailIfNoSpecifiedTests=false 更省事）
 
 # 前端（5173；浏览器请用 localhost 而非 127.0.0.1，CORS 白名单按来源区分）
@@ -79,6 +79,16 @@ python3 "doc/01.需求定义/assets/build_reqdef.py"     # 需求定义说明书
   （空返回 / 429 / 5xx / 超时）由 `LlmAgent` 非流式重跑一次，4xx 不重跑。
 - 聚合通道是**推理模型**：思维链计入 `max_tokens`（实测一轮 1.6k~2.0k tokens），预算过紧会被
   `finish_reason=length` 截断成"既无正文也无工具调用"。`ai.max-tokens` 默认 4096，可用 `AI_MAX_TOKENS` 覆盖。
+- **工具循环必须收敛**：单轮工具调用上限 8 次（`HousingToolProvider.MAX_TOOL_CALLS_PER_ROUND`）。超上限先返回
+  一次终止提示，提示之后**仍**调工具即抛 `ToolCallLimitExceededException` 硬停本轮——流式路径的工具循环由
+  langchain4j 的流式处理器递归驱动、工具集在处理器构造时定死，**返回文本拦不住它**，别改成"只提示不抛错"。
+  凡本轮在工具阶段异常终止（含工具参数 JSON 非法等意外异常，统一包成基类 `ToolRoundAbortedException`），
+  `LlmAgent` 都会先清掉本轮会话记忆（助手消息已带 `tool_calls` 而无工具结果，留着会被协议以 400 拒绝）；
+  `@Tool` 方法自身的业务异常不在此列——langchain4j 把它吞成工具结果字符串回给模型，本轮继续。
+- **SSE 超时按配置推导**（`ChatService.sseTimeoutMillis`：单次上游超时 × `(工具上限 + 2) × 2` + 30s 余量），
+  不写死——写死的值一旦短于最坏合法轮次，慢一点但正常的回答会被从中间切断。
+- 推理型模型（o 系列 / gpt-5 起，含 `openai/` 一类网关前缀）只认 `max_completion_tokens`、不接受自定义
+  `temperature`；适配器按模型名切换字段名（`OpenAiChatCompletionsModel.requestBody`），识别不出的按经典协议下发。
 - 流式契约：`delta` 事件 `{"delta":"…"}` 逐字；`done` 事件带 `messageId/content/citations/transferred/latencyMs`；
   失败发 `{error:"…"}`。**正文只在终止消息里给出时必须补走 delta 通道**。`frontend/src/api.ts` 的 `ssePost`
   保证 `onDone`/`onError` 恰好触发一个；SSE 走原生 fetch，**不走 axios 拦截器，401 处理要手动保持一致**。

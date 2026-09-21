@@ -51,7 +51,8 @@ class OpenAiChatCompletionsModelTest {
         assertEquals("system", body.path("messages").get(0).path("role").asText());
         assertEquals("你是租房助手", body.path("messages").get(0).path("content").asText());
         assertEquals("user", body.path("messages").get(1).path("role").asText());
-        // max_tokens 不下发（推理型模型会把思维链算进补全长度）
+        // 本用例的模型未配 max-tokens（构造入参为 null），故不下发长度上限字段
+        // （有配置时该字段必须下发，字段名随模型类型而变，见 UT-OPENAI-16/17）
         assertTrue(body.path("max_tokens").isMissingNode());
     }
 
@@ -77,6 +78,32 @@ class OpenAiChatCompletionsModelTest {
         assertEquals("object", tool.path("function").path("parameters").path("type").asText());
         assertTrue(tool.path("function").path("parameters").path("properties").has("maxRent"));
         assertEquals("maxRent", tool.path("function").path("parameters").path("required").get(0).asText());
+    }
+
+    @Test
+    @DisplayName("UT-OPENAI-16 推理型模型（o 系列 / gpt-5 起，含网关前缀）改用 max_completion_tokens 且不下发 temperature")
+    void mapsParametersForReasoningModel() {
+        var reasoning = new OpenAiChatCompletionsModel("https://api.openai.com/v1", "test-key",
+                "openai/o4-mini", 0.7, 4096, Duration.ofSeconds(30), Map.of());
+
+        var body = reasoning.requestBody(List.of(UserMessage.from("帮我找房")), List.of(), false, null);
+
+        assertEquals(4096, body.path("max_completion_tokens").asInt());
+        assertTrue(body.path("max_tokens").isMissingNode(), "推理型模型传 max_tokens 会被转成 400");
+        assertTrue(body.path("temperature").isMissingNode(), "推理型模型不接受自定义 temperature");
+    }
+
+    @Test
+    @DisplayName("UT-OPENAI-17 经典模型仍按 max_tokens + temperature 下发（识别规则不误伤）")
+    void keepsClassicParametersForNonReasoningModel() {
+        var classic = new OpenAiChatCompletionsModel("https://api.example.com/v1", "test-key",
+                "deepseek/deepseek-v4.1-flash", 0.7, 4096, Duration.ofSeconds(30), Map.of());
+
+        var body = classic.requestBody(List.of(UserMessage.from("帮我找房")), List.of(), false, null);
+
+        assertEquals(4096, body.path("max_tokens").asInt());
+        assertEquals(0.7, body.path("temperature").asDouble(), 1e-9);
+        assertTrue(body.path("max_completion_tokens").isMissingNode());
     }
 
     @Test

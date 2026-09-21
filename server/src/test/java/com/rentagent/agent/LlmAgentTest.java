@@ -1,5 +1,6 @@
 package com.rentagent.agent;
 
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -14,6 +15,10 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,6 +44,8 @@ class LlmAgentTest {
     /** 记录回调结果的测试用 Callback */
     private static class Recorder implements AgentEngine.Callback {
         final StringBuilder text = new StringBuilder();
+        /** 异步桩（{@link AsyncStubStreaming}）用：等到终止回调再断言 */
+        final CountDownLatch done = new CountDownLatch(1);
         String citations;
         Throwable error;
         boolean completed;
@@ -52,11 +59,13 @@ class LlmAgentTest {
         public void onComplete(String fullText, String citationsJson, boolean transferred) {
             this.completed = true;
             this.citations = citationsJson;
+            done.countDown();
         }
 
         @Override
         public void onError(Throwable t) {
             this.error = t;
+            done.countDown();
         }
     }
 
@@ -93,6 +102,47 @@ class LlmAgentTest {
                 handler.onNext(content);
             }
             handler.onComplete(Response.from(new AiMessage(content)));
+        }
+    }
+
+    /**
+     * 流式模型桩：**异步**触发回调，与三个适配器的 {@code sendAsync(...).exceptionally(...)} 一致——
+     * 工具执行（因而在 {@code handler.onComplete} 里）抛出的异常必须转成 {@code onError}，
+     * 而不是从 {@code generate} 同步抛出（真实适配器都在回调链上兜住它）。
+     * <p>
+     * 依次回放脚本里的响应，并记录每次请求实际发出的消息（据它断言会话记忆里的残留）。
+     */
+    private static class AsyncStubStreaming implements StreamingChatLanguageModel {
+        private final List<AiMessage> script;
+        private final List<List<ChatMessage>> requests = new CopyOnWriteArrayList<>();
+        private final AtomicInteger rounds = new AtomicInteger();
+
+        AsyncStubStreaming(AiMessage... script) {
+            this.script = List.of(script);
+        }
+
+        @Override
+        public void generate(List<ChatMessage> messages, StreamingResponseHandler<AiMessage> handler) {
+            generate(messages, List.of(), handler);
+        }
+
+        @Override
+        public void generate(List<ChatMessage> messages, List<ToolSpecification> tools,
+                             StreamingResponseHandler<AiMessage> handler) {
+            requests.add(List.copyOf(messages));
+            AiMessage next = script.get(Math.min(rounds.getAndIncrement(), script.size() - 1));
+            CompletableFuture.runAsync(() -> {
+                try {
+                    handler.onComplete(Response.from(next));
+                } catch (RuntimeException e) {
+                    handler.onError(e);
+                }
+            });
+        }
+
+        /** 最后一次请求实际发出的消息 */
+        List<ChatMessage> lastRequest() {
+            return requests.get(requests.size() - 1);
         }
     }
 
@@ -214,5 +264,84 @@ class LlmAgentTest {
         assertFalse(recorder.completed, "两次都失败时不得给出任何回答");
         assertTrue(recorder.text.toString().isBlank(), recorder.text.toString());
         assertInstanceOf(LlmEmptyResponseException.class, recorder.error);
+    }
+
+    @Test
+    @DisplayName("UT-AGENT-06 工具循环未收敛被中止：如实报错，并清掉已残缺的会话记忆（不留 400 隐患）")
+    void abortsUnconvergedToolLoopAndClearsMemory() throws Exception {
+        AsyncStubStreaming streaming = new AsyncStubStreaming(
+                AiMessage.from(ToolExecutionRequest.builder()
+                        .id("c1").name("searchHouses").arguments("{}").build()),
+                new AiMessage("押金在退租验收后 3 个工作日内全额退还。"));
+        LlmGateway gateway = mock(LlmGateway.class);
+        when(gateway.streaming()).thenReturn(streaming);
+        StubSync sync = new StubSync("不该被调用", null);
+        when(gateway.chat()).thenReturn(sync);
+
+        // 工具循环未收敛：执行器每次都抛中止异常（真实实现里由 HousingToolProvider 在上限后抛出）
+        HousingToolProvider provider = mock(HousingToolProvider.class);
+        ToolSpecification spec = ToolSpecification.builder().name("searchHouses").build();
+        when(provider.provideTools(any())).thenReturn(new ToolProviderResult(Map.of(spec,
+                (req, memoryId) -> {
+                    throw new ToolCallLimitExceededException("本轮工具调用已超过上限 8 次且仍在调用 searchHouses，已中止本轮");
+                })));
+        LlmAgent agent = new LlmAgent(gateway, provider);
+
+        Recorder first = new Recorder();
+        agent.stream(7L, 1L, 1, "帮我找房", first);
+        assertTrue(first.done.await(5, TimeUnit.SECONDS), "中止后必须有终止回调");
+        assertInstanceOf(ToolCallLimitExceededException.class, first.error, "必须如实上报中止原因");
+        assertFalse(first.completed);
+        assertEquals(0, sync.calls.get(), "未收敛不是可自愈的传输层故障，不得重跑");
+
+        // 助手消息已带着 tool_calls 进了记忆而它的工具结果不会再有：这一轮若不清，后续请求全会因
+        // "tool_calls 没有对应 tool 结果"被协议以 400 拒绝。第二轮据请求内容验证记忆确实已清。
+        Recorder second = new Recorder();
+        agent.stream(7L, 1L, 1, "押金怎么退", second);
+        assertTrue(second.done.await(5, TimeUnit.SECONDS));
+        assertTrue(second.completed, "清掉残缺记忆后同一会话仍能正常出结论");
+        assertTrue(streaming.lastRequest().stream()
+                        .noneMatch(m -> m instanceof AiMessage a && a.hasToolExecutionRequests()),
+                "残缺的工具调用消息必须已从会话记忆里清掉：" + streaming.lastRequest());
+    }
+
+    @Test
+    @DisplayName("UT-AGENT-07 工具阶段意外失败（如参数 JSON 非法）：同样如实报错并清掉残缺的会话记忆")
+    void clearsMemoryWhenToolPhaseFailsUnexpectedly() throws Exception {
+        AsyncStubStreaming streaming = new AsyncStubStreaming(
+                AiMessage.from(ToolExecutionRequest.builder()
+                        .id("c1").name("searchHouses").arguments("{}").build()),
+                new AiMessage("为您找到 3 套符合条件的在租房源。"));
+        LlmGateway gateway = mock(LlmGateway.class);
+        when(gateway.streaming()).thenReturn(streaming);
+        StubSync sync = new StubSync("不该被调用", null);
+        when(gateway.chat()).thenReturn(sync);
+
+        // 模拟 executeTraced 对意外异常的包装：模型发来的工具参数解析失败等RuntimeException
+        // 从工具执行阶段冒出（此时助手消息已入记忆，残缺已铸成）
+        HousingToolProvider provider = mock(HousingToolProvider.class);
+        ToolSpecification spec = ToolSpecification.builder().name("searchHouses").build();
+        when(provider.provideTools(any())).thenReturn(new ToolProviderResult(Map.of(spec,
+                (req, memoryId) -> {
+                    throw new ToolRoundAbortedException("工具 searchHouses 执行失败，本轮中止：参数 JSON 非法",
+                            new RuntimeException("Unexpected end of input"));
+                })));
+        LlmAgent agent = new LlmAgent(gateway, provider);
+
+        Recorder first = new Recorder();
+        agent.stream(7L, 1L, 1, "帮我找房", first);
+        assertTrue(first.done.await(5, TimeUnit.SECONDS), "失败后必须有终止回调");
+        assertInstanceOf(ToolRoundAbortedException.class, first.error, "按中止口径上报");
+        assertFalse(first.completed);
+        assertEquals(0, sync.calls.get(), "工具执行失败不是可自愈的传输层故障，不得重跑");
+
+        // 残缺记忆若不清，同一会话后续每轮都被协议以 400 拒绝——第二轮验证确实已清
+        Recorder second = new Recorder();
+        agent.stream(7L, 1L, 1, "换个条件再找找", second);
+        assertTrue(second.done.await(5, TimeUnit.SECONDS));
+        assertTrue(second.completed, "清掉残缺记忆后同一会话仍能正常出结论");
+        assertTrue(streaming.lastRequest().stream()
+                        .noneMatch(m -> m instanceof AiMessage a && a.hasToolExecutionRequests()),
+                "残缺的工具调用消息必须已从会话记忆里清掉：" + streaming.lastRequest());
     }
 }

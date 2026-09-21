@@ -148,4 +148,42 @@ class OpenAiChatCompletionsModelHttpTest {
         assertEquals("押金全额退还", captured.streamed.toString());
         assertEquals("押金全额退还", captured.completed.get().content().text());
     }
+
+    @Test
+    @DisplayName("UT-OPENAI-18 处理器在 onComplete 里抛出的异常必须转成 onError（工具循环硬停靠它收尾）")
+    void turnsHandlerExceptionIntoOnError() throws Exception {
+        OpenAiChatCompletionsModel model = modelAgainst(200, "text/event-stream", String.join("\n",
+                "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\","
+                        + "\"function\":{\"name\":\"searchHouses\",\"arguments\":\"{}\"}}]},"
+                        + "\"finish_reason\":\"tool_calls\"}]}",
+                "data: [DONE]",
+                ""));
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(1);
+
+        // 处理器在终止回调里抛错，正是流式路径执行工具时的形态（langchain4j 的处理器先写记忆再执行工具，
+        // 执行器抛出的异常从 onComplete 冒出来）。适配器须把它转成 onError：转不了本轮就只能空转到 SSE 超时，
+        // 用户等满整个超时预算才收到一句失败提示。
+        model.generate(List.of(UserMessage.from("帮我找房")),
+                List.of(ToolSpecification.builder().name("searchHouses").build()),
+                new StreamingResponseHandler<>() {
+                    @Override
+                    public void onNext(String token) {
+                    }
+
+                    @Override
+                    public void onComplete(Response<AiMessage> response) {
+                        throw new ToolCallLimitExceededException("本轮工具调用已超过上限 8 次，已中止本轮");
+                    }
+
+                    @Override
+                    public void onError(Throwable t) {
+                        error.set(t);
+                        latch.countDown();
+                    }
+                });
+
+        assertTrue(latch.await(10, TimeUnit.SECONDS), "处理器抛出的异常必须转成 onError，否则本轮无声挂起");
+        assertInstanceOf(ToolCallLimitExceededException.class, error.get(), "异常须原样透出：类型被包装会让上层认不出中止原因");
+    }
 }
