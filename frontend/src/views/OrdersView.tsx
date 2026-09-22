@@ -54,6 +54,7 @@ export default function OrdersView() {
     })
     message.success('评价已提交')
     setReviewRow(null)
+    list.reload() // 刷新 reviewed 标记：该行的按钮随之置灰为「已评价」
   }
 
   function terminate(row: OrderRow) {
@@ -98,11 +99,17 @@ export default function OrdersView() {
       width: 170,
       render: (_, row) => (
         <>
-          {!isLandlord && row.order.status !== 0 && (
-            <Button size="small" type="primary" onClick={() => openReview(row)}>
-              评价
-            </Button>
-          )}
+          {!isLandlord &&
+            row.order.status !== 0 &&
+            (row.reviewed ? (
+              <Button size="small" disabled>
+                已评价
+              </Button>
+            ) : (
+              <Button size="small" type="primary" onClick={() => openReview(row)}>
+                评价
+              </Button>
+            ))}
           {row.order.status === 0 && row.contractStatus === 2 && (
             <Button size="small" style={{ marginLeft: 6 }} onClick={() => terminate(row)}>
               退租

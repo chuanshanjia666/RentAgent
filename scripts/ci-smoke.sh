@@ -302,8 +302,10 @@ expect_eq "评分越界被参数校验拦截" "$(code_of "$(req POST /reviews "$
 expect_eq "租客退租" "$(code_of "$(req PATCH "/contracts/$CID" "$T_TENANT" '{"action":"terminate"}')")" "0"
 expect_eq "退租后合同状态为已退租" "$(req GET "/contracts/$CID" "$T_TENANT" | jq -r '.data.status')" "3"
 expect_eq "退租后房源重新上架" "$(req GET "/houses/$HID" - | jq -r '.data.house.status')" "3"
+expect_eq "未评价订单回填 reviewed=false" "$(req GET /orders "$T_TENANT" | jq -r "[.data.list[] | select(.order.id==$OID)][0].reviewed")" "false"
 expect_eq "已退租订单可评价" "$(code_of "$(req POST /reviews "$T_TENANT" "$REVIEW_BODY")")" "0"
 expect_eq "同一订单不可重复评价" "$(code_of "$(req POST /reviews "$T_TENANT" "$REVIEW_BODY")")" "3005"
+expect_eq "评价后订单回填 reviewed=true" "$(req GET /orders "$T_TENANT" | jq -r "[.data.list[] | select(.order.id==$OID)][0].reviewed")" "true"
 expect_ge "房源评价列表回填" "$(req GET "/houses/$HID/reviews" - | jq -r '.data.total')" "1"
 
 # ── 6. FR-11/14/15/16 AI 与推荐（规则引擎） ─────────────────────

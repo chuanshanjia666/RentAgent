@@ -38,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -50,7 +51,9 @@ import java.util.Map;
 
 /**
  * 演示种子数据（幂等：仅空库时写入）。演示账号密码统一 123456：
- * 小陈（租客）/ 王房东（未实名，演示拦截）/ 李房东（已实名）/ admin（管理员）/ 历史用户（已禁用）。
+ * 小陈 / 小林 / 小周（租客）/ 王房东（未实名，演示拦截）/ 李房东（已实名）/ admin（管理员）/ 历史用户（已禁用）。
+ * 房源覆盖大连市 8 个区（中山区、西岗区、沙河口区、甘井子区、高新园区、旅顺口区、金州区、普兰店区，
+ * 其中高新园区为功能区，套在甘井子区界内），经纬度均经真实区界 GeoJSON 校验落在陆地上。
  * 房源带真实感图片：图片文件打包在 classpath 的 {@code seed-images/}，空库播种时拷贝到上传目录，
  * URL 仍走 {@code /uploads/seed-*.jpg}，与前端 {@code assetUrl()} 的解析规则保持一致。
  */
@@ -92,11 +95,13 @@ public class DataInitializer implements CommandLineRunner {
         seedHouses(li);
         seedHistory();
         seedKnowledge();
-        log.info("演示种子数据写入完成：账号 小陈/王房东/李房东/admin，密码统一 123456");
+        log.info("演示种子数据写入完成：账号 小陈/小林/小周/王房东/李房东/admin，密码统一 123456");
     }
 
     private void seedUsers(long liId) {
         insertUser("xiaochen", "13800000001", "小陈", 1, 1);
+        insertUser("xiaolin", "13800000006", "小林", 1, 1);
+        insertUser("xiaozhou", "13800000007", "小周", 1, 1);
         insertUser("wanglandlord", "13800000002", "王房东", 2, 1);
         insertUser("admin", "13800000009", "平台管理员", 3, 1);
         insertUser("historyuser", "13800000005", "历史用户", 1, 0);
@@ -123,8 +128,9 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     /**
-     * 演示房源 17 套：李房东 14 套（12 在架 + 在租 1 + 已驳回 1 + 已下架 1）、王房东 3 套全部待审核
+     * 演示房源 29 套：李房东 26 套（23 在架 + 在租 1 + 已驳回 1 + 已下架 1）、王房东 3 套全部待审核
      * （未实名房东的房源无法通过审核，与 FR-04 的拦截演示呼应）。
+     * 在架房源覆盖大连市 8 个区，坐标均经区界多边形校验落在陆地上（高新园区为功能区，落在甘井子区界内属正常）。
      * 楼层词表（低层/中层/高层）、户型、朝向、押付方式与设施标签均取自前端 constants.ts，
      * 总层数等细节写进描述。图片为 classpath seed-images/ 下的通用素材，按"封面 + 厨卫 + 卧室 + 楼栋"组合。
      */
@@ -167,7 +173,7 @@ public class DataInitializer implements CommandLineRunner {
                 List.of("living-03.jpg", "bed-04.jpg", "kitchen-04.jpg", "bath-02.jpg", "bldg-04.jpg"));
         houseFull(li, "软件园通勤两居 电梯高层", "学清园", "高新园区", "2室1厅", 62, 2600,
                 "南北", "高层", "押一付一", List.of("近地铁", "电梯", "精装修", "家电齐全"),
-                121.5489, 38.8452, ST_ONLINE,
+                121.5435, 38.8495, ST_ONLINE,
                 "距软件园步行约 15 分钟，地铁 1 号线两站直达河口。两卧南北向，客厅采光好，精装修拎包即住。"
                         + "园区安静，物业负责，楼下即公交站。支持押一付一，邻居多为 IT 从业者，作息相近。",
                 List.of("living-08.jpg", "bed-01.jpg", "kitchen-09.jpg", "bath-02.jpg", "bldg-03.jpg"));
@@ -179,7 +185,7 @@ public class DataInitializer implements CommandLineRunner {
                 List.of("living-10.jpg", "bed-02.jpg", "kitchen-03.jpg", "bath-01.jpg", "bldg-05.jpg"));
         houseFull(li, "星海公园旁两居 主卧看海", "星海名苑", "沙河口区", "2室1厅", 70, 3600,
                 "南", "高层", "押一付三", List.of("电梯", "精装修", "家电齐全", "采光好"),
-                121.5852, 38.8721, ST_ONLINE,
+                121.5845, 38.8795, ST_ONLINE,
                 "星海公园东门对面，主卧南向看海，次卧朝北安静。精装修三年保养良好，中央空调与地暖俱全。"
                         + "小区封闭管理带门禁，车位充足。步行至星海公园地铁站 5 分钟，通勤中山广场约 30 分钟。",
                 List.of("bed-06.jpg", "living-02.jpg", "kitchen-02.jpg", "bath-04.jpg", "bldg-04.jpg"));
@@ -195,6 +201,73 @@ public class DataInitializer implements CommandLineRunner {
                 "桃源桥 11 层小高层，三卧南北通透，客厅正对山景，空气清新。全屋新中式装修，实木家具，"
                         + "中央空调。一梯两户，住户素质高，适合一家人常住。半年付可享 95 折优惠。",
                 List.of("living-07.jpg", "bed-03.jpg", "bed-08.jpg", "kitchen-05.jpg", "bath-02.jpg", "bldg-03.jpg"));
+
+        // ── 李房东：区县补全房源（西岗/旅顺口/金州/普兰店 + 市内四区加密），让每个区都有在租房源 ──
+        houseFull(li, "奥林匹克广场旁精装两居", "万达华府", "西岗区", "2室2厅", 72, 3600,
+                "南北", "高层", "押一付三", List.of("电梯", "精装修", "家电齐全", "采光好"),
+                121.6148, 38.9108, ST_ONLINE,
+                "万达华府高层两居，紧邻奥林匹克广场与沃尔玛商圈，人民广场、长春路医院步行可达。"
+                        + "南北通透客厅带阳台，全屋精装修带中央空调，家具家电品牌配置。适合对生活配套要求高的家庭常住。",
+                List.of("living-04.jpg", "bed-06.jpg", "kitchen-05.jpg", "bath-03.jpg", "bldg-02.jpg"));
+        house(li, "石道街两居 步梯中层 近森林动物园", "石道街小区", "西岗区", "2室1厅", 58, 2300,
+                List.of("精装修", "采光好", "家电齐全"), 121.6218, 38.9022, ST_ONLINE,
+                "石道街小区 6 层步梯三楼，背靠莲花山、邻近森林动物园北门，闹中取静空气好。"
+                        + "2023 年重新装修，厨卫焕新，家电齐全。周边市场、幼儿园、公交站齐全，八一路直达青泥洼桥，性价比高。",
+                List.of("living-05.jpg", "bed-07.jpg", "kitchen-06.jpg", "bath-04.jpg", "bldg-01.jpg"));
+        house(li, "旅顺城区两居 低总价 拎包入住", "龙河家园", "旅顺口区", "2室1厅", 66, 1500,
+                List.of("拎包入住", "家电齐全", "采光好"), 121.2630, 38.8460, ST_ONLINE,
+                "龙河家园两居，楼下即是龙河沿岸步道，距旅顺汽车站与中心商圈步行 10 分钟。"
+                        + "家具家电齐全可直接入住，租金仅市内四区同面积一半，适合预算有限的上班族与陪读家庭。",
+                List.of("living-08.jpg", "bed-01.jpg", "kitchen-02.jpg", "bath-01.jpg", "bldg-05.jpg"));
+        houseFull(li, "旅顺大学城一居 安静采光好", "学府家园", "旅顺口区", "1室1厅", 42, 1100,
+                "南", "中层", "押一付一", List.of("拎包入住", "家电齐全", "采光好"),
+                121.2760, 38.8070, ST_ONLINE,
+                "旅顺南路大学城片区一居，邻近高校生活区，周边餐馆、超市、公交站齐全。"
+                        + "开间布局明厨明卫，南向采光充足。支持押一付一，适合学生党与青年教师过渡居住。",
+                List.of("living-10.jpg", "bed-02.jpg", "kitchen-03.jpg", "bath-01.jpg", "bldg-03.jpg"));
+        house(li, "金州站前一居 交通枢纽旁", "站前小区", "金州区", "1室1厅", 45, 1300,
+                List.of("近地铁", "拎包入住", "家电齐全"), 121.7180, 39.1090, ST_ONLINE,
+                "金州火车站与向应公园步行范围之内，多路公交直达开发区与大连市区，铁路出行极为方便。"
+                        + "一室一厅布局紧凑，家具家电齐全，楼上即是大型超市，适合在金州与开发区通勤的上班族。",
+                List.of("bed-04.jpg", "living-03.jpg", "kitchen-04.jpg", "bath-02.jpg", "bldg-04.jpg"));
+        houseFull(li, "亿达春田两居 电梯精装", "亿达春田", "金州区", "2室2厅", 76, 2000,
+                "南北", "高层", "押一付三", List.of("电梯", "精装修", "家电齐全", "近地铁"),
+                121.8060, 39.0300, ST_ONLINE,
+                "亿达春田成熟社区，绿化率高、人车分流，双 D 港片区通勤开发区与自贸区均方便。"
+                        + "两卫两厅格局，主卧带飘窗，精装修保养好。社区底商齐全，租金含物业费，适合小家庭长租。",
+                List.of("living-02.jpg", "bed-06.jpg", "kitchen-02.jpg", "bath-04.jpg", "bldg-05.jpg"));
+        house(li, "普兰店城区两居 性价比之选", "馨泰家园", "普兰店区", "2室1厅", 63, 1200,
+                List.of("拎包入住", "采光好", "家电齐全"), 121.9580, 39.3920, ST_ONLINE,
+                "普兰店城区中心地段，近普兰店火车站与商业街，生活配套一应俱全。两居南北通透，"
+                        + "家具家电齐全拎包即住，月租仅千元出头，适合本地安家或远程办公的租客。",
+                List.of("living-06.jpg", "bed-03.jpg", "kitchen-08.jpg", "bath-01.jpg", "bldg-01.jpg"));
+        house(li, "泉水奥林园两居 近地铁五号线", "奥林园", "甘井子区", "2室1厅", 61, 2000,
+                List.of("近地铁", "电梯", "家电齐全"), 121.5990, 38.9720, ST_ONLINE,
+                "泉水片区奥林园小区，紧邻地铁 5 号线，公交多线直达华南广场与青泥洼桥。"
+                        + "电梯两居户型方正，厨卫宽敞，楼下底商有菜市场与超市，生活便利，租金实惠。",
+                List.of("living-09.jpg", "bed-05.jpg", "kitchen-01.jpg", "bath-01.jpg", "bldg-02.jpg"));
+        houseFull(li, "辛寨子通勤两居 万科社区", "魅力之城", "甘井子区", "2室2厅", 78, 2500,
+                "南北", "高层", "押一付三", List.of("电梯", "精装修", "家电齐全", "采光好"),
+                121.5480, 38.9720, ST_ONLINE,
+                "万科魅力之城成熟社区，物业口碑好，园林绿化精致。近张前路商圈与地铁 2 号线，"
+                        + "通勤西安路、机场均方便。南北两居客厅带阳台，家具家电全齐，适合注重居住品质的租客。",
+                List.of("living-07.jpg", "bed-08.jpg", "kitchen-05.jpg", "bath-02.jpg", "bldg-03.jpg"));
+        house(li, "东港商务区一居 看海视野", "保利天禧", "中山区", "1室1厅", 49, 3200,
+                List.of("电梯", "精装修", "拎包入住", "采光好"), 121.6830, 38.9270, ST_ONLINE,
+                "东港商务区核心，保利天禧高层一居，东港音乐喷泉、国际会议中心步行可达。"
+                        + "落地窗看海视野，全屋精装修带品牌家电，楼下即地铁 2 号线与多家写字楼，适合商务人士常住。",
+                List.of("bed-01.jpg", "living-01.jpg", "kitchen-09.jpg", "bath-02.jpg", "bldg-04.jpg"));
+        house(li, "西安路商圈两居 生活的便利拉满", "幸福e家", "沙河口区", "2室1厅", 69, 2800,
+                List.of("近地铁", "电梯", "家电齐全", "采光好"), 121.5830, 38.9030, ST_ONLINE,
+                "幸福e家小区紧邻西安路中央大道商圈，地铁与数十条公交汇聚，逛街就餐出门即达。"
+                        + "电梯两居朝南采光好，家具家电齐全，社区物业管理规范，适合年轻家庭与上班族。",
+                List.of("living-03.jpg", "bed-04.jpg", "kitchen-07.jpg", "bath-03.jpg", "bldg-04.jpg"));
+        houseFull(li, "腾飞园区旁一居 软件园通勤", "腾飞园", "高新园区", "1室1厅", 36, 1800,
+                "东", "中层", "押一付一", List.of("近地铁", "电梯", "拎包入住", "家电齐全"),
+                121.5440, 38.8530, ST_ONLINE,
+                "腾飞园区旁小户型，步行可达软件园与地铁 1 号线河口站，IT 上班族通勤几乎零成本。"
+                        + "开间精装修，家电齐宽带到户，支持押一付一短付，适合刚入职的年轻工程师。",
+                List.of("living-10.jpg", "bed-02.jpg", "kitchen-03.jpg", "bath-01.jpg", "bldg-05.jpg"));
 
         // ── 王房东：未实名，房源全部停在待审核（演示审核队列与 FR-04 拦截） ──
         house(wang, "待审核两居 家电齐全近地铁", "锦绣小区", "西岗区", "2室1厅", 60, 2700,
@@ -327,10 +400,15 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
-    /** 历史成交：一条已退租订单（带评价）+ 一条在租订单 + 收藏与已完成预约（推荐偏好数据源） */
+    /**
+     * 历史成交：六条已完结合同各带一条评价（三位租客 × 六套房源，FR-20 演示数据源）
+     * + 一条在租订单 + 收藏与已完成预约（推荐偏好数据源）。
+     */
     private void seedHistory() {
         SysUser tenant = byUsername("xiaochen");
         SysUser landlord = byUsername("lilandlord");
+        SysUser lin = byUsername("xiaolin");
+        SysUser zhou = byUsername("xiaozhou");
         House rented = houseMapper.selectOne(new LambdaQueryWrapper<House>()
                 .eq(House::getStatus, ST_RENTED).last("LIMIT 1"));
         House online = houseMapper.selectOne(new LambdaQueryWrapper<House>()
@@ -353,25 +431,64 @@ public class DataInitializer implements CommandLineRunner {
             favoriteMapper.insert(f);
         }
 
-        Contract done = contract(rented, tenant, landlord,
-                LocalDate.now().minusMonths(3), LocalDate.now().minusDays(10), 3);
-        LeaseOrder doneOrder = order(done, 1);
-        bills(doneOrder, true);
-        Review review = new Review();
-        review.setLeaseOrderId(doneOrder.getId());
-        review.setHouseId(rented.getId());
-        review.setLandlordId(landlord.getId());
-        review.setTenantId(tenant.getId());
-        review.setHouseScore(5);
-        review.setLandlordScore(4);
-        review.setContent("房子干净整洁，房东很负责，地理位置也好，推荐！");
-        review.setStatus(0);
-        reviewMapper.insert(review);
+        // 评价铺开在多个区县的房源上：房源详情页的评价区、均分与推荐权重都因此可见
+        reviewedLease(rented, tenant, landlord, 14, 5, 4,
+                "房子干净整洁，房东很负责，地理位置也好，推荐！");
+        reviewedLease(online, tenant, landlord, 26, 5, 4,
+                "住了两年，采光和物业都没得挑，楼下就是地铁站；退租纯粹是工作调动，真心推荐。");
+        reviewedLease(houseByTitle("海景两居"), lin, landlord, 16, 5, 5,
+                "海景房名不虚传，客厅就能望见星海湾，房东人很实在，家电都是新的，体验很好。");
+        reviewedLease(houseByTitle("高新园区一居"), lin, landlord, 9, 4, 4,
+                "开间紧凑但五脏俱全，楼下就是地铁站，通勤软件园十分钟；临街稍有些噪音，整体性价比高。");
+        reviewedLease(houseByTitle("学苑广场三居"), zhou, landlord, 7, 4, 5,
+                "三个同事合租分摊很划算，周边菜市场和超市齐全，房东维修响应快，适合合租。");
+        reviewedLease(houseByTitle("青泥洼桥商圈一居"), zhou, landlord, 5, 5, 4,
+                "住在市中心太方便了，下楼就是商场和地铁站，夜景绝佳；房子不大但布局合理，适合上班族。");
 
         Contract active = contract(rented, tenant, landlord,
                 LocalDate.now().minusMonths(1), LocalDate.now().plusMonths(11), 2);
         LeaseOrder activeOrder = order(active, 0);
         bills(activeOrder, false);
+    }
+
+    /** 一条已完结合同：生成已退租订单与已付账单，并写入一条评价、回写房源均分（FR-20 种子链路） */
+    private void reviewedLease(House house, SysUser tenant, SysUser landlord,
+                               int monthsAgo, int houseScore, int landlordScore, String content) {
+        if (house == null || tenant == null || landlord == null) {
+            return;
+        }
+        Contract done = contract(house, tenant, landlord,
+                LocalDate.now().minusMonths(monthsAgo), LocalDate.now().minusMonths(1), 3);
+        LeaseOrder doneOrder = order(done, 1);
+        bills(doneOrder, true);
+        Review review = new Review();
+        review.setLeaseOrderId(doneOrder.getId());
+        review.setHouseId(house.getId());
+        review.setLandlordId(landlord.getId());
+        review.setTenantId(tenant.getId());
+        review.setHouseScore(houseScore);
+        review.setLandlordScore(landlordScore);
+        review.setContent(content);
+        review.setStatus(0);
+        reviewMapper.insert(review);
+        refreshAvgScore(house.getId());
+    }
+
+    /** 与 ReviewService.recalcAvg 同口径：按未隐藏评价重算房源均分（种子直写表，不走服务层） */
+    private void refreshAvgScore(Long houseId) {
+        double avg = reviewMapper.selectList(new LambdaQueryWrapper<Review>()
+                        .eq(Review::getHouseId, houseId).eq(Review::getStatus, 0)).stream()
+                .mapToInt(Review::getHouseScore).average().orElse(0);
+        if (avg > 0) {
+            houseMapper.update(null, new LambdaUpdateWrapper<House>()
+                    .eq(House::getId, houseId)
+                    .set(House::getAvgScore, BigDecimal.valueOf(avg).setScale(1, RoundingMode.HALF_UP)));
+        }
+    }
+
+    /** 按标题前缀找房源（种子内的房源标题互不冲突） */
+    private House houseByTitle(String title) {
+        return houseMapper.selectOne(new LambdaQueryWrapper<House>().like(House::getTitle, title).last("LIMIT 1"));
     }
 
     private void seedKnowledge() {

@@ -12,11 +12,13 @@ import com.rentagent.entity.Contract;
 import com.rentagent.entity.House;
 import com.rentagent.entity.LeaseOrder;
 import com.rentagent.entity.RentBill;
+import com.rentagent.entity.Review;
 import com.rentagent.entity.SysUser;
 import com.rentagent.mapper.ContractMapper;
 import com.rentagent.mapper.HouseMapper;
 import com.rentagent.mapper.LeaseOrderMapper;
 import com.rentagent.mapper.RentBillMapper;
+import com.rentagent.mapper.ReviewMapper;
 import com.rentagent.mapper.SysUserMapper;
 import com.rentagent.security.UserContext;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 在线签约（FR-18）与订单/租金（FR-19）：
@@ -50,6 +54,7 @@ public class ContractService {
     private final RentBillMapper billMapper;
     private final HouseMapper houseMapper;
     private final SysUserMapper userMapper;
+    private final ReviewMapper reviewMapper;
     private final NotificationService notification;
     private final JsonColumns jsonColumns;
 
@@ -254,13 +259,20 @@ public class ContractService {
         }
         w.orderByDesc(LeaseOrder::getId);
         Page<LeaseOrder> p = orderMapper.selectPage(new Page<>(page, size), w);
+        // 本页订单的已评价集合一次查齐（IN 查询），避免逐行回查 review 表
+        List<Long> pageOrderIds = p.getRecords().stream().map(LeaseOrder::getId).toList();
+        Set<Long> reviewedIds = pageOrderIds.isEmpty() ? Set.of()
+                : reviewMapper.selectList(new LambdaQueryWrapper<Review>()
+                        .in(Review::getLeaseOrderId, pageOrderIds))
+                        .stream().map(Review::getLeaseOrderId).collect(Collectors.toSet());
         return PageVO.map(p, o -> {
             Contract c = contractMapper.selectById(o.getContractId());
             return new TradeDto.OrderVO(o, c == null ? null : c.getStatus(), houseTitleById(o.getHouseId()),
                     billMapper.selectCount(new LambdaQueryWrapper<RentBill>()
                             .eq(RentBill::getLeaseOrderId, o.getId())),
                     billMapper.selectCount(new LambdaQueryWrapper<RentBill>()
-                            .eq(RentBill::getLeaseOrderId, o.getId()).eq(RentBill::getStatus, 0)));
+                            .eq(RentBill::getLeaseOrderId, o.getId()).eq(RentBill::getStatus, 0)),
+                    reviewedIds.contains(o.getId()));
         });
     }
 

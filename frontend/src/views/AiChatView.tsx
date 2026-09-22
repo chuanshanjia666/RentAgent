@@ -1,43 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, Input, message, Radio } from 'antd'
 import http, { ssePost } from '../api'
+import { renderWithLinks } from '../chatLinks'
 import { IconBot, IconPlus, IconSend } from '../components/icons'
 import { fmtTime } from '../constants'
 import type { ChatMsg } from '../types'
-
-/**
- * 把助手回答里的 Markdown 链接（[标题](url)）渲染成可点击的 <a>，其余文字原样输出。
- * 只认站内 hash 路由（#/…）与 http(s) 两类地址，其余"链接"一律按纯文本显示，
- * 防止模型输出的奇怪地址被当成可执行链接；文字走 React 文本节点自动转义，不碰 innerHTML。
- * 流式输出过程中链接可能先以半截文本出现，收完 ')' 后自然变成链接，无需特殊处理。
- */
-function renderWithLinks(content: string) {
-  const nodes: React.ReactNode[] = []
-  const re = /\[([^\]\n]+)\]\(([^)\s]+)\)/g
-  let last = 0
-  let m: RegExpExecArray | null
-  let k = 0
-  while ((m = re.exec(content))) {
-    if (m.index > last) nodes.push(content.slice(last, m.index))
-    const href = m[2]
-    if (/^(#:|https?:)/.test(href)) {
-      nodes.push(
-        <a
-          key={k++}
-          href={href}
-          {...(href.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
-        >
-          {m[1]}
-        </a>
-      )
-    } else {
-      nodes.push(m[0])
-    }
-    last = m.index + m[0].length
-  }
-  if (last < content.length) nodes.push(content.slice(last))
-  return nodes
-}
 
 export default function AiChatView() {
   const [scene, setScene] = useState(1) // 1 找房 2 客服

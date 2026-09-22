@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Empty, Input, Pagination, Select, Switch } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import http from '../api'
+import DalianMap from '../components/DalianMap'
 import HouseCard from '../components/HouseCard'
 import { FloorPlanArt, IconBot, IconSearch } from '../components/icons'
 import { DISTRICTS, LAYOUTS } from '../constants'
 import type { House, PageResult } from '../types'
-
-const MAP_W = 1000
-const MAP_H = 460
 
 /** 首页筛选条件 */
 interface HouseQuery {
@@ -17,14 +15,6 @@ interface HouseQuery {
   layout?: string
   rentMax: string
   sort: string
-}
-
-interface MapPoint {
-  id: number
-  rent: number
-  district?: string
-  x: number
-  y: number
 }
 
 export default function HomeView() {
@@ -93,23 +83,17 @@ export default function HomeView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 首屏只跑一次；筛选条件变化由「搜索」按钮显式触发 load
   }, [])
 
-  const mapPoints = useMemo<MapPoint[]>(() => {
-    const pts = mapList.filter(h => h.lng && h.lat)
-    if (!pts.length) return []
-    const lons = pts.map(h => Number(h.lng))
-    const lats = pts.map(h => Number(h.lat))
-    const minLon = Math.min(...lons) - 0.01
-    const maxLon = Math.max(...lons) + 0.01
-    const minLat = Math.min(...lats) - 0.005
-    const maxLat = Math.max(...lats) + 0.005
-    return pts.map(h => ({
+  /** 缺经纬度的房源无法上图（房东手填坐标可能为空），点位一律过滤后再交给地图 */
+  const mapPoints = mapList
+    .filter(h => h.lng && h.lat)
+    .map(h => ({
       id: h.id,
+      title: h.title,
       rent: Number(h.rent),
-      district: h.district,
-      x: 40 + ((Number(h.lng) - minLon) / (maxLon - minLon)) * (MAP_W - 80),
-      y: MAP_H - 50 - ((Number(h.lat) - minLat) / (maxLat - minLat)) * (MAP_H - 100)
+      district: h.district || '',
+      lng: Number(h.lng),
+      lat: Number(h.lat)
     }))
-  }, [mapList])
 
   const set = (k: keyof HouseQuery, v: any) => setQ(s => ({ ...s, [k]: v }) as HouseQuery)
 
@@ -208,31 +192,12 @@ export default function HomeView() {
       {mapMode ? (
         <div className="map-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <b>地图找房（演示版按经纬度散点展示）</b>
+            <b>地图找房 · 大连市真实区界</b>
             <span style={{ color: '#82948e', fontSize: 12 }}>
-              共 {mapPoints.length} 套在租房源，点击圆点查看详情
+              共 {mapPoints.length} 套在租房源，滚轮缩放，点击圆点查看详情
             </span>
           </div>
-          <svg
-            viewBox={`0 0 ${MAP_W} ${MAP_H}`}
-            width="100%"
-            height={460}
-            style={{ background: '#eef4f2', borderRadius: 8 }}
-          >
-            {mapPoints.map(p => (
-              <g
-                key={p.id}
-                style={{ cursor: 'pointer' }}
-                onClick={() => nav(`/app/houses/${p.id}`)}
-              >
-                <circle cx={p.x} cy={p.y} r="10" fill="rgba(13,107,91,.16)" />
-                <circle cx={p.x} cy={p.y} r="5" fill="#0d6b5b" />
-                <text x={p.x + 11} y={p.y + 4} fontSize="12" fill="#1d2c28">
-                  {p.rent}元
-                </text>
-              </g>
-            ))}
-          </svg>
+          <DalianMap points={mapPoints} onPick={id => nav(`/app/houses/${id}`)} />
         </div>
       ) : (
         <>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { Alert, Button, Descriptions, Empty, message, Modal, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
@@ -13,6 +13,17 @@ export default function ContractsView() {
   const { rows, total, page, size, loading, reload } = usePagedList<ContractRow>('/contracts')
   const [current, setCurrent] = useState<ContractRow | null>(null)
   const [interp, setInterp] = useState<any>(null)
+  // 正在进行的操作「动作:合同id」；非空期间禁用其余操作按钮，防止并发/连点重复提交
+  const [busyKey, setBusyKey] = useState<string | null>(null)
+
+  function busy(key: string) {
+    return { loading: busyKey === key, disabled: busyKey !== null && busyKey !== key }
+  }
+
+  /** 条款卡片错峰入场动画的行内变量 */
+  function stagger(i: number): CSSProperties {
+    return { '--i': i } as CSSProperties
+  }
 
   /**
    * 打开合同时按 id 取一次详情（接口只返回合同本身，房源标题沿用列表里的）：
@@ -20,14 +31,24 @@ export default function ContractsView() {
    * 只读列表里的旧快照会出现"解读标了风险、合同里却没有红标"的不一致。
    */
   async function open(row: ContractRow) {
-    const detail = await http.get<ContractRow['contract']>(`/contracts/${row.contract.id}`)
-    setCurrent({ contract: detail, houseTitle: row.houseTitle })
+    setBusyKey(`open:${row.contract.id}`)
+    try {
+      const detail = await http.get<ContractRow['contract']>(`/contracts/${row.contract.id}`)
+      setCurrent({ contract: detail, houseTitle: row.houseTitle })
+    } finally {
+      setBusyKey(null)
+    }
   }
 
   async function act(row: ContractRow, action: string, tip: string) {
-    await http.patch(`/contracts/${row.contract.id}`, { action })
-    message.success(tip)
-    reload()
+    setBusyKey(`${action}:${row.contract.id}`)
+    try {
+      await http.patch(`/contracts/${row.contract.id}`, { action })
+      message.success(tip)
+      reload()
+    } finally {
+      setBusyKey(null)
+    }
   }
 
   function terminate(row: ContractRow) {
@@ -41,8 +62,13 @@ export default function ContractsView() {
   }
 
   async function interpret(row: ContractRow) {
-    const vo = await http.post(`/contracts/${row.contract.id}/interpret`)
-    setInterp(vo)
+    setBusyKey(`interpret:${row.contract.id}`)
+    try {
+      const vo = await http.post(`/contracts/${row.contract.id}/interpret`)
+      setInterp(vo)
+    } finally {
+      setBusyKey(null)
+    }
   }
 
   function signable(c: ContractRow['contract']): boolean {
@@ -71,7 +97,7 @@ export default function ContractsView() {
       width: 340,
       render: (_, r) => (
         <>
-          <Button size="small" onClick={() => open(r)}>
+          <Button size="small" {...busy(`open:${r.contract.id}`)} onClick={() => open(r)}>
             查看合同
           </Button>
           {signable(r.contract) && (
@@ -79,6 +105,7 @@ export default function ContractsView() {
               size="small"
               type="primary"
               style={{ marginLeft: 6 }}
+              {...busy(`sign:${r.contract.id}`)}
               onClick={() => act(r, 'sign', '签署成功')}
             >
               签署
@@ -88,12 +115,18 @@ export default function ContractsView() {
             size="small"
             style={{ marginLeft: 6 }}
             icon={<IconChat size={13} />}
+            {...busy(`interpret:${r.contract.id}`)}
             onClick={() => interpret(r)}
           >
             AI 解读
           </Button>
           {r.contract.status === 2 && (
-            <Button size="small" style={{ marginLeft: 6 }} onClick={() => terminate(r)}>
+            <Button
+              size="small"
+              style={{ marginLeft: 6 }}
+              {...busy(`terminate:${r.contract.id}`)}
+              onClick={() => terminate(r)}
+            >
               退租
             </Button>
           )}
@@ -102,6 +135,7 @@ export default function ContractsView() {
               size="small"
               danger
               style={{ marginLeft: 6 }}
+              {...busy(`reject:${r.contract.id}`)}
               onClick={() => act(r, 'reject', '已拒签')}
             >
               拒签
@@ -152,7 +186,7 @@ export default function ContractsView() {
               </Descriptions.Item>
             </Descriptions>
             {clauses.map((cl, i) => (
-              <div key={i} className="clause">
+              <div key={i} className="clause clause-enter" style={stagger(i)}>
                 <b>
                   {i + 1}. {cl.title}
                 </b>
@@ -187,7 +221,7 @@ export default function ContractsView() {
       >
         {interp &&
           interp.items.map((it: any) => (
-            <div key={it.index} className="clause">
+            <div key={it.index} className="clause clause-enter" style={stagger(it.index)}>
               <b>条款 {it.index + 1}</b>
               <Tag
                 color={it.risk ? 'red' : 'green'}

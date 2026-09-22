@@ -763,6 +763,17 @@ body {
   border-left: 3px solid var(--glaze-soft);
   color: var(--glaze-strong);
 }
+/* 合同/解读弹层条款逐条入场，配合行内 --i 错峰 */
+@keyframes clause-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+}
+.clause-enter {
+  animation: clause-in 0.32s ease backwards;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
 
 /* ---------- AI 对话审计（后台 Trace 视图） ---------- */
 .trace-filter {

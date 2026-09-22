@@ -62,8 +62,8 @@ public class TradeDto {
     public record ContractActionResult(long contractId, Integer status, Long orderId) {
     }
 
-    /** 订单列表行：订单 + 合同状态 + 房源标题 + 账单计数（前端"n/m 已付"直接用） */
+    /** 订单列表行：订单 + 合同状态 + 房源标题 + 账单计数 + 已评价标记（租客侧"评价/已评价"按钮态直接用） */
     public record OrderVO(LeaseOrder order, Integer contractStatus, String houseTitle,
-                          long billCount, long unpaidCount) {
+                          long billCount, long unpaidCount, boolean reviewed) {
     }
 }

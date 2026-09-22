@@ -209,6 +209,8 @@ export interface OrderRow {
   houseTitle?: string
   billCount: number
   unpaidCount: number
+  /** 该订单是否已评价（租客侧控制"评价"按钮与"已评价"置灰态） */
+  reviewed: boolean
   [key: string]: any
 }
 

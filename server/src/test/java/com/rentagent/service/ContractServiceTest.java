@@ -11,11 +11,13 @@ import com.rentagent.entity.Contract;
 import com.rentagent.entity.House;
 import com.rentagent.entity.LeaseOrder;
 import com.rentagent.entity.RentBill;
+import com.rentagent.entity.Review;
 import com.rentagent.entity.SysUser;
 import com.rentagent.mapper.ContractMapper;
 import com.rentagent.mapper.HouseMapper;
 import com.rentagent.mapper.LeaseOrderMapper;
 import com.rentagent.mapper.RentBillMapper;
+import com.rentagent.mapper.ReviewMapper;
 import com.rentagent.mapper.SysUserMapper;
 import com.rentagent.security.UserContext;
 import com.rentagent.support.EntityMetadataHelper;
@@ -37,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -74,6 +77,8 @@ class ContractServiceTest {
     @Mock
     private SysUserMapper userMapper;
     @Mock
+    private ReviewMapper reviewMapper;
+    @Mock
     private NotificationService notification;
 
     private ContractService service;
@@ -82,7 +87,7 @@ class ContractServiceTest {
     void setUp() {
         EntityMetadataHelper.init(House.class, Contract.class, LeaseOrder.class, RentBill.class);
         service = new ContractService(contractMapper, orderMapper, billMapper, houseMapper,
-                userMapper, notification, new JsonColumns(new ObjectMapper()));
+                userMapper, reviewMapper, notification, new JsonColumns(new ObjectMapper()));
         SysUser tenant = new SysUser();
         tenant.setId(TENANT);
         tenant.setNickname("小陈");
@@ -471,6 +476,35 @@ class ContractServiceTest {
         verify(orderMapper, times(2)).selectPage(any(), captor.capture());
         assertTrue(captor.getAllValues().get(0).getSqlSegment().contains("tenant_id"));
         assertTrue(captor.getAllValues().get(1).getSqlSegment().contains("landlord_id"));
+    }
+
+    @Test
+    @DisplayName("UT-CONTRACT-22 订单列表带已评价标记：本页已评价的订单 reviewed=true，未评价为 false")
+    void ordersCarryReviewedFlag() {
+        LeaseOrder reviewed = new LeaseOrder();
+        reviewed.setId(66L);
+        reviewed.setTenantId(TENANT);
+        reviewed.setLandlordId(LANDLORD);
+        reviewed.setHouseId(101L);
+        LeaseOrder notReviewed = new LeaseOrder();
+        notReviewed.setId(67L);
+        notReviewed.setTenantId(TENANT);
+        notReviewed.setLandlordId(LANDLORD);
+        notReviewed.setHouseId(101L);
+        Page<LeaseOrder> page = new Page<>(1, 10);
+        page.setRecords(List.of(reviewed, notReviewed));
+        page.setTotal(2);
+        doReturn(page).when(orderMapper).selectPage(any(), any());
+        Review r = new Review();
+        r.setLeaseOrderId(66L);
+        // 批量 IN 查询只返回已评价的那单
+        when(reviewMapper.selectList(any())).thenReturn(List.of(r));
+
+        PageVO<TradeDto.OrderVO> result = service.orders(TENANT, 1, 1, 10);
+
+        assertEquals(2, result.list().size());
+        assertTrue(result.list().get(0).reviewed());
+        assertFalse(result.list().get(1).reviewed());
     }
 
     @Test
