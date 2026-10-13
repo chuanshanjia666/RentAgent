@@ -110,19 +110,21 @@ export default function AppointmentsView({ landlord = false }: { landlord?: bool
   return (
     <div className="page">
       <h2 className="page-title">{landlord ? '收到的预约（房东）' : '我的预约'}</h2>
-      <Table
-        rowKey={r => r.appointment.id}
-        columns={columns}
-        dataSource={rows}
-        loading={loading}
-        pagination={{
-          current: page,
-          pageSize: size,
-          total,
-          onChange: p => reload(p)
-        }}
-        locale={{ emptyText: <Empty description="暂无预约" /> }}
-      />
+      <div className="card-panel">
+        <Table
+          rowKey={r => r.appointment.id}
+          columns={columns}
+          dataSource={rows}
+          loading={loading}
+          pagination={{
+            current: page,
+            pageSize: size,
+            total,
+            onChange: p => reload(p)
+          }}
+          locale={{ emptyText: <Empty description="暂无预约" /> }}
+        />
+      </div>
 
       <Modal
         title="拒绝预约"

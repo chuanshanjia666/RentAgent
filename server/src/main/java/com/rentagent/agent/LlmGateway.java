@@ -1,9 +1,15 @@
 package com.rentagent.agent;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.rentagent.config.AiConfigChangedEvent;
 import com.rentagent.config.AiProps;
+import com.rentagent.entity.AiProviderConfig;
+import com.rentagent.mapper.AiProviderConfigMapper;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -31,16 +37,41 @@ import java.util.Optional;
 public class LlmGateway {
 
     private final AiProps props;
+    private final AiProviderConfigMapper configMapper;
     private volatile ChatLanguageModel chatModel;
     private volatile StreamingChatLanguageModel streamingModel;
     private volatile AiProps.Backend resolved;
 
     public LlmGateway(AiProps props) {
+        this(props, null);
+    }
+
+    @Autowired
+    public LlmGateway(AiProps props, @Autowired(required = false) AiProviderConfigMapper configMapper) {
         this.props = props;
+        this.configMapper = configMapper;
+    }
+
+    @EventListener
+    public synchronized void onConfigChanged(AiConfigChangedEvent event) {
+        log.info("LLM 网关感知配置变更 (action={})，刷新当前生效后端", event.action());
+        refresh();
+    }
+
+    /** 刷新网关缓存的后端客户端，使数据库新配置即时生效 */
+    public synchronized void refresh() {
+        this.resolved = null;
+        this.chatModel = null;
+        this.streamingModel = null;
     }
 
     public boolean available() {
         return backend() != null;
+    }
+
+    /** 当前生效的后端配置（优先数据库激活项，未激活则取配置文件/环境变量） */
+    public synchronized AiProps.Backend resolvedBackend() {
+        return backend();
     }
 
     /** 同步模型（结构化分析调用 AiJsonClient 使用） */
@@ -75,7 +106,10 @@ public class LlmGateway {
 
     private synchronized AiProps.Backend backend() {
         if (resolved == null) {
-            AiProps.Backend b = props.activeBackend();
+            AiProps.Backend b = loadFromDatabase();
+            if (b == null) {
+                b = props.activeBackend();
+            }
             if (b != null) {
                 build(b);
                 resolved = b;
@@ -83,6 +117,32 @@ public class LlmGateway {
             }
         }
         return resolved;
+    }
+
+    private AiProps.Backend loadFromDatabase() {
+        if (configMapper == null) {
+            return null;
+        }
+        try {
+            AiProviderConfig active = configMapper.selectOne(new LambdaQueryWrapper<AiProviderConfig>()
+                    .eq(AiProviderConfig::getIsActive, 1)
+                    .last("LIMIT 1"));
+            if (active != null && active.getApiKey() != null && !active.getApiKey().isBlank()) {
+                AiProps.Backend b = new AiProps.Backend();
+                b.setProtocol(active.getProtocol());
+                b.setBaseUrl(active.getBaseUrl());
+                b.setApiKey(active.getApiKey());
+                b.setModel(active.getModel());
+                b.setTemperature(active.getTemperature() == null ? null : active.getTemperature().doubleValue());
+                b.setMaxTokens(active.getMaxTokens());
+                b.setTimeoutSeconds(active.getTimeoutSeconds());
+                b.setUserAgent(active.getUserAgent());
+                return props.withDefaults(b);
+            }
+        } catch (Exception e) {
+            log.warn("从数据库读取 AI 供应商配置失败（可能表未就绪），回落到配置文件: {}", e.getMessage());
+        }
+        return null;
     }
 
     private void build(AiProps.Backend b) {

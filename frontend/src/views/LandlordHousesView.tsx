@@ -296,19 +296,21 @@ export default function LandlordHousesView() {
         />
       )}
 
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={list.rows}
-        loading={list.loading}
-        pagination={{
-          current: list.page,
-          pageSize: list.size,
-          total: list.total,
-          onChange: p => list.reload(p)
-        }}
-        locale={{ emptyText: <Empty description="还没有房源，点右上角发布" /> }}
-      />
+      <div className="card-panel">
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={list.rows}
+          loading={list.loading}
+          pagination={{
+            current: list.page,
+            pageSize: list.size,
+            total: list.total,
+            onChange: p => list.reload(p)
+          }}
+          locale={{ emptyText: <Empty description="还没有房源，点右上角发布" /> }}
+        />
+      </div>
 
       <Modal
         title={form.id ? '编辑房源（保存后重新审核）' : '发布房源'}

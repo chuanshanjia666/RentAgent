@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rentagent.agent.AgentEngine;
 import com.rentagent.agent.HousingToolProvider;
 import com.rentagent.agent.LlmAgent;
+import com.rentagent.agent.LlmGateway;
 import com.rentagent.agent.ToolCallLimitExceededException;
 import com.rentagent.common.BizException;
 import com.rentagent.common.ErrorCode;
@@ -61,9 +62,12 @@ public class ChatService {
     private final ObjectMapper objectMapper;
     private final JsonColumns jsonColumns;
 
+    private final LlmGateway llmGateway;
+
     public ChatService(AiChatSessionMapper sessionMapper, AiChatMessageMapper messageMapper,
                        LlmAgent llmAgent, HousingToolProvider housingToolProvider,
-                       ObjectMapper objectMapper, JsonColumns jsonColumns, AiProps aiProps) {
+                       ObjectMapper objectMapper, JsonColumns jsonColumns, AiProps aiProps,
+                       LlmGateway llmGateway) {
         this.sessionMapper = sessionMapper;
         this.messageMapper = messageMapper;
         this.llmAgent = llmAgent;
@@ -71,6 +75,7 @@ public class ChatService {
         this.objectMapper = objectMapper;
         this.jsonColumns = jsonColumns;
         this.sseTimeoutMs = sseTimeoutMillis(aiProps);
+        this.llmGateway = llmGateway;
     }
 
     /**
@@ -87,6 +92,18 @@ public class ChatService {
                 ? DEFAULT_UPSTREAM_TIMEOUT_SECONDS : backend.getTimeoutSeconds();
         long worstUpstreamCalls = (HousingToolProvider.MAX_TOOL_CALLS_PER_ROUND + 2) * 2L;
         return perCall * worstUpstreamCalls * 1000L + SSE_MARGIN_MILLIS;
+    }
+
+    /** 运行时动态推导 SSE 超时预算，使管理员在后台切换超时时间后本轮能立即生效 */
+    public long currentSseTimeoutMs() {
+        if (llmGateway != null) {
+            AiProps.Backend backend = llmGateway.resolvedBackend();
+            if (backend != null && backend.getTimeoutSeconds() != null) {
+                long worstUpstreamCalls = (HousingToolProvider.MAX_TOOL_CALLS_PER_ROUND + 2) * 2L;
+                return backend.getTimeoutSeconds() * worstUpstreamCalls * 1000L + SSE_MARGIN_MILLIS;
+            }
+        }
+        return this.sseTimeoutMs;
     }
 
     /** 当前引擎标识（<协议>:<模型>）；未配置模型时报 4001，便于调用方与前端明确感知 */
@@ -138,11 +155,12 @@ public class ChatService {
         // 只能在这里（Servlet 线程）取一次交给工具，避免 AI 查详情把自己当匿名访客而刷高浏览量
         housingToolProvider.openRound(s.getId(), UserContext.get());
 
-        SseEmitter emitter = new SseEmitter(sseTimeoutMs);
+        long timeoutMs = currentSseTimeoutMs();
+        SseEmitter emitter = new SseEmitter(timeoutMs);
         // 三种"这一轮没人要了"的信号都置取消位：客户端断开导致 send 失败、SSE 超时、连接异常。
         // 置位后工具轮次立刻停止、兜底重跑被跳过（在途的那次上游调用无法中断，见 HousingToolProvider）
         emitter.onTimeout(() -> {
-            log.info("SSE 超时（{}ms），取消本轮工具轮次与兜底重跑", sseTimeoutMs);
+            log.info("SSE 超时（{}ms），取消本轮工具轮次与兜底重跑", timeoutMs);
             housingToolProvider.cancelRound(s.getId());
         });
         emitter.onError(e -> housingToolProvider.cancelRound(s.getId()));

@@ -64,4 +64,67 @@ public class AdminDto {
                               long toolCallCount, long transferredCount,
                               List<Map<String, Object>> chatTrend) {
     }
+
+    // ── AI 供应商动态配置（管理员界面可视化维护）──
+
+    /** AI 供应商配置保存/更新请求 */
+    public record AiConfigSaveReq(
+            @jakarta.validation.constraints.NotBlank(message = "供应商名称不可为空") String name,
+            @jakarta.validation.constraints.NotBlank(message = "通信协议不可为空") String protocol,
+            @jakarta.validation.constraints.NotBlank(message = "接口基址不可为空") String baseUrl,
+            String apiKey,
+            @jakarta.validation.constraints.NotBlank(message = "模型名称不可为空") String model,
+            Double temperature,
+            Integer maxTokens,
+            Integer timeoutSeconds,
+            String userAgent,
+            Boolean isActive
+    ) {}
+
+    /** AI 供应商配置展示行（API Key 脱敏） */
+    public record AiConfigVO(
+            Long id,
+            String name,
+            String protocol,
+            String baseUrl,
+            String maskedApiKey,
+            boolean hasApiKey,
+            String model,
+            Double temperature,
+            Integer maxTokens,
+            Integer timeoutSeconds,
+            String userAgent,
+            Integer isActive,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
+    ) {}
+
+    /** AI 配置列表与当前运行时状态概览 */
+    public record AiConfigOverviewVO(
+            String activeSource, // "DATABASE", "CONFIG_FILE", "NONE"
+            String activeDescribe,
+            Long activeConfigId,
+            List<AiConfigVO> configs
+    ) {}
+
+    /** AI 供应商连通性测试入参 */
+    public record AiConfigTestReq(
+            Long id,
+            String protocol,
+            String baseUrl,
+            String apiKey,
+            String model,
+            Double temperature,
+            Integer maxTokens,
+            Integer timeoutSeconds,
+            String userAgent
+    ) {}
+
+    /** AI 供应商连通性测试结果 */
+    public record AiConfigTestVO(
+            boolean success,
+            long latencyMs,
+            String message
+    ) {}
 }
+

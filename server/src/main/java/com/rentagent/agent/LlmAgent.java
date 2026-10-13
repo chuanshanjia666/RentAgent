@@ -11,6 +11,8 @@ import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.UserMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.rentagent.config.AiConfigChangedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -73,6 +75,16 @@ public class LlmAgent implements AgentEngine {
     private static final String KNOWLEDGE_RETRY_HINT =
             "\n（重要：请立即调用 searchKnowledge 工具查询平台规则与政策，并在回答末尾以“（来源：xxx）”注明出处，"
             + "不要只回复“正在查询”这类过程说明。）";
+
+    @EventListener
+    public synchronized void onConfigChanged(AiConfigChangedEvent event) {
+        log.info("LlmAgent 感知配置变更 (action={})，重置 Assistant 实例", event.action());
+        refresh();
+    }
+
+    public synchronized void refresh() {
+        this.assistant = null;
+    }
 
     @Override
     public boolean available() {

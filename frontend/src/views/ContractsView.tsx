@@ -154,15 +154,17 @@ export default function ContractsView() {
   return (
     <div className="page">
       <h2 className="page-title">我的合同</h2>
-      <Table
-        rowKey={r => r.contract.id}
-        columns={columns}
-        dataSource={rows}
-        loading={loading}
-        pagination={{ current: page, pageSize: size, total, onChange: p => reload(p) }}
-        scroll={{ x: 900 }}
-        locale={{ emptyText: <Empty description="暂无合同，可在房源详情页发起签约" /> }}
-      />
+      <div className="card-panel">
+        <Table
+          rowKey={r => r.contract.id}
+          columns={columns}
+          dataSource={rows}
+          loading={loading}
+          pagination={{ current: page, pageSize: size, total, onChange: p => reload(p) }}
+          scroll={{ x: 900 }}
+          locale={{ emptyText: <Empty description="暂无合同，可在房源详情页发起签约" /> }}
+        />
+      </div>
 
       <Modal
         title="电子合同"

@@ -34,7 +34,7 @@ export default function HomeView() {
   const [mapMode, setMapMode] = useState(false)
   const [mapList, setMapList] = useState<House[]>([])
 
-  const size = 12
+  const size = 15
 
   /** 筛选参数：列表与地图共用同一套条件 */
   const searchParams = (query: HouseQuery, extra: Record<string, unknown> = {}) => ({
@@ -75,7 +75,7 @@ export default function HomeView() {
   useEffect(() => {
     load()
     http
-      .get<House[]>('/recommendations', { params: { limit: 6 } })
+      .get<House[]>('/recommendations', { params: { limit: 5 } })
       .then(setRecommend)
       .catch(() => {
         /* 推荐位失败不影响列表 */
@@ -102,14 +102,28 @@ export default function HomeView() {
       {/* Hero：一句话说清产品的核心用法（对话找房 + 自助筛选） */}
       <div className="hero">
         <div className="hero-art">
-          <FloorPlanArt width={230} />
+          <FloorPlanArt width={240} />
         </div>
         <h1>说说你想怎么住</h1>
         <p className="hero-sub">一句话让 AI 帮你找房，也可以自己按区域、预算、户型筛选</p>
+        <div className="hero-features">
+          <span className="hero-feature-item">
+            <span className="hero-feature-dot">✦</span> 100% 真实全城房源
+          </span>
+          <span className="hero-feature-item">
+            <span className="hero-feature-dot">✦</span> AI 找房与智能客服
+          </span>
+          <span className="hero-feature-item">
+            <span className="hero-feature-dot">✦</span> 在线签约 · 条款自动解读
+          </span>
+          <span className="hero-feature-item">
+            <span className="hero-feature-dot">✦</span> 平台资金托管与安心履约
+          </span>
+        </div>
         <div className="search-bar">
           <Input
             size="large"
-            style={{ maxWidth: 420 }}
+            style={{ flex: '1 1 240px', minWidth: 200 }}
             placeholder="输入小区 / 标题 / 地址关键词，或试试 AI 助手"
             value={q.keyword}
             onChange={e => set('keyword', e.target.value)}
@@ -165,6 +179,23 @@ export default function HomeView() {
           >
             问 AI 助手
           </Button>
+        </div>
+        <div className="hot-tags">
+          <span className="hot-tags-label">快捷搜索：</span>
+          {['近地铁', '精装修', '一居室', '沙河口区', '甘井子区', '押一付一'].map(tag => (
+            <span
+              key={tag}
+              className="hot-tag"
+              onClick={() => {
+                if (tag === '一居室') set('layout', '1室1厅')
+                else if (['沙河口区', '甘井子区', '中山区', '西岗区'].includes(tag))
+                  set('district', tag)
+                else set('keyword', tag)
+              }}
+            >
+              {tag}
+            </span>
+          ))}
         </div>
       </div>
 

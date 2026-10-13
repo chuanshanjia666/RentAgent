@@ -148,40 +148,42 @@ export default function OrdersView() {
   return (
     <div className="page">
       <h2 className="page-title">{isLandlord ? '出租订单管理' : '我的租单'}</h2>
-      <Table
-        // 订单行没有 key 字段（OrderRow 就是 OrderVo + bills）：写 rowKey="key" 时所有行
-        // 的 key 都是 undefined，展开任意一行会让整页一起展开
-        rowKey={r => r.order.id}
-        columns={columns}
-        dataSource={rows}
-        loading={list.loading}
-        pagination={{
-          current: list.page,
-          pageSize: list.size,
-          total: list.total,
-          onChange: p => list.reload(p)
-        }}
-        scroll={{ x: 900 }}
-        locale={{ emptyText: <Empty description="暂无订单" /> }}
-        expandable={{
-          onExpand: (expanded, row) => expanded && loadBills(row),
-          expandedRowRender: row => (
-            <div style={{ padding: '4px 12px' }}>
-              <Button size="small" onClick={() => loadBills(row as OrderRow)}>
-                刷新账单
-              </Button>
-              <Table
-                style={{ marginTop: 8 }}
-                size="small"
-                rowKey="id"
-                columns={billColumns(row)}
-                dataSource={row.bills}
-                pagination={false}
-              />
-            </div>
-          )
-        }}
-      />
+      <div className="card-panel">
+        <Table
+          // 订单行没有 key 字段（OrderRow 就是 OrderVo + bills）：写 rowKey="key" 时所有行
+          // 的 key 都是 undefined，展开任意一行会让整页一起展开
+          rowKey={r => r.order.id}
+          columns={columns}
+          dataSource={rows}
+          loading={list.loading}
+          pagination={{
+            current: list.page,
+            pageSize: list.size,
+            total: list.total,
+            onChange: p => list.reload(p)
+          }}
+          scroll={{ x: 900 }}
+          locale={{ emptyText: <Empty description="暂无订单" /> }}
+          expandable={{
+            onExpand: (expanded, row) => expanded && loadBills(row),
+            expandedRowRender: row => (
+              <div style={{ padding: '4px 12px' }}>
+                <Button size="small" onClick={() => loadBills(row as OrderRow)}>
+                  刷新账单
+                </Button>
+                <Table
+                  style={{ marginTop: 8 }}
+                  size="small"
+                  rowKey="id"
+                  columns={billColumns(row)}
+                  dataSource={row.bills}
+                  pagination={false}
+                />
+              </div>
+            )
+          }}
+        />
+      </div>
 
       <Modal
         title="评价本次租房"

@@ -213,22 +213,24 @@ export default function AdminChatsView() {
         </Button>
       </div>
 
-      <Table
-        rowKey="id"
-        size="middle"
-        loading={loading}
-        dataSource={list}
-        columns={columns}
-        scroll={{ x: 1120 }}
-        locale={{ emptyText: <Empty description="暂无 AI 会话" /> }}
-        pagination={{
-          current: page,
-          pageSize: size,
-          total,
-          showSizeChanger: true,
-          onChange: (p, s) => load(p, s)
-        }}
-      />
+      <div className="card-panel">
+        <Table
+          rowKey="id"
+          size="middle"
+          loading={loading}
+          dataSource={list}
+          columns={columns}
+          scroll={{ x: 1120 }}
+          locale={{ emptyText: <Empty description="暂无 AI 会话" /> }}
+          pagination={{
+            current: page,
+            pageSize: size,
+            total,
+            showSizeChanger: true,
+            onChange: (p, s) => load(p, s)
+          }}
+        />
+      </div>
 
       <Drawer
         title="对话轨迹（Trace）"

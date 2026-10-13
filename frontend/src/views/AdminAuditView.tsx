@@ -85,19 +85,21 @@ export default function AdminAuditView() {
   return (
     <div className="page">
       <h2 className="page-title">审核工作台</h2>
-      <Table
-        rowKey="id"
-        dataSource={list.rows}
-        loading={list.loading}
-        pagination={{
-          current: list.page,
-          pageSize: list.size,
-          total: list.total,
-          onChange: p => list.reload(p)
-        }}
-        locale={{ emptyText: <Empty description="没有待审核房源" /> }}
-        columns={columns}
-      />
+      <div className="card-panel">
+        <Table
+          rowKey="id"
+          dataSource={list.rows}
+          loading={list.loading}
+          pagination={{
+            current: list.page,
+            pageSize: list.size,
+            total: list.total,
+            onChange: p => list.reload(p)
+          }}
+          locale={{ emptyText: <Empty description="没有待审核房源" /> }}
+          columns={columns}
+        />
+      </div>
 
       <Modal
         title="驳回房源"

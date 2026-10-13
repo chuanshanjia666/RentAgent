@@ -145,7 +145,7 @@ export default function AiChatView() {
   useEffect(() => () => inFlight.current?.abort(), [])
 
   return (
-    <div className="page">
+    <div className="page page-ai">
       <div className="chat-wrap">
         <div className="chat-side">
           <Radio.Group
@@ -164,32 +164,40 @@ export default function AiChatView() {
               智能客服
             </Radio.Button>
           </Radio.Group>
-          <Button style={{ width: '100%' }} icon={<IconPlus />} onClick={() => newSession()}>
+          <Button
+            type="primary"
+            ghost
+            style={{ width: '100%', marginBottom: 4 }}
+            icon={<IconPlus />}
+            onClick={() => newSession()}
+          >
             新会话
           </Button>
-          {sessions.map(s => (
-            <div
-              key={s.id}
-              className={'session-item' + (s.id === current ? ' active' : '')}
-              onClick={() => switchSession(s.id, s.scene)}
-            >
-              <div className="session-title">{s.title || '新会话'}</div>
-              <div className="session-time">{fmtTime(s.updatedAt)}</div>
-            </div>
-          ))}
+          <div className="chat-side-list">
+            {sessions.map(s => (
+              <div
+                key={s.id}
+                className={'session-item' + (s.id === current ? ' active' : '')}
+                onClick={() => switchSession(s.id, s.scene)}
+              >
+                <div className="session-title">{s.title || '新会话'}</div>
+                <div className="session-time">{fmtTime(s.updatedAt)}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="chat-main">
           <div className="chat-head">
             <span className="chat-bot-badge">
-              <IconBot size={18} />
+              <IconBot size={20} />
             </span>
             <div>
               <b>{scene === 1 ? '找房助手' : '智能客服'}</b>
               <small>
                 {scene === 1
-                  ? '按预算、区域、户型帮你筛房源'
-                  : '押金、退租、维修等租房问题在线解答'}
+                  ? '按预算、区域、户型帮你智能匹配全城优质房源'
+                  : '押金规则、提前退租、保修维护等租房问题全天候在线解答'}
               </small>
             </div>
           </div>
@@ -197,17 +205,19 @@ export default function AiChatView() {
             {messages.length === 0 && (
               <div className="chat-empty">
                 <div className="chat-empty-art">
-                  <IconBot size={36} />
+                  <IconBot size={40} />
                 </div>
+                <h3>{scene === 1 ? 'RentAgent AI 找房助手' : 'RentAgent 智能租赁客服'}</h3>
                 <p>
                   {scene === 1
-                    ? '用一句话描述你的租房需求，我来帮你找'
-                    : '押金、退租、维修、违约……有问题尽管问'}
+                    ? '一句话描述你的理想住处，AI 将基于真实房源库进行多维度筛选并给出个性化建议。'
+                    : '租房遇到麻烦？押金、退租、维修、合同争议……在这里都可以随时提问。'}
                 </p>
-                <div>
+                <div className="prompt-grid">
                   {quickPrompts.map(p => (
-                    <button key={p} className="prompt-chip" onClick={() => send(p)}>
-                      {p}
+                    <button key={p} className="prompt-card" onClick={() => send(p)}>
+                      <span>💬</span>
+                      <span>{p}</span>
                     </button>
                   ))}
                 </div>
@@ -247,8 +257,14 @@ export default function AiChatView() {
             />
             <Button
               type="primary"
+              size="large"
               icon={<IconSend />}
-              style={{ marginLeft: 2 }}
+              style={{
+                height: 'auto',
+                alignSelf: 'stretch',
+                display: 'flex',
+                alignItems: 'center'
+              }}
               disabled={streaming || !input.trim()}
               onClick={() => send()}
             >

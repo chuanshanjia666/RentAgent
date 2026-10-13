@@ -21,10 +21,12 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -45,6 +47,7 @@ public class AdminController {
     private final AuthService authService;
     private final ReportService reportService;
     private final HouseService houseService;
+    private final com.rentagent.service.AiConfigService aiConfigService;
 
     @Operation(summary = "用户列表")
     @GetMapping("/users")
@@ -145,5 +148,58 @@ public class AdminController {
     @GetMapping("/chats/{id}")
     public R<AdminChatDto.DetailVO> chatDetail(@PathVariable long id) {
         return R.ok(adminChatService.detail(id));
+    }
+
+    // ── AI 供应商配置（管理员界面可视化在线配置，结果存入数据库）──
+
+    @Operation(summary = "获取 AI 供应商配置概览与列表")
+    @GetMapping("/ai-configs")
+    public R<AdminDto.AiConfigOverviewVO> aiConfigs() {
+        return R.ok(aiConfigService.getOverview());
+    }
+
+    @Operation(summary = "新增 AI 供应商配置并入库")
+    @PostMapping("/ai-configs")
+    public R<AdminDto.AiConfigVO> createAiConfig(@Valid @RequestBody AdminDto.AiConfigSaveReq req) {
+        return R.ok(aiConfigService.save(req, UserContext.userId()));
+    }
+
+    @Operation(summary = "更新指定的 AI 供应商配置")
+    @PutMapping("/ai-configs/{id}")
+    public R<AdminDto.AiConfigVO> updateAiConfig(@PathVariable long id, @Valid @RequestBody AdminDto.AiConfigSaveReq req) {
+        return R.ok(aiConfigService.update(id, req, UserContext.userId()));
+    }
+
+    @Operation(summary = "设置指定的 AI 供应商配置为当前生效")
+    @PatchMapping("/ai-configs/{id}/activate")
+    public R<Void> activateAiConfig(@PathVariable long id) {
+        aiConfigService.activate(id, UserContext.userId());
+        return R.ok();
+    }
+
+    @Operation(summary = "停用数据库中的 AI 供应商配置")
+    @PatchMapping("/ai-configs/deactivate")
+    public R<Void> deactivateAiConfig() {
+        aiConfigService.deactivate(UserContext.userId());
+        return R.ok();
+    }
+
+    @Operation(summary = "删除指定的 AI 供应商配置（生效中不可删）")
+    @DeleteMapping("/ai-configs/{id}")
+    public R<Void> deleteAiConfig(@PathVariable long id) {
+        aiConfigService.delete(id, UserContext.userId());
+        return R.ok();
+    }
+
+    @Operation(summary = "测试 AI 供应商连通性")
+    @PostMapping("/ai-configs/test")
+    public R<AdminDto.AiConfigTestVO> testAiConfig(@RequestBody AdminDto.AiConfigTestReq req) {
+        return R.ok(aiConfigService.testConnection(req));
+    }
+
+    @Operation(summary = "从配置文件导入 AI 供应商配置至数据库")
+    @PostMapping("/ai-configs/import-from-file")
+    public R<AdminDto.AiConfigVO> importAiConfigFromFile() {
+        return R.ok(aiConfigService.importFromFile(UserContext.userId()));
     }
 }

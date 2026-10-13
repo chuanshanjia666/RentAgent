@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RentAgent 业务库建表脚本（MySQL 8 / InnoDB / utf8mb4）
--- 与《数据库设计简介》v1.0 第四章数据字典一致，共 18 张表
+-- 与《数据库设计简介》第四章数据字典一致，共 19 张表（含 ai_provider_config）
 -- =====================================================================
 
 SET NAMES utf8mb4;
@@ -320,3 +320,22 @@ CREATE TABLE IF NOT EXISTS kb_chunk (
   UNIQUE KEY uk_doc_seq (document_id, seq),
   CONSTRAINT fk_chunk_document FOREIGN KEY (document_id) REFERENCES kb_document (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '知识库切片表';
+
+CREATE TABLE IF NOT EXISTS ai_provider_config (
+  id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name            VARCHAR(50)  NOT NULL COMMENT '供应商名称',
+  protocol        VARCHAR(50)  NOT NULL DEFAULT 'openai-chat-completions' COMMENT '协议: openai-chat-completions / anthropic-messages / openai-responses',
+  base_url        VARCHAR(255) NOT NULL COMMENT '接口基址',
+  api_key         VARCHAR(255) NOT NULL COMMENT 'API Key凭据',
+  model           VARCHAR(100) NOT NULL COMMENT '模型名称',
+  temperature     DECIMAL(3,2) NOT NULL DEFAULT 0.70 COMMENT '采样温度',
+  max_tokens      INT UNSIGNED NOT NULL DEFAULT 4096 COMMENT '最大Token预算',
+  timeout_seconds INT UNSIGNED NOT NULL DEFAULT 60 COMMENT '超时时间(秒)',
+  user_agent      VARCHAR(255) NULL COMMENT '自定义User-Agent',
+  is_active       TINYINT      NOT NULL DEFAULT 0 COMMENT '是否当前生效: 1是 0否',
+  created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_active (is_active)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'AI API供应商配置表';
+

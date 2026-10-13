@@ -493,5 +493,22 @@ expect_eq "FR-23 已处理举报不可重复处理" "$(code_of "$(req PATCH "/ad
 expect_eq "FR-23 处理不存在的举报" "$(code_of "$(req PATCH '/admin/reports/99999999/handle' "$T_ADMIN" '{"remark":"x"}')")" "1006"
 expect_ge "FR-23 审核留痕（操作日志）" "$(req GET '/admin/audits?size=20' "$T_ADMIN" | jq -r '.data.total')" "1"
 
+# ── AI API 供应商动态配置（管理员界面可视化配置与入库管理）─────────────
+say "AI API 供应商动态配置：管理员配置、持久化入库与权限校验"
+expect_eq "非管理员访问 AI 供应商配置被拒绝" "$(code_of "$(req GET /admin/ai-configs "$T_LI")")" "1007"
+AI_CFG_OVERVIEW=$(req GET /admin/ai-configs "$T_ADMIN")
+expect_eq "管理员读取 AI 供应商配置概览" "$(code_of "$AI_CFG_OVERVIEW")" "0"
+
+AI_CFG_ADD=$(req POST /admin/ai-configs "$T_ADMIN" '{"name":"集成测试通道","protocol":"openai-chat-completions","baseUrl":"https://api.example.com/v1","apiKey":"sk-smoke-test-key-123456","model":"gpt-4.1-mini","isActive":false}')
+expect_eq "管理员新增 AI 供应商配置并入库" "$(code_of "$AI_CFG_ADD")" "0"
+CFG_ID=$(data_of "$AI_CFG_ADD" | jq -r '.id // empty')
+require_id "AI 供应商配置 id" "$CFG_ID"
+
+expect_eq "管理员更新 AI 供应商配置（保留原Key）" \
+  "$(code_of "$(req PUT "/admin/ai-configs/$CFG_ID" "$T_ADMIN" '{"name":"集成测试通道-改","protocol":"openai-chat-completions","baseUrl":"https://api.example.com/v1","apiKey":"","model":"gpt-4.1-mini","isActive":false}')")" "0"
+
+expect_eq "管理员删除未生效的 AI 供应商配置" \
+  "$(code_of "$(req DELETE "/admin/ai-configs/$CFG_ID" "$T_ADMIN")")" "0"
+
 # ── 结果 ──────────────────────────────────────────────────────
 finish

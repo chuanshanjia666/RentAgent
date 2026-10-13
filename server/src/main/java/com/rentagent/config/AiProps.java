@@ -92,7 +92,7 @@ public class AiProps {
         return null;
     }
 
-    private Backend withDefaults(Backend b) {
+    public Backend withDefaults(Backend b) {
         if (b.getProtocol() == null || b.getProtocol().isBlank()) {
             b.setProtocol("openai-chat-completions");
         }

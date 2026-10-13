@@ -46,7 +46,8 @@ const MENUS: Record<number, [string, string, ReactNode][]> = {
     ['/admin/reports', '举报处理', <IconFlag key="i" />],
     ['/admin/logs', '操作留痕', <IconList key="i" />],
     ['/admin/chats', 'AI 对话审计', <IconChat key="i" />],
-    ['/admin/dashboard', '数据看板', <IconChart key="i" />]
+    ['/admin/dashboard', '数据看板', <IconChart key="i" />],
+    ['/admin/ai-config', 'AI 供应商配置', <IconBot key="i" />]
   ]
 }
 

@@ -119,5 +119,5 @@ export default function DalianMap({
     }
   }, [points])
 
-  return <div ref={el} style={{ width: '100%', height: 480, borderRadius: 8 }} />
+  return <div ref={el} style={{ width: '100%', height: 560, borderRadius: 8 }} />
 }

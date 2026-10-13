@@ -20,6 +20,7 @@ import AdminRealnamesView from './views/AdminRealnamesView'
 import AdminReportsView from './views/AdminReportsView'
 import AdminDashboardView from './views/AdminDashboardView'
 import AdminLogsView from './views/AdminLogsView'
+import AdminAiConfigView from './views/AdminAiConfigView'
 
 /** 路由守卫：未登录踢回 /login，角色不符回各自首页 */
 function Require({ roles, children }: { roles?: number[]; children: React.ReactNode }) {
@@ -207,6 +208,14 @@ export default function App() {
           element={
             <Require roles={[3]}>
               <AdminLogsView />
+            </Require>
+          }
+        />
+        <Route
+          path="/admin/ai-config"
+          element={
+            <Require roles={[3]}>
+              <AdminAiConfigView />
             </Require>
           }
         />

@@ -11,8 +11,8 @@
 PROJECT = "RentAgent —— 基于 AI 智能体的房屋租赁系统"
 DOC_NO = "D0000-PPC-RA2026-PPD-2026"
 PROJ_NO = "RA2026"
-DOC_VER = "V1.12"
-DOC_DATE = "2026-09-22"
+DOC_VER = "V1.13"
+DOC_DATE = "2026-10-13"
 ORG = "大连理工大学创新实践基地"
 AUTHOR = "王硕"
 APPROVER = "姜厚云"
@@ -156,6 +156,13 @@ CHANGE_ROWS = [
      "评价提交后即时刷新；⑤ 同步《单元测试用例设计》v1.8（后端单测 212 → 213 条：UT-CONTRACT-22）、"
      "《测试用例设计》v1.9（集成断言 146 → 148 条：IT-6 增 reviewed 前后回填两条）与《CI 流水线设计》v1.9",
      "2026-09-22"),
+    ("14", "V1.13",
+     "AI API 供应商配置管理员在线化与数据库持久化：① 数据库增加 ai_provider_config 表（共 19 张表），"
+     "支持多协议模型参数配置与生效标记；② 后台管理新增 AI 供应商配置路由与管理服务 AiConfigService（增删改查、"
+     "连通性测试、设为生效、从配置文件导入）；③ LLM 网关与智能体支持基于 Spring 事件驱动的热刷新（AiConfigChangedEvent），"
+     "配置变更无需重启服务端即时热生效；④ 前端管理端新增「AI 供应商配置」界面，支持厂商模板快速填充与连通性验证。"
+     "同步单测（新增 UT-AICONFIG-01~08，单测增至 221 条）与集成断言",
+     "2026-10-13"),
 ]
 
 # ── 1 文档概述 ───────────────────────────────────────────────────────────────
@@ -590,10 +597,10 @@ SEC41_ENGINE = [
 ]
 
 SEC42_ER = [
-    "本系统共设计 18 张业务表，按业务域组织为四组：用户域（sys_user、realname_auth、notification），"
+    "本系统共设计 19 张业务表，按业务域组织为四组：用户域（sys_user、realname_auth、notification），"
     "房源域（house、house_image、favorite），交易域（viewing_appointment、contract、lease_order、"
     "rent_bill、review、report、audit_log），AI 域（ai_chat_session、ai_chat_message、ai_analysis、"
-    "kb_document、kb_chunk）。",
+    "kb_document、kb_chunk、ai_provider_config）。",
     "核心实体联系如下：",
 ]
 SEC42_ER_LIST = [
@@ -609,7 +616,7 @@ SEC42_ER_LIST = [
 SEC42_TAIL = [
     "数据库表间关系如图 4-1 所示。图中 PK 表示主键、FK 表示外键，标注为业务表物理外键；"
     "标注“逻辑关联”的列不建物理外键，由业务层保证一致性。",
-    "18 张业务表的清单与关键字段如表 4-1 所示，字段级完整数据字典见《数据库设计简介》第 4.3 节。",
+    "19 张业务表的清单与关键字段如表 4-1 所示，字段级完整数据字典见《数据库设计简介》第 4.3 节。",
     "全局物理约定如表 4-2 所示，关键索引设计如表 4-3 所示。索引设计围绕三条主要访问路径："
     "检索域的组合筛选（status + 行政区 + 租金 / 户型）、房东与租客侧的个人列表查询、"
     "以及以唯一索引表达的各类业务约束。",
@@ -640,6 +647,7 @@ TABLE_LIST = [
     ("16", "ai_analysis", "AI 分析结果", "id", "user_id（逻辑关联）", "type 定价/检测/解读/识别；target_type、target_id；input_snapshot；result(JSON)；model"),
     ("17", "kb_document", "知识库文档", "id", "—", "title；category；source_url；content；status；chunk_count"),
     ("18", "kb_chunk", "知识库切片", "id", "document_id", "seq；content；token_count；vector_ref；UNIQUE(document_id, seq)"),
+    ("19", "ai_provider_config", "AI供应商配置", "id", "—", "name；protocol；base_url；api_key；model；temperature；max_tokens；timeout_seconds；is_active(生效标记)"),
 ]
 
 PHYS_CONV = [

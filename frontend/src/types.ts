@@ -303,3 +303,63 @@ export interface AuditLogRow {
   createdAt?: string
   [key: string]: any
 }
+
+/** AI 供应商配置展示行 */
+export interface AiConfigVO {
+  id: number
+  name: string
+  protocol: string
+  baseUrl: string
+  maskedApiKey: string
+  hasApiKey: boolean
+  model: string
+  temperature: number
+  maxTokens: number
+  timeoutSeconds: number
+  userAgent?: string | null
+  isActive: number
+  createdAt: string
+  updatedAt: string
+}
+
+/** AI 供应商配置概览响应 */
+export interface AiConfigOverviewVO {
+  activeSource: 'DATABASE' | 'CONFIG_FILE' | 'NONE'
+  activeDescribe: string
+  activeConfigId?: number | null
+  configs: AiConfigVO[]
+}
+
+/** AI 供应商配置保存/更新入参 */
+export interface AiConfigSaveReq {
+  name: string
+  protocol: string
+  baseUrl: string
+  apiKey?: string
+  model: string
+  temperature?: number
+  maxTokens?: number
+  timeoutSeconds?: number
+  userAgent?: string
+  isActive?: boolean
+}
+
+/** 连通性测试入参 */
+export interface AiConfigTestReq {
+  id?: number
+  protocol: string
+  baseUrl: string
+  apiKey?: string
+  model: string
+  temperature?: number
+  maxTokens?: number
+  timeoutSeconds?: number
+  userAgent?: string
+}
+
+/** 连通性测试响应结果 */
+export interface AiConfigTestVO {
+  success: boolean
+  latencyMs: number
+  message: string
+}

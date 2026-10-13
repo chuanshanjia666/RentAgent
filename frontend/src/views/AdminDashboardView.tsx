@@ -84,18 +84,18 @@ export default function AdminDashboardView() {
         />
       </div>
 
-      <Row gutter={16}>
-        <Col span={6}>
+      <Row gutter={[20, 20]}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic title="租客数" value={data ? data.userCount : '-'} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic title="房东数" value={data ? data.landlordCount : '-'} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="房源总数"
@@ -104,7 +104,7 @@ export default function AdminDashboardView() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="订单总数"
@@ -115,13 +115,13 @@ export default function AdminDashboardView() {
         </Col>
       </Row>
 
-      <Row gutter={16} style={{ marginTop: 16 }}>
-        <Col span={6}>
+      <Row gutter={[20, 20]} style={{ marginTop: 20 }}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic title="AI 会话总数" value={data ? data.chatCount : '-'} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="AI 消息 / 工具调用"
@@ -130,12 +130,12 @@ export default function AdminDashboardView() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic title="待审核房源" value={data ? data.pendingCount : '-'} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="转人工会话"
@@ -146,8 +146,8 @@ export default function AdminDashboardView() {
         </Col>
       </Row>
 
-      <Card title="增长趋势（含 AI 对话量）" style={{ marginTop: 16 }}>
-        <div ref={chartEl} style={{ width: '100%', height: 380 }} />
+      <Card title="增长趋势（含 AI 对话量）" style={{ marginTop: 20 }}>
+        <div ref={chartEl} style={{ width: '100%', height: 440 }} />
       </Card>
     </div>
   )

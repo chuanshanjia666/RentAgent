@@ -141,7 +141,7 @@ export default function HouseDetailView() {
               {HOUSE_STATUS[item.house.status ?? 0]}
             </Tag>
           </Title>
-          <Descriptions bordered size="small" column={3}>
+          <Descriptions bordered size="middle" column={{ xs: 1, sm: 2, md: 3, lg: 3, xl: 4 }}>
             <Descriptions.Item label="小区">{item.house.community}</Descriptions.Item>
             <Descriptions.Item label="区域">
               {item.house.city} {item.house.district}
@@ -190,7 +190,7 @@ export default function HouseDetailView() {
           {reviews.length === 0 && <Empty imageStyle={{ height: 60 }} description="暂无评价" />}
         </div>
 
-        <div style={{ width: 300, flexShrink: 0 }}>
+        <div style={{ width: 350, flexShrink: 0 }}>
           <div className="price-card">
             <div className="house-rent" style={{ fontSize: 26 }}>
               {fmtMoney(item.house.rent)}
