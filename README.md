@@ -32,8 +32,8 @@ cd server
 # 方式二：在前端管理员控制台（UI）动态配置与热切换（推荐）
 #   登录管理员账号后进入「AI 供应商配置」页面，直接添加/切换 DeepSeek、OpenCode、CommandCode 等供应商，
 #   保存即存入数据库并热生效，无需重启服务或改动配置文件。
-# 方式三：环境变量预置（作为数据库未配置时的默认兜底通道）
-AI_BACKEND=commandcode-chat AGGREGATOR_API_KEY=你的Key mvn spring-boot:run
+# 方式三：环境变量预置（作为数据库未配置时的默认兜底通道，CI/CD 默认使用 opencode-go）
+AI_BACKEND=opencode-go AGGREGATOR_API_KEY=你的Key mvn spring-boot:run
 # 方式四：不配 Key —— AI 能力会明确报 4001（本系统不使用模拟/规则兜底，其余功能正常）
 mvn spring-boot:run
 ```

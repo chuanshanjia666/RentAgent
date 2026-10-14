@@ -43,15 +43,17 @@ public class ContractController {
     @Operation(summary = "合同操作：sign 签署 / reject 拒签 / terminate 退租（按角色判定）")
     @PatchMapping("/contracts/{id}")
     public R<TradeDto.ContractActionResult> act(@PathVariable long id, @Valid @RequestBody TradeDto.ContractActionReq req) {
-        UserContext.User user = UserContext.get();
-        return R.ok(contractService.act(id, req.action(), user.getId(), user.getRole()));
+        long uid = UserContext.userId();
+        Integer role = UserContext.role();
+        return R.ok(contractService.act(id, req.action(), uid, role != null ? role : 0));
     }
 
     @Operation(summary = "合同详情（仅合同双方与管理员）")
     @GetMapping("/contracts/{id}")
     public R<Contract> detail(@PathVariable long id) {
-        UserContext.User user = UserContext.get();
-        return R.ok(contractService.detail(id, user.getId(), user.getRole()));
+        long uid = UserContext.userId();
+        Integer role = UserContext.role();
+        return R.ok(contractService.detail(id, uid, role != null ? role : 0));
     }
 
     @Operation(summary = "我的合同（租客与房东）")
@@ -71,8 +73,9 @@ public class ContractController {
     @GetMapping("/orders")
     public R<PageVO<TradeDto.OrderVO>> orders(@RequestParam(defaultValue = "1") long page,
                                               @RequestParam(defaultValue = "10") long size) {
-        UserContext.User user = UserContext.get();
-        return R.ok(contractService.orders(user.getId(), user.getRole(), page, size));
+        long uid = UserContext.userId();
+        Integer role = UserContext.role();
+        return R.ok(contractService.orders(uid, role != null ? role : 0, page, size));
     }
 
     @Operation(summary = "订单租金账单")

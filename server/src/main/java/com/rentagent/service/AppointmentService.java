@@ -131,7 +131,26 @@ public class AppointmentService {
                         .eq(landlordSide, ViewingAppointment::getLandlordId, uid)
                         .eq(!landlordSide, ViewingAppointment::getTenantId, uid)
                         .orderByDesc(ViewingAppointment::getId));
-        return PageVO.map(p, this::toVO);
+        List<Long> houseIds = p.getRecords().stream().map(ViewingAppointment::getHouseId).distinct().toList();
+        List<Long> tenantIds = p.getRecords().stream().map(ViewingAppointment::getTenantId).distinct().toList();
+        Map<Long, House> houseMap = houseIds.isEmpty() ? Map.of()
+                : houseMapper.selectBatchIds(houseIds).stream().collect(java.util.stream.Collectors.toMap(House::getId, h -> h));
+        Map<Long, SysUser> userMap = tenantIds.isEmpty() ? Map.of()
+                : userMapper.selectBatchIds(tenantIds).stream().collect(java.util.stream.Collectors.toMap(SysUser::getId, u -> u));
+        return PageVO.map(p, a -> {
+            House house = houseMap.get(a.getHouseId());
+            if (house == null && a.getHouseId() != null) {
+                house = houseMapper.selectById(a.getHouseId());
+            }
+            SysUser tenant = userMap.get(a.getTenantId());
+            if (tenant == null && a.getTenantId() != null) {
+                tenant = userMapper.selectById(a.getTenantId());
+            }
+            return new TradeDto.AppointmentVO(a, house == null ? null : house.getTitle(),
+                    house == null ? null : house.getCoverUrl(),
+                    tenant == null ? null : tenant.getNickname(),
+                    house == null ? null : house.getRent());
+        });
     }
 
     public TradeDto.AppointmentVO toVO(ViewingAppointment a) {

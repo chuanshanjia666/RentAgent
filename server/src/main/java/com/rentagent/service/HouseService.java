@@ -47,9 +47,13 @@ public class HouseService {
     private final NotificationService notificationService;
     private final AuditLogService auditLogService;
 
-    /** FR-05：发布房源，须已实名，初始状态待审核 */
+    /** FR-05：发布房源，须已实名且非租客角色，初始状态待审核 */
     @Transactional
     public House create(HouseDto.SaveReq req, long landlordId) {
+        Integer role = UserContext.role();
+        if (role != null && role == 1) {
+            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "租客账号不可发布房源");
+        }
         if (!authService.realnamePassed(landlordId)) {
             throw new BizException(ErrorCode.REALNAME_REQUIRED);
         }
@@ -115,6 +119,9 @@ public class HouseService {
      */
     @Transactional
     public void audit(long id, boolean pass, String reason, long adminId) {
+        if (!pass && (reason == null || reason.isBlank())) {
+            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "驳回必须填写理由");
+        }
         House house = houseMapper.selectById(id);
         if (house == null) {
             throw new BizException(ErrorCode.HOUSE_NOT_FOUND);
@@ -282,5 +289,23 @@ public class HouseService {
         double hot = h.getViewCount() == null ? 0 : Math.log1p(h.getViewCount());
         double rate = h.getAvgScore() == null ? 0 : h.getAvgScore().doubleValue();
         return w + hot + rate;
+    }
+
+    /** 响应举报处理：将房源强制下架并通知房东 */
+    @Transactional
+    public void offlineByReport(long houseId, String reason) {
+        House house = houseMapper.selectById(houseId);
+        if (house != null) {
+            house.setStatus(ST_OFFLINE);
+            houseMapper.updateById(house);
+            notificationService.send(house.getLandlordId(), 5, "房源被举报下架",
+                    "「" + house.getTitle() + "」因被举报已下架，处理意见：" + reason, "house", house.getId());
+        }
+    }
+
+    /** 房源标题获取（供举报与审计展示） */
+    public String titleOf(long houseId) {
+        House house = houseMapper.selectById(houseId);
+        return house == null ? "(已删除)" : house.getTitle();
     }
 }

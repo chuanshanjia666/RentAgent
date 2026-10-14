@@ -173,6 +173,9 @@ public class AuthService {
         if (auth.getStatus() == null || auth.getStatus() != 0) {
             throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "该实名认证已处理，请勿重复审核");
         }
+        if (!pass && (reason == null || reason.isBlank())) {
+            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "驳回必须填写理由");
+        }
         if (pass) {
             Long dup = realnameMapper.selectCount(new LambdaQueryWrapper<RealnameAuth>()
                     .eq(RealnameAuth::getIdCardHash, auth.getIdCardHash())
@@ -183,7 +186,7 @@ public class AuthService {
             }
         }
         auth.setStatus(pass ? 1 : 2);
-        auth.setRejectReason(pass ? null : reason);
+        auth.setRejectReason(pass ? null : reason.trim());
         auth.setAuditBy(adminId);
         auth.setAuditTime(LocalDateTime.now());
         realnameMapper.updateById(auth);
@@ -220,5 +223,47 @@ public class AuthService {
     private AuthDto.TokenResp tokenOf(SysUser user) {
         return new AuthDto.TokenResp(jwtUtil.issue(user.getId(), user.getRole()),
                 user.getId(), user.getRole(), user.getNickname());
+    }
+
+    /** 当前登录用户信息与实名状态 */
+    public AuthDto.MeVO currentUser(long uid) {
+        SysUser user = userMapper.selectById(uid);
+        if (user == null) {
+            throw new BizException(ErrorCode.USER_NOT_FOUND);
+        }
+        return new AuthDto.MeVO(AdminDto.UserVO.of(user), realnameOf(user.getId()));
+    }
+
+    /** 修改个人信息 */
+    @Transactional
+    public void updateProfile(long uid, AuthDto.UpdateProfileReq req) {
+        SysUser user = userMapper.selectById(uid);
+        if (user == null) {
+            throw new BizException(ErrorCode.USER_NOT_FOUND);
+        }
+        if (req.nickname() != null) {
+            user.setNickname(req.nickname().isBlank() ? null : req.nickname().trim());
+        }
+        if (req.email() != null) {
+            user.setEmail(req.email().isBlank() ? null : req.email().trim());
+        }
+        if (req.avatarUrl() != null) {
+            user.setAvatarUrl(req.avatarUrl().isBlank() ? null : req.avatarUrl().trim());
+        }
+        userMapper.updateById(user);
+    }
+
+    /** 修改密码：校验旧密码并 BCrypt 加密保存新密码 */
+    @Transactional
+    public void changePassword(long uid, AuthDto.ChangePasswordReq req) {
+        SysUser user = userMapper.selectById(uid);
+        if (user == null) {
+            throw new BizException(ErrorCode.USER_NOT_FOUND);
+        }
+        if (!encoder.matches(req.oldPassword(), user.getPassword())) {
+            throw new BizException(ErrorCode.WRONG_PASSWORD);
+        }
+        user.setPassword(encoder.encode(req.newPassword()));
+        userMapper.updateById(user);
     }
 }

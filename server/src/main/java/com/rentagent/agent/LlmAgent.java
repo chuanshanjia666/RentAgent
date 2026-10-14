@@ -59,13 +59,24 @@ public class LlmAgent implements AgentEngine {
     /** 会话记忆保留的消息条数（系统提示词之外） */
     private static final int MEMORY_WINDOW = 12;
 
+    /** 最多保留的活跃会话记忆数量，超出则按 LRU 淘汰早期会话，防止堆内存无界泄漏 */
+    private static final int MAX_ACTIVE_MEMORIES = 1000;
+
     /**
      * 会话记忆表：由本类持有（而不是让 AiServices 自己存），这样能在中止本轮时按会话整体清空。
+     * 采用 LRU 访问顺序同步表限制最大容量为 1000，淘汰长期不活跃的会话记忆。
      * <p>
      * 清空的场景见 {@link ToolCallLimitExceededException}：工具循环被硬停时，助手消息已带着
      * {@code tool_calls} 进了记忆，而它的工具结果不会再补齐，留着会让该会话后续每一轮都被协议以 400 拒绝。
      */
-    private final Map<Object, ChatMemory> memories = new ConcurrentHashMap<>();
+    private final Map<Object, ChatMemory> memories = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<>(128, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<Object, ChatMemory> eldest) {
+                    return size() > MAX_ACTIVE_MEMORIES;
+                }
+            }
+    );
 
     /** 兜底重试的强化指令：按场景指向该场景必需的工具（找房 → searchHouses，客服/合同 → searchKnowledge） */
     private static final String SEARCH_RETRY_HINT =

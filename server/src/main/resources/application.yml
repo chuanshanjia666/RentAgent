@@ -76,6 +76,12 @@ ai:
   # 命名多后端：配好 Key 后用 AI_BACKEND=<name> 一键切换（一个名字＝一套"协议+端点+模型"组合）：
   #   AI_BACKEND=commandcode-chat AGGREGATOR_API_KEY=<key> mvn spring-boot:run
   backends:
+    opencode-go: # OpenCode GO 端点（OpenAI 兼容协议，模型 deepseek-v4.1-flash）
+      protocol: openai-chat-completions
+      base-url: ${AGGREGATOR_BASE_URL:https://opencode.ai/zen/go/v1}
+      api-key: ${AGGREGATOR_API_KEY:}
+      model: ${AGGREGATOR_MODEL:deepseek-v4.1-flash}
+      user-agent: ${AGGREGATOR_USER_AGENT:RentAgent-Platform/1.0}
     commandcode-chat: # 聚合网关通道：同一端点下可指定任意模型（模型名形如 <厂商>/<模型>）
       protocol: openai-chat-completions
       base-url: ${AGGREGATOR_BASE_URL:https://api.commandcode.ai/provider/v1}

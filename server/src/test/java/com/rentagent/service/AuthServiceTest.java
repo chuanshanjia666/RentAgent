@@ -369,6 +369,8 @@ class AuthServiceTest {
         assertEquals("证件照片不清晰", auth.getRejectReason());
         verify(notification).send(eq(7L), eq(2), eq("实名认证未通过"), anyString(), eq("realname"), eq(9L));
         verify(auditLogService).log(eq(1L), eq("REALNAME_REJECT"), eq("realname"), eq(9L), any(), eq(null));
+
+        assertCode(1000, () -> service.auditRealname(9L, false, "  ", 1L));
     }
 
     @Test

@@ -74,9 +74,6 @@ public class AdminController {
     @Operation(summary = "房源审核：通过/驳回")
     @PatchMapping("/houses/{id}/audit")
     public R<Void> audit(@PathVariable long id, @Valid @RequestBody AdminDto.HouseAuditReq req) {
-        if (!req.pass() && (req.reason() == null || req.reason().isBlank())) {
-            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "驳回必须填写理由");
-        }
         houseService.audit(id, req.pass(), req.reason(), UserContext.userId());
         return R.ok();
     }
@@ -98,9 +95,6 @@ public class AdminController {
     @Operation(summary = "实名认证审核：通过/驳回（通过后房东方可发布房源）")
     @PatchMapping("/realnames/{id}/audit")
     public R<Void> auditRealname(@PathVariable long id, @Valid @RequestBody AdminDto.RealnameAuditReq req) {
-        if (!req.pass() && (req.reason() == null || req.reason().isBlank())) {
-            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "驳回必须填写理由");
-        }
         authService.auditRealname(id, req.pass(), req.reason(), UserContext.userId());
         return R.ok();
     }

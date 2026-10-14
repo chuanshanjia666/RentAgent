@@ -22,11 +22,11 @@ public class WebConfig implements WebMvcConfigurer {
     private final String corsOrigins;
 
     public WebConfig(RoleInterceptor roleInterceptor, JwtAuthFilter jwtAuthFilter,
-                     @Value("${rentagent.upload-dir}") String uploadDir,
+                     com.rentagent.service.FileService fileService,
                      @Value("${rentagent.cors-origins}") String corsOrigins) {
         this.roleInterceptor = roleInterceptor;
         this.jwtAuthFilter = jwtAuthFilter;
-        this.uploadDir = uploadDir;
+        this.uploadDir = fileService.getUploadDir();
         this.corsOrigins = corsOrigins;
     }
 

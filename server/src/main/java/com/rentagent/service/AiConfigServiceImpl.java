@@ -57,6 +57,7 @@ public class AiConfigServiceImpl implements AiConfigService {
                       max_tokens      INT UNSIGNED NOT NULL DEFAULT 4096 COMMENT '最大Token预算',
                       timeout_seconds INT UNSIGNED NOT NULL DEFAULT 60 COMMENT '超时时间(秒)',
                       user_agent      VARCHAR(255) NULL COMMENT '自定义User-Agent',
+                      custom_headers  TEXT         NULL COMMENT '自定义请求头JSON键值对',
                       is_active       TINYINT      NOT NULL DEFAULT 0 COMMENT '是否当前生效: 1是 0否',
                       created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
                       updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

@@ -40,7 +40,7 @@ public class AiProps {
     private String model;
 
     private Double temperature = 0.7;
-    private Integer maxTokens = 2048;
+    private Integer maxTokens = 4096;
     private Integer timeoutSeconds = 60;
 
     @Data

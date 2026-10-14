@@ -1,6 +1,7 @@
 # RentAgent CI 流水线设计
 
 > 项目名称：RentAgent —— 基于 AI 智能体的房屋租赁系统
+> 文档版本：v1.12（v1.12 于 2026-10-14 调整 CI/CD 默认大模型通道为 Opencode GO 的 `deepseek-v4.1-flash`（`openai-chat-completions` 兼容协议，端点 `https://opencode.ai/zen/go/v1`）；`docker-compose.yml` 与 `application.yml` 同步注册 `opencode-go` 命名后端；关联《概要设计》v1.17）
 > 文档版本：v1.11（v1.11 于 2026-10-13 同步 AI 供应商动态配置入库与管理控制台功能：数据库表由 18 张增至 **19 张**（新增 `ai_provider_config` 表并同步 CI 建表校验）；后端单测基线 213 → **221 条**（新增 `AiConfigServiceTest` 8 项单测）；集成冒烟断言数 148 → **158 条**（新增非管理员 1007 拦截、配置概览、入库新增、带脱敏更新、删除未激活配置等断言）；精简 `run-dev.sh` 移除个人硬编码 Key；关联《数据库设计简介》v1.7、《单元测试用例设计》v1.10、《概要设计》v1.16）
 > 文档版本：v1.10（v1.10 于 2026-09-22 同步 AI 回复内链接渲染缺陷修复：前端单测门禁 26 → **32 条**（新增 `FT-CHAT-01~06`——找房助手输出的 `[标题](#/app/houses/{id})` 站内链接此前因前缀判定误写 `#:` 恒以纯文本显示、不可点击，渲染逻辑抽至 `chatLinks.tsx` 并补回归），§一/§2.1 同步；顺带校正 §一 门禁表与 §2.3 流程图的后端单测计数漏改（212 → 213）；集成冒烟断言数不变（**148 条**）；关联《单元测试用例设计》v1.9）
 > 文档版本：v1.9（v1.9 于 2026-09-22 同步评价闭环断言：集成冒烟断言数 146 → **148 条**（IT-6 新增 reviewed 前后回填 2 条：未评价订单回填 `reviewed=false`、评价后回填 `reviewed=true`），§一/§2.1/流程图同步；后端单测基线 212 → **213 条**（`UT-CONTRACT-22`）；关联《单元测试用例设计》v1.8、《测试用例设计》v1.9、《概要设计》v1.15）
@@ -164,9 +165,9 @@ push / PR / 手动
 | `UPLOAD_DIR` | `${{ runner.temp }}/rentagent-uploads` | 写在**步骤级** env：job 级 env 不提供 `runner` 上下文 |
 | `BASE_URL` | `http://localhost:8080` | 冒烟脚本基址 |
 | `TZ` | `Asia/Shanghai` | 全流程统一时区 |
-| `AI_BACKEND` | `secrets.AI_BACKEND`，缺省 `commandcode-chat` | 选择命名后端（协议+端点+模型组合） |
-| `AGGREGATOR_BASE_URL` | `secrets.AGGREGATOR_BASE_URL`，缺省演示端点 | 模型端点 |
-| `AGGREGATOR_MODEL` | `secrets.AGGREGATOR_MODEL`，缺省 `inclusionai/ling-3.1-flash:free` | 模型名 |
+| `AI_BACKEND` | `secrets.AI_BACKEND`，缺省 `opencode-go` | 选择命名后端（协议+端点+模型组合） |
+| `AGGREGATOR_BASE_URL` | `secrets.AGGREGATOR_BASE_URL`，缺省 `https://opencode.ai/zen/go/v1` | 模型端点 |
+| `AGGREGATOR_MODEL` | `secrets.AGGREGATOR_MODEL`，缺省 `deepseek-v4.1-flash` | 模型名 |
 | `AGGREGATOR_API_KEY` | `secrets.AGGREGATOR_API_KEY`（**必填**） | 模型凭据。只读 Secrets，不落文件、不 echo；GitHub 会对其做日志脱敏 |
 
 安全约定：

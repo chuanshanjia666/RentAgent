@@ -30,6 +30,11 @@ http.interceptors.response.use(
   resp => {
     const r = resp.data
     if (r.code !== 0) {
+      if (r.code === 1002 && r.message === '请先登录') {
+        localStorage.removeItem('ra_token')
+        unauthorizedHandler?.()
+        if (!location.hash.startsWith('#/login')) location.hash = '#/login'
+      }
       message.error(r.message || '请求失败')
       return Promise.reject(r)
     }

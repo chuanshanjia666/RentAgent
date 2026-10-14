@@ -38,7 +38,10 @@ public class AuthDto {
     public record TokenResp(String token, Long userId, Integer role, String nickname) {
     }
 
-    public record UpdateProfileReq(String nickname, String email, String avatarUrl) {
+    public record UpdateProfileReq(
+            @Size(max = 50, message = "昵称最多 50 个字符") String nickname,
+            @Size(max = 100, message = "邮箱最多 100 个字符") String email,
+            @Size(max = 255, message = "头像地址最多 255 个字符") String avatarUrl) {
     }
 
     public record ChangePasswordReq(@NotBlank String oldPassword,

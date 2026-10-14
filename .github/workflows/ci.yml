@@ -140,10 +140,10 @@ jobs:
       BASE_URL: http://localhost:8080
       # AI 通道：系统已移除全部模拟/规则兜底，AI 用例必须接真实模型。
       # AGGREGATOR_API_KEY 为必填 Secret（Settings → Secrets and variables → Actions 新建）；
-      # 模型与端点可用同名 Secret 覆盖，未配置时回落到下面的默认演示取值。Key 不会出现在日志里。
-      AI_BACKEND: ${{ secrets.AI_BACKEND || 'commandcode-chat' }}
-      AGGREGATOR_BASE_URL: ${{ secrets.AGGREGATOR_BASE_URL || 'https://api.commandcode.ai/provider/v1' }}
-      AGGREGATOR_MODEL: ${{ secrets.AGGREGATOR_MODEL || 'inclusionai/ling-3.1-flash:free' }}
+      # 模型与端点可用同名 Secret 覆盖，未配置时回落到下面的默认演示取值（Opencode GO deepseek-v4.1-flash）。Key 不会出现在日志里。
+      AI_BACKEND: ${{ secrets.AI_BACKEND || 'opencode-go' }}
+      AGGREGATOR_BASE_URL: ${{ secrets.AGGREGATOR_BASE_URL || 'https://opencode.ai/zen/go/v1' }}
+      AGGREGATOR_MODEL: ${{ secrets.AGGREGATOR_MODEL || 'deepseek-v4.1-flash' }}
       AGGREGATOR_API_KEY: ${{ secrets.AGGREGATOR_API_KEY }}
       # 注：UPLOAD_DIR 依赖 runner 上下文，只能写在步骤级 env（job 级 env 不提供 runner 上下文）
 

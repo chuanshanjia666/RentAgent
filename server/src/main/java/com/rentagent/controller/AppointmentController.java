@@ -39,8 +39,9 @@ public class AppointmentController {
     @Operation(summary = "预约操作：confirm/reject（房东）、cancel（租客）、complete（房东）")
     @PatchMapping("/appointments/{id}")
     public R<Void> act(@PathVariable long id, @Valid @RequestBody TradeDto.AppointmentActionReq req) {
-        UserContext.User user = UserContext.get();
-        appointmentService.act(id, req.action(), req.reason(), user.getId(), user.getRole());
+        long uid = UserContext.userId();
+        Integer role = UserContext.role();
+        appointmentService.act(id, req.action(), req.reason(), uid, role != null ? role : 0);
         return R.ok();
     }
 
