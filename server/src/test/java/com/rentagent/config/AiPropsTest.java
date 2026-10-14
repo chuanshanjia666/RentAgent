@@ -80,4 +80,17 @@ class AiPropsTest {
         assertEquals("openai-responses", LlmGateway.normalizeProtocol("openai-responses"));
         assertEquals("openai-chat-completions", LlmGateway.normalizeProtocol(null));
     }
+
+    @Test
+    @DisplayName("UT-PROPS-07 OpenCode 端点自动注入 x-opencode-session 请求头")
+    void injectsOpencodeSessionHeaderWhenMissing() {
+        AiProps.Backend b = new AiProps.Backend();
+        b.setBaseUrl("https://opencode.ai/zen/go/v1");
+        var headers = LlmGateway.parseCustomHeaders(b);
+        assertEquals("rentagent-session-default", headers.get("x-opencode-session"));
+
+        b.getHeaders().put("x-opencode-session", "custom-session-123");
+        var custom = LlmGateway.parseCustomHeaders(b);
+        assertEquals("custom-session-123", custom.get("x-opencode-session"));
+    }
 }

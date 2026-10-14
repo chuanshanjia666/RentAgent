@@ -201,6 +201,12 @@ public class LlmGateway {
         if (b.getUserAgent() != null && !b.getUserAgent().isBlank()) {
             headers.put("User-Agent", b.getUserAgent());
         }
+        // OpenCode GO 网关路由强制要求携带 x-opencode-session 请求头
+        if (b.getBaseUrl() != null && b.getBaseUrl().contains("opencode.ai")) {
+            if (!headers.containsKey("x-opencode-session")) {
+                headers.put("x-opencode-session", "rentagent-session-default");
+            }
+        }
         return headers;
     }
 

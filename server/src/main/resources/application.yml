@@ -82,6 +82,8 @@ ai:
       api-key: ${AGGREGATOR_API_KEY:}
       model: ${AGGREGATOR_MODEL:deepseek-v4.1-flash}
       user-agent: ${AGGREGATOR_USER_AGENT:RentAgent-Platform/1.0}
+      headers:
+        x-opencode-session: ${OPENCODE_SESSION:rentagent-session-default}
     commandcode-chat: # 聚合网关通道：同一端点下可指定任意模型（模型名形如 <厂商>/<模型>）
       protocol: openai-chat-completions
       base-url: ${AGGREGATOR_BASE_URL:https://api.commandcode.ai/provider/v1}

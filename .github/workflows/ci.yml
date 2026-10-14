@@ -145,6 +145,7 @@ jobs:
       AGGREGATOR_BASE_URL: ${{ secrets.AGGREGATOR_BASE_URL || 'https://opencode.ai/zen/go/v1' }}
       AGGREGATOR_MODEL: ${{ secrets.AGGREGATOR_MODEL || 'deepseek-v4.1-flash' }}
       AGGREGATOR_API_KEY: ${{ secrets.AGGREGATOR_API_KEY }}
+      OPENCODE_SESSION: rentagent-ci-session
       # 注：UPLOAD_DIR 依赖 runner 上下文，只能写在步骤级 env（job 级 env 不提供 runner 上下文）
 
     steps:
