@@ -126,6 +126,7 @@ public class AiConfigServiceImpl implements AiConfigService {
         entity.setMaxTokens(req.maxTokens() != null ? req.maxTokens() : 4096);
         entity.setTimeoutSeconds(req.timeoutSeconds() != null ? req.timeoutSeconds() : 60);
         entity.setUserAgent(req.userAgent() != null && !req.userAgent().isBlank() ? req.userAgent().trim() : null);
+        entity.setCustomHeaders(req.customHeaders() != null && !req.customHeaders().isBlank() ? req.customHeaders().trim() : null);
         entity.setIsActive(active ? 1 : 0);
 
         mapper.insert(entity);
@@ -172,6 +173,9 @@ public class AiConfigServiceImpl implements AiConfigService {
             existing.setTimeoutSeconds(req.timeoutSeconds());
         }
         existing.setUserAgent(req.userAgent() != null && !req.userAgent().isBlank() ? req.userAgent().trim() : null);
+        if (req.customHeaders() != null) {
+            existing.setCustomHeaders(req.customHeaders().isBlank() ? null : req.customHeaders().trim());
+        }
         if (req.isActive() != null) {
             existing.setIsActive(shouldActivate ? 1 : 0);
         }
@@ -271,25 +275,24 @@ public class AiConfigServiceImpl implements AiConfigService {
             ChatLanguageModel testClient;
             String norm = LlmGateway.normalizeProtocol(protocol);
 
+            AiProps.Backend dummy = new AiProps.Backend();
+            dummy.setUserAgent(req.userAgent());
+            dummy.setCustomHeaders(req.customHeaders());
+            Map<String, String> headers = LlmGateway.parseCustomHeaders(dummy);
+
             switch (norm) {
                 case "anthropic-messages" -> testClient = new AnthropicMessagesChatModel(
                         baseUrl, apiKey, model,
                         req.temperature() == null ? 0.7 : req.temperature(),
-                        10, timeout);
+                        10, timeout, headers);
                 case "openai-responses" -> testClient = new OpenAiResponsesChatModel(
                         baseUrl, apiKey, model,
                         req.temperature() == null ? 0.7 : req.temperature(),
-                        10, timeout);
-                default -> {
-                    Map<String, String> headers = new LinkedHashMap<>();
-                    if (req.userAgent() != null && !req.userAgent().isBlank()) {
-                        headers.put("User-Agent", req.userAgent());
-                    }
-                    testClient = new OpenAiChatCompletionsModel(
-                            baseUrl, apiKey, model,
-                            req.temperature() == null ? 0.7 : req.temperature(),
-                            10, timeout, headers);
-                }
+                        10, timeout, headers);
+                default -> testClient = new OpenAiChatCompletionsModel(
+                        baseUrl, apiKey, model,
+                        req.temperature() == null ? 0.7 : req.temperature(),
+                        10, timeout, headers);
             }
 
             var resp = testClient.generate(UserMessage.from("Hi"));
@@ -327,6 +330,7 @@ public class AiConfigServiceImpl implements AiConfigService {
         entity.setMaxTokens(b.getMaxTokens() != null ? b.getMaxTokens() : 4096);
         entity.setTimeoutSeconds(b.getTimeoutSeconds() != null ? b.getTimeoutSeconds() : 60);
         entity.setUserAgent(b.getUserAgent());
+        entity.setCustomHeaders(b.getCustomHeaders());
         entity.setIsActive(1);
 
         mapper.insert(entity);
@@ -366,6 +370,7 @@ public class AiConfigServiceImpl implements AiConfigService {
                 c.getMaxTokens(),
                 c.getTimeoutSeconds(),
                 c.getUserAgent(),
+                c.getCustomHeaders(),
                 c.getIsActive(),
                 c.getCreatedAt(),
                 c.getUpdatedAt()

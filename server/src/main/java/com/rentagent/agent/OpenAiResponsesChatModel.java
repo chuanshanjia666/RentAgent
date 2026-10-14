@@ -27,6 +27,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * OpenAI Responses API（新接口）适配器：POST {base-url}/responses，SSE 流式事件流。
@@ -43,6 +44,7 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
     private final Double temperature;
     private final Integer maxTokens;
     private final Duration timeout;
+    private final Map<String, String> customHeaders;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -50,12 +52,19 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
 
     public OpenAiResponsesChatModel(String baseUrl, String apiKey, String model,
                                     Double temperature, Integer maxTokens, Duration timeout) {
+        this(baseUrl, apiKey, model, temperature, maxTokens, timeout, Map.of());
+    }
+
+    public OpenAiResponsesChatModel(String baseUrl, String apiKey, String model,
+                                    Double temperature, Integer maxTokens, Duration timeout,
+                                    Map<String, String> customHeaders) {
         this.baseUrl = baseUrl == null || baseUrl.isBlank() ? "https://api.openai.com/v1" : trimSlash(baseUrl);
         this.apiKey = apiKey;
         this.model = model;
         this.temperature = temperature;
         this.maxTokens = maxTokens;
         this.timeout = timeout;
+        this.customHeaders = customHeaders == null ? Map.of() : customHeaders;
     }
 
     // ── 同步 ───────────────────────────────────────────────────────────
@@ -290,12 +299,12 @@ public class OpenAiResponsesChatModel implements ChatLanguageModel, StreamingCha
     private static final long ERROR_BODY_LINES = 4;
 
     private HttpRequest request(ObjectNode body) throws IOException {
-        return HttpRequest.newBuilder(URI.create(baseUrl + "/responses"))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + "/responses"))
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
-                .timeout(timeout)
-                .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
-                .build();
+                .timeout(timeout);
+        customHeaders.forEach(builder::header);
+        return builder.POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body))).build();
     }
 
     private static String trimSlash(String url) {

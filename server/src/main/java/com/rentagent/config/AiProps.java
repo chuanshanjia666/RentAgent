@@ -55,6 +55,9 @@ public class AiProps {
         private Integer timeoutSeconds;
         /** 自定义 User-Agent（留空用客户端默认；部分网关/WAF 只放行常见 UA，需按需覆盖） */
         private String userAgent;
+        /** 自定义额外 HTTP 请求头（JSON 字符串或 Map，按需覆盖/注入） */
+        private Map<String, String> headers = new java.util.LinkedHashMap<>();
+        private String customHeaders;
     }
 
     /**

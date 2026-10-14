@@ -93,13 +93,14 @@ class AiConfigServiceTest {
     void saveActiveConfigResetsOthersAndPublishesEvent() {
         AdminDto.AiConfigSaveReq req = new AdminDto.AiConfigSaveReq(
                 "通义千问", "openai-chat-completions", "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "sk-qwen12345678", "qwen-plus", 0.7, 4096, 60, null, true
+                "sk-qwen12345678", "qwen-plus", 0.7, 4096, 60, null, "{\"x-custom\":\"test\"}", true
         );
 
         AdminDto.AiConfigVO vo = service.save(req, 1L);
         assertNotNull(vo);
         assertEquals("通义千问", vo.name());
         assertEquals(1, vo.isActive());
+        assertEquals("{\"x-custom\":\"test\"}", vo.customHeaders());
 
         verify(mapper).update(any(), any(LambdaUpdateWrapper.class));
         verify(mapper).insert(any(AiProviderConfig.class));
@@ -111,7 +112,7 @@ class AiConfigServiceTest {
     void saveRejectsMissingApiKey() {
         AdminDto.AiConfigSaveReq req = new AdminDto.AiConfigSaveReq(
                 "测试", "openai-chat-completions", "https://api.test.com",
-                "", "test-model", 0.7, 4096, 60, null, false
+                "", "test-model", 0.7, 4096, 60, null, null, false
         );
 
         assertThrows(BizException.class, () -> service.save(req, 1L));
@@ -133,7 +134,7 @@ class AiConfigServiceTest {
 
         AdminDto.AiConfigSaveReq req = new AdminDto.AiConfigSaveReq(
                 "新名称", "openai-chat-completions", "https://api.new.com",
-                "", "new-model", 0.5, 2048, 45, null, false
+                "", "new-model", 0.5, 2048, 45, null, "{\"x-session\":\"123\"}", false
         );
 
         service.update(20L, req, 1L);
@@ -141,6 +142,7 @@ class AiConfigServiceTest {
         assertEquals("sk-secret-keep-this", existing.getApiKey());
         assertEquals("新名称", existing.getName());
         assertEquals("https://api.new.com", existing.getBaseUrl());
+        assertEquals("{\"x-session\":\"123\"}", existing.getCustomHeaders());
         verify(mapper).updateById(existing);
     }
 

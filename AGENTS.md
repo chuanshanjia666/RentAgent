@@ -22,8 +22,8 @@ docker compose up -d mysql redis
 
 # 后端（8080）
 cd server && mvn -q compile            # 改完先编译，避免 spring-boot:run 跑旧 class
-./run-dev.sh                            # 本地开发脚本，含个人 API Key（已 gitignore，勿提交）
-mvn test                                # 单测 212 条，不连库/缓存/网络
+./run-dev.sh                            # 本地开发启动脚本
+mvn test                                # 单测 221 条，不连库/缓存/网络
 mvn -Dtest=HouseServiceTest test        # 单测单类（配合 -DfailIfNoSpecifiedTests=false 更省事）
 
 # 前端（5173；浏览器请用 localhost 而非 127.0.0.1，CORS 白名单按来源区分）

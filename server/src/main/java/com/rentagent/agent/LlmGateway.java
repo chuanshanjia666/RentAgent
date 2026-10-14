@@ -137,6 +137,7 @@ public class LlmGateway {
                 b.setMaxTokens(active.getMaxTokens());
                 b.setTimeoutSeconds(active.getTimeoutSeconds());
                 b.setUserAgent(active.getUserAgent());
+                b.setCustomHeaders(active.getCustomHeaders());
                 return props.withDefaults(b);
             }
         } catch (Exception e) {
@@ -147,34 +148,26 @@ public class LlmGateway {
 
     private void build(AiProps.Backend b) {
         Duration timeout = Duration.ofSeconds(b.getTimeoutSeconds());
+        Map<String, String> headers = parseCustomHeaders(b);
+
         switch (normalizeProtocol(b.getProtocol())) {
             case "anthropic-messages" -> {
                 AnthropicMessagesChatModel model = new AnthropicMessagesChatModel(
                         b.getBaseUrl(), b.getApiKey(), b.getModel(),
-                        b.getTemperature(), b.getMaxTokens(), timeout);
+                        b.getTemperature(), b.getMaxTokens(), timeout, headers);
                 chatModel = model;
                 streamingModel = model;
             }
             case "openai-responses" -> {
                 OpenAiResponsesChatModel model = new OpenAiResponsesChatModel(
                         b.getBaseUrl(), b.getApiKey(), b.getModel(),
-                        b.getTemperature(), b.getMaxTokens(), timeout);
+                        b.getTemperature(), b.getMaxTokens(), timeout, headers);
                 chatModel = model;
                 streamingModel = model;
             }
             default -> {
                 // openai-chat-completions：最通用的经典协议（OpenAI / DeepSeek / 通义 / 自建 / 聚合网关等均可）
                 String base = orDefault(b.getBaseUrl(), "https://api.openai.com/v1");
-                Map<String, String> headers = new LinkedHashMap<>();
-                // 部分网关/WAF 按 User-Agent 过滤（如只放行常见客户端），需要时按后端配置覆盖
-                if (b.getUserAgent() != null && !b.getUserAgent().isBlank()) {
-                    headers.put("User-Agent", b.getUserAgent());
-                }
-                // max_tokens 下发配置值（ai.max-tokens，默认 4096）：推理型模型把思维链算进补全长度，
-                // 取值过紧会被 finish_reason=length 截断成"既无正文也无工具调用"。
-                // 该字段早先在此写死 null（不下发），于是 application.yml 里的 max-tokens 与
-                // 空返回提示里的"请调大 ai.max-tokens"在本协议下都不生效——配置与行为必须一致。
-                // 推理型模型（o 系列 / gpt-5 起）的字段名与采样参数差异由适配器按模型名处理（见 requestBody）
                 OpenAiChatCompletionsModel model = new OpenAiChatCompletionsModel(
                         base, b.getApiKey(), b.getModel(),
                         b.getTemperature(), b.getMaxTokens(), timeout, headers);
@@ -182,6 +175,33 @@ public class LlmGateway {
                 streamingModel = model;
             }
         }
+    }
+
+    /** 合并 User-Agent 与自定义 Header 字典 */
+    public static Map<String, String> parseCustomHeaders(AiProps.Backend b) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        if (b.getHeaders() != null && !b.getHeaders().isEmpty()) {
+            headers.putAll(b.getHeaders());
+        }
+        if (b.getCustomHeaders() != null && !b.getCustomHeaders().isBlank()) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree(b.getCustomHeaders());
+                if (node.isObject()) {
+                    node.fields().forEachRemaining(entry -> {
+                        if (entry.getValue() != null && !entry.getValue().isNull()) {
+                            headers.put(entry.getKey(), entry.getValue().asText());
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                log.warn("解析自定义请求头 custom_headers 失败: {}", e.getMessage());
+            }
+        }
+        if (b.getUserAgent() != null && !b.getUserAgent().isBlank()) {
+            headers.put("User-Agent", b.getUserAgent());
+        }
+        return headers;
     }
 
     /** 协议名归一化：支持完整名与旧别名（openai / anthropic） */

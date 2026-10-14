@@ -1,6 +1,7 @@
 # RentAgent CI 流水线设计
 
 > 项目名称：RentAgent —— 基于 AI 智能体的房屋租赁系统
+> 文档版本：v1.11（v1.11 于 2026-10-13 同步 AI 供应商动态配置入库与管理控制台功能：数据库表由 18 张增至 **19 张**（新增 `ai_provider_config` 表并同步 CI 建表校验）；后端单测基线 213 → **221 条**（新增 `AiConfigServiceTest` 8 项单测）；集成冒烟断言数 148 → **158 条**（新增非管理员 1007 拦截、配置概览、入库新增、带脱敏更新、删除未激活配置等断言）；精简 `run-dev.sh` 移除个人硬编码 Key；关联《数据库设计简介》v1.7、《单元测试用例设计》v1.10、《概要设计》v1.16）
 > 文档版本：v1.10（v1.10 于 2026-09-22 同步 AI 回复内链接渲染缺陷修复：前端单测门禁 26 → **32 条**（新增 `FT-CHAT-01~06`——找房助手输出的 `[标题](#/app/houses/{id})` 站内链接此前因前缀判定误写 `#:` 恒以纯文本显示、不可点击，渲染逻辑抽至 `chatLinks.tsx` 并补回归），§一/§2.1 同步；顺带校正 §一 门禁表与 §2.3 流程图的后端单测计数漏改（212 → 213）；集成冒烟断言数不变（**148 条**）；关联《单元测试用例设计》v1.9）
 > 文档版本：v1.9（v1.9 于 2026-09-22 同步评价闭环断言：集成冒烟断言数 146 → **148 条**（IT-6 新增 reviewed 前后回填 2 条：未评价订单回填 `reviewed=false`、评价后回填 `reviewed=true`），§一/§2.1/流程图同步；后端单测基线 212 → **213 条**（`UT-CONTRACT-22`）；关联《单元测试用例设计》v1.8、《测试用例设计》v1.9、《概要设计》v1.15）
 > 文档版本：v1.8（v1.8 于 2026-09-21 按代码审查整改（第三轮）同步计数：后端单测基线 210 → **212 条**（新增 `UT-TOOL-06`、`UT-AGENT-07`：工具阶段意外异常统一包装为 `ToolRoundAbortedException` 中止并清残缺会话记忆），§一/§2.1/流程图同步；集成冒烟断言数不变（**146 条**，本轮未改 `ci-smoke.sh`）；关联《单元测试用例设计》v1.7、《概要设计》v1.14）
@@ -47,11 +48,11 @@
 
 | 门禁 | 命令 | 拦截什么 |
 | ---- | ---- | -------- |
-| 后端单元测试 | `mvn -B -ntp test`（213 条） | 业务状态机、权限、金额/日期计算、加解密回归 |
+| 后端单元测试 | `mvn -B -ntp test`（221 条） | 业务状态机、权限、金额/日期计算、加解密回归、AI 配置持久化与热加载 |
 | 前端静态检查与格式 | `npm run lint` + `npm run format:check`（ESLint + Prettier） | 死导入与未使用变量、hook 依赖数组遗漏、缩进引号等风格漂移 |
 | 前端单测 | `npm test`（vitest，32 条） | 运行时地址解析、状态字典、SSE 流式解析、AI 回复内链接渲染 |
 | 前端类型与构建 | `npm run build:web`（`tsc --noEmit` + vite） | TS 严格模式下的类型错误、构建失败 |
-| 集成冒烟 | `bash scripts/ci-smoke.sh`（148 条断言） | 跨模块业务闭环、真实 MySQL/Redis 语义、鉴权链路、**真实模型**的工具调用与引用来源 |
+| 集成冒烟 | `bash scripts/ci-smoke.sh`（158 条断言） | 跨模块业务闭环、真实 MySQL/Redis 语义、鉴权链路、**真实模型**的工具调用与引用来源、AI 配置动态管理 |
 | 反向门禁 | `bash scripts/ci-no-model-check.sh`（6 条，账号无合同时合同解读项跳过） | "未配置模型时 AI 能力必须硬报错"——防止模拟/规则兜底被重新引入 |
 
 ---
@@ -72,7 +73,7 @@
 | ---- | ---- |
 | 检出代码 | `actions/checkout@v5` |
 | 环境 | `actions/setup-java@v5`（temurin 17，`cache: maven`） |
-| 执行 | `mvn -B -ntp test`（工作目录 `server/`） |
+| 执行 | `mvn -B -ntp test`（工作目录 `server/`，221 条单测） |
 | 归档 | `actions/upload-artifact@v6` 上传 `server/target/surefire-reports/`（`if: always()`，失败可下载报告定位） |
 
 不启任何服务容器：本层用例全部为 Mockito 打桩，不连库、不连缓存、不连网络。
@@ -98,10 +99,10 @@
 | 步骤 | 动作 |
 | ---- | ---- |
 | 服务容器 | `mysql:8.0`（库/账号与 `docker-compose.yml` 一致，含 healthcheck）与 `redis:7` |
-| 初始化库 | 安装 `mysql-client` → 等 MySQL 就绪 → 执行 `docker/mysql-init/01_schema.sql` → 打印表数量（应 18） |
+| 初始化库 | 安装 `mysql-client` → 等 MySQL 就绪 → 执行 `docker/mysql-init/01_schema.sql` → 打印表数量（应 19） |
 | 构建 | `mvn -B -ntp -DskipTests package`（产出可执行 jar） |
 | 启动 | 后台启动 jar（注入 `MYSQL_*`/`REDIS_*`/`JWT_SECRET`/`AES_KEY`），轮询直到**接口可用且种子数据已提交**（先探 `/api/v1/ai/engine`，再探查库的 `/api/v1/houses?size=1` 且 `total ≥ 1`，最多 3 分钟），超时打印后端日志尾部 |
-| 冒烟 | `bash scripts/ci-smoke.sh`（148 条断言，失败即非 0 退出） |
+| 冒烟 | `bash scripts/ci-smoke.sh`（158 条断言，失败即非 0 退出） |
 | 无模型校验 | 另起一个不注入模型凭据的实例（`SERVER_PORT=8081`），执行 `scripts/ci-no-model-check.sh`，校验 AI 能力全部返回 4001 |
 | 归档 | 失败时上传 `/tmp/backend.log` 与 SSE 原始输出 |
 
@@ -141,10 +142,10 @@
 ```
 push / PR / 手动
         │
-        ├── backend-test      JDK17 ── mvn test（213 条）────────────────────────────────────────┐
+        ├── backend-test      JDK17 ── mvn test（221 条）────────────────────────────────────────┐
         ├── frontend-test     Node20 ── npm ci → lint → format:check → vitest → build:web ───────┤ 并行
         └── integration-smoke JDK17 + mysql:8.0 + redis:7                                        │
-                              └─ 建表 → 打包 → 启动 → ci-smoke.sh（148 条）                      ┘
+                              └─ 建表（19张） → 打包 → 启动 → ci-smoke.sh（158 条）              ┘
                                         ↓
                           全部成功 = 门禁通过；任一失败 = 阻断合并
 ```
@@ -165,7 +166,7 @@ push / PR / 手动
 | `TZ` | `Asia/Shanghai` | 全流程统一时区 |
 | `AI_BACKEND` | `secrets.AI_BACKEND`，缺省 `commandcode-chat` | 选择命名后端（协议+端点+模型组合） |
 | `AGGREGATOR_BASE_URL` | `secrets.AGGREGATOR_BASE_URL`，缺省演示端点 | 模型端点 |
-| `AGGREGATOR_MODEL` | `secrets.AGGREGATOR_MODEL`，缺省 `deepseek/deepseek-v4.1-flash` | 模型名 |
+| `AGGREGATOR_MODEL` | `secrets.AGGREGATOR_MODEL`，缺省 `inclusionai/ling-3.1-flash:free` | 模型名 |
 | `AGGREGATOR_API_KEY` | `secrets.AGGREGATOR_API_KEY`（**必填**） | 模型凭据。只读 Secrets，不落文件、不 echo；GitHub 会对其做日志脱敏 |
 
 安全约定：

@@ -47,7 +47,7 @@ services:
       AI_BACKEND: ${AI_BACKEND:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AGGREGATOR_BASE_URL: ${AGGREGATOR_BASE_URL:-https://api.commandcode.ai/provider/v1}
-      AGGREGATOR_MODEL: ${AGGREGATOR_MODEL:-deepseek/deepseek-v4.1-flash}
+      AGGREGATOR_MODEL: ${AGGREGATOR_MODEL:-inclusionai/ling-3.1-flash:free}
       AGGREGATOR_API_KEY: ${AGGREGATOR_API_KEY:-}
       # JWT_SECRET / AES_KEY 故意不在此透传：写成 ${JWT_SECRET:-} 会在未设置时注入空串，
       # 反而比仓库默认值更早炸（密钥长度不足直接启动失败）。对外部署时用

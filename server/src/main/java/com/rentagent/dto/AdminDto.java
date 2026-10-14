@@ -78,6 +78,7 @@ public class AdminDto {
             Integer maxTokens,
             Integer timeoutSeconds,
             String userAgent,
+            String customHeaders,
             Boolean isActive
     ) {}
 
@@ -94,6 +95,7 @@ public class AdminDto {
             Integer maxTokens,
             Integer timeoutSeconds,
             String userAgent,
+            String customHeaders,
             Integer isActive,
             LocalDateTime createdAt,
             LocalDateTime updatedAt
@@ -117,7 +119,8 @@ public class AdminDto {
             Double temperature,
             Integer maxTokens,
             Integer timeoutSeconds,
-            String userAgent
+            String userAgent,
+            String customHeaders
     ) {}
 
     /** AI 供应商连通性测试结果 */

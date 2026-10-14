@@ -317,6 +317,7 @@ export interface AiConfigVO {
   maxTokens: number
   timeoutSeconds: number
   userAgent?: string | null
+  customHeaders?: string | null
   isActive: number
   createdAt: string
   updatedAt: string
@@ -341,6 +342,7 @@ export interface AiConfigSaveReq {
   maxTokens?: number
   timeoutSeconds?: number
   userAgent?: string
+  customHeaders?: string
   isActive?: boolean
 }
 
@@ -355,6 +357,7 @@ export interface AiConfigTestReq {
   maxTokens?: number
   timeoutSeconds?: number
   userAgent?: string
+  customHeaders?: string
 }
 
 /** 连通性测试响应结果 */

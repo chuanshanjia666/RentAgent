@@ -72,6 +72,30 @@ const PRESETS = [
     timeoutSeconds: 60
   },
   {
+    label: 'OpenCode GO (OpenAI兼容)',
+    name: 'OpenCode GO',
+    protocol: 'openai-chat-completions',
+    baseUrl: 'https://opencode.ai/zen/go/v1',
+    model: 'deepseek-v4.1-flash',
+    temperature: 0.7,
+    maxTokens: 4096,
+    timeoutSeconds: 60,
+    userAgent: 'RentAgent-Platform/1.0',
+    customHeaders: JSON.stringify({ 'x-opencode-session': 'rentagent-session-default' }, null, 2)
+  },
+  {
+    label: 'Command Code GOAT (OpenAI兼容)',
+    name: 'Command Code GOAT',
+    protocol: 'openai-chat-completions',
+    baseUrl: 'https://api.commandcode.ai/provider/v1',
+    model: 'inclusionai/ling-3.1-flash:free',
+    temperature: 0.7,
+    maxTokens: 4096,
+    timeoutSeconds: 60,
+    userAgent: 'RentAgent-Platform/1.0',
+    customHeaders: ''
+  },
+  {
     label: 'CommandCode 聚合网关 (OpenAI兼容)',
     name: 'CommandCode 聚合通道',
     protocol: 'openai-chat-completions',
@@ -80,7 +104,8 @@ const PRESETS = [
     temperature: 0.7,
     maxTokens: 4096,
     timeoutSeconds: 60,
-    userAgent: 'RentAgent-Platform/1.0'
+    userAgent: 'RentAgent-Platform/1.0',
+    customHeaders: ''
   }
 ]
 
@@ -120,6 +145,7 @@ export default function AdminAiConfigView() {
       temperature: 0.7,
       maxTokens: 4096,
       timeoutSeconds: 60,
+      customHeaders: '',
       isActive: (overview?.configs.length ?? 0) === 0
     })
     setModalVisible(true)
@@ -139,6 +165,7 @@ export default function AdminAiConfigView() {
       maxTokens: item.maxTokens,
       timeoutSeconds: item.timeoutSeconds,
       userAgent: item.userAgent ?? '',
+      customHeaders: item.customHeaders ?? '',
       isActive: item.isActive === 1
     })
     setModalVisible(true)
@@ -155,7 +182,8 @@ export default function AdminAiConfigView() {
       temperature: p.temperature,
       maxTokens: p.maxTokens,
       timeoutSeconds: p.timeoutSeconds,
-      userAgent: p.userAgent ?? ''
+      userAgent: p.userAgent ?? '',
+      customHeaders: p.customHeaders ?? ''
     })
     message.info(`已填充「${p.label}」参数模板，请输入 API Key`)
   }
@@ -231,7 +259,8 @@ export default function AdminAiConfigView() {
         baseUrl: item.baseUrl,
         model: item.model,
         timeoutSeconds: item.timeoutSeconds,
-        userAgent: item.userAgent ?? undefined
+        userAgent: item.userAgent ?? undefined,
+        customHeaders: item.customHeaders ?? undefined
       })
       if (res.success) {
         message.success(`「${item.name}」${res.message}`)
@@ -258,7 +287,8 @@ export default function AdminAiConfigView() {
         model: values.model,
         temperature: form.getFieldValue('temperature'),
         timeoutSeconds: form.getFieldValue('timeoutSeconds'),
-        userAgent: form.getFieldValue('userAgent')
+        userAgent: form.getFieldValue('userAgent'),
+        customHeaders: form.getFieldValue('customHeaders')
       })
       setTestResult(res)
       if (res.success) {
@@ -567,6 +597,34 @@ export default function AdminAiConfigView() {
             tooltip="部分聚合通道或云厂商 WAF 对默认 Java/OkHttp 客户端有访问限制，可填入常见浏览器或客户端标识"
           >
             <Input placeholder="留空使用网关默认 User-Agent" />
+          </Form.Item>
+
+          <Form.Item
+            name="customHeaders"
+            label="自定义扩展 HTTP 请求头 (JSON 格式，可选)"
+            tooltip='适用于特定厂商/代理网关要求的额外 Header（如 OpenCode 要求 {"x-opencode-session": "..."}），留空或填 {} 表示无额外头'
+            rules={[
+              {
+                validator: async (_, value) => {
+                  if (!value || !value.trim()) return
+                  try {
+                    const parsed = JSON.parse(value)
+                    if (typeof parsed !== 'object' || Array.isArray(parsed) || parsed === null) {
+                      throw new Error('必须为有效的 JSON 对象')
+                    }
+                  } catch {
+                    throw new Error(
+                      '请输入合法的 JSON 对象字符串，例如 {"x-opencode-session": "xxx"}'
+                    )
+                  }
+                }
+              }
+            ]}
+          >
+            <Input.TextArea
+              rows={3}
+              placeholder={'例如：{\n  "x-opencode-session": "my-session-uuid-123"\n}'}
+            />
           </Form.Item>
 
           <Form.Item name="isActive" label="保存后立即设为当前生效配置" valuePropName="checked">

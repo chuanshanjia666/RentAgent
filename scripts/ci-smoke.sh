@@ -128,8 +128,7 @@ wait_for_model() {
   fi
   code=$(curl -sS -m 15 "$BASE/ai/engine" 2>/dev/null | jq -r '.code // empty' 2>/dev/null || true)
   printf '\n\033[31m✗\033[0m 未接入可用大模型（GET /ai/engine → code=%s）\n' "${code:-无响应}"
-  printf '  本系统已移除全部模拟实现：AI 对话与四项 AI 分析必须接真实模型，缺模型即报 4001。\n'
-  printf '  本地：用 server/run-dev.sh 启动，或自行 export AI_API_KEY / AGGREGATOR_API_KEY 等凭据。\n'
+  printf '  本地：可在管理员控制台（UI）配置并启用供应商，或自行 export AI_API_KEY / AGGREGATOR_API_KEY 等凭据。\n'
   printf '  CI：仓库 Settings → Secrets and variables → Actions 配置 AGGREGATOR_API_KEY\n'
   printf '      （模型与端点可选：AGGREGATOR_MODEL / AGGREGATOR_BASE_URL / AI_BACKEND）。\n'
   exit 2

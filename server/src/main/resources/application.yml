@@ -60,7 +60,7 @@ ai:
   #   openai-chat-completions  OpenAI Chat Completions（最通用：自建/厂商/聚合网关多兼容此协议）
   #   anthropic-messages       Anthropic Messages 原生协议
   #   openai-responses         OpenAI Responses API 新接口（内置适配器）
-  # 生效顺序：AI_BACKEND 指定的命名后端 → backends 中第一个有 Key 的 → 快捷单后端 → 都没有则降级规则引擎
+  # 生效顺序：数据库中已激活的供应商配置优先 → 配置文件中 AI_BACKEND 指定的命名后端 → 快捷单后端 → 均未配置则返回 4001（硬报错无兜底）
   active: ${AI_BACKEND:}
   protocol: ${AI_PROTOCOL:openai-chat-completions}
   base-url: ${AI_BASE_URL:https://api.openai.com/v1}
@@ -80,7 +80,7 @@ ai:
       protocol: openai-chat-completions
       base-url: ${AGGREGATOR_BASE_URL:https://api.commandcode.ai/provider/v1}
       api-key: ${AGGREGATOR_API_KEY:}
-      model: ${AGGREGATOR_MODEL:deepseek/deepseek-v4.1-flash}
+      model: ${AGGREGATOR_MODEL:inclusionai/ling-3.1-flash:free}
       # 该网关的边缘按 UA 放行，默认客户端 UA（okhttp/java）会被限流或截断流式响应，故显式覆盖
       user-agent: ${AGGREGATOR_USER_AGENT:curl/8.5.0}
     claude-messages: # Claude 官方端点（Anthropic Messages 原生协议）

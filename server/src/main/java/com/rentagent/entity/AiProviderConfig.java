@@ -47,6 +47,9 @@ public class AiProviderConfig {
     /** 自定义 User-Agent（可选） */
     private String userAgent;
 
+    /** 自定义请求头（JSON 键值对字符串，如 {"x-opencode-session":"xxx"}） */
+    private String customHeaders;
+
     /** 是否当前生效：1是 0否 */
     private Integer isActive;
 

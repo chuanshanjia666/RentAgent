@@ -647,7 +647,7 @@ TABLE_LIST = [
     ("16", "ai_analysis", "AI 分析结果", "id", "user_id（逻辑关联）", "type 定价/检测/解读/识别；target_type、target_id；input_snapshot；result(JSON)；model"),
     ("17", "kb_document", "知识库文档", "id", "—", "title；category；source_url；content；status；chunk_count"),
     ("18", "kb_chunk", "知识库切片", "id", "document_id", "seq；content；token_count；vector_ref；UNIQUE(document_id, seq)"),
-    ("19", "ai_provider_config", "AI供应商配置", "id", "—", "name；protocol；base_url；api_key；model；temperature；max_tokens；timeout_seconds；is_active(生效标记)"),
+    ("19", "ai_provider_config", "AI供应商配置", "id", "—", "name；protocol；base_url；api_key；model；temperature；max_tokens；timeout_seconds；custom_headers(自定义请求头JSON)；is_active(生效标记)"),
 ]
 
 PHYS_CONV = [

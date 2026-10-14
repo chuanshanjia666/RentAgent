@@ -27,13 +27,12 @@ docker compose up -d mysql redis
 
 ```bash
 cd server
-# 方式一：本地开发脚本（含个人 API Key，已被 .gitignore 排除，按需填入自己的 Key）
+# 方式一：本地开发启动脚本（直接运行即可，后端默认启动）
 ./run-dev.sh
-# 方式二：环境变量直配——任意兼容端点 + 任意模型（协议默认 OpenAI Chat Completions）
-AI_API_KEY=你的Key \
-AI_BASE_URL=https://你的端点/v1 \
-AI_MODEL=你的模型名 mvn spring-boot:run
-# 方式三：切命名后端（yml 里预置了聚合网关 / DeepSeek / Claude / OpenAI 四条通道）
+# 方式二：在前端管理员控制台（UI）动态配置与热切换（推荐）
+#   登录管理员账号后进入「AI 供应商配置」页面，直接添加/切换 DeepSeek、OpenCode、CommandCode 等供应商，
+#   保存即存入数据库并热生效，无需重启服务或改动配置文件。
+# 方式三：环境变量预置（作为数据库未配置时的默认兜底通道）
 AI_BACKEND=commandcode-chat AGGREGATOR_API_KEY=你的Key mvn spring-boot:run
 # 方式四：不配 Key —— AI 能力会明确报 4001（本系统不使用模拟/规则兜底，其余功能正常）
 mvn spring-boot:run
