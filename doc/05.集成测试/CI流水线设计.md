@@ -1,7 +1,7 @@
 # RentAgent CI 流水线设计
 
 > 项目名称：RentAgent —— 基于 AI 智能体的房屋租赁系统
-> 文档版本：v1.12（v1.12 于 2026-10-14 调整 CI/CD 默认大模型通道为 Opencode GO 的 `deepseek-v4.1-flash`（`openai-chat-completions` 兼容协议，端点 `https://opencode.ai/zen/go/v1`）；网关支持自动补齐 OpenCode 必需的 `x-opencode-session` 请求头；后端单测基线 221 → **222 条**（新增 `UT-PROPS-07`）；`docker-compose.yml` 与 `application.yml` 同步注册 `opencode-go` 命名后端；关联《概要设计》v1.17）
+> 文档版本：v1.12（v1.12 于 2026-10-14 调整 CI/CD 默认大模型通道为 Opencode GO 的 `deepseek-v4.1-flash`（`openai-chat-completions` 兼容协议，端点 `https://opencode.ai/zen/go/v1`）；通过 `application.yml` 的 `headers` 与 CI 环境变量注入 OpenCode 所需的 `x-opencode-session` 请求头，代码零特判；后端单测基线保持 **221 条**；`docker-compose.yml` 与 `application.yml` 同步注册 `opencode-go` 命名后端；关联《概要设计》v1.17）
 > 文档版本：v1.11（v1.11 于 2026-10-13 同步 AI 供应商动态配置入库与管理控制台功能：数据库表由 18 张增至 **19 张**（新增 `ai_provider_config` 表并同步 CI 建表校验）；后端单测基线 213 → **221 条**（新增 `AiConfigServiceTest` 8 项单测）；集成冒烟断言数 148 → **158 条**（新增非管理员 1007 拦截、配置概览、入库新增、带脱敏更新、删除未激活配置等断言）；精简 `run-dev.sh` 移除个人硬编码 Key；关联《数据库设计简介》v1.7、《单元测试用例设计》v1.10、《概要设计》v1.16）
 > 文档版本：v1.10（v1.10 于 2026-09-22 同步 AI 回复内链接渲染缺陷修复：前端单测门禁 26 → **32 条**（新增 `FT-CHAT-01~06`——找房助手输出的 `[标题](#/app/houses/{id})` 站内链接此前因前缀判定误写 `#:` 恒以纯文本显示、不可点击，渲染逻辑抽至 `chatLinks.tsx` 并补回归），§一/§2.1 同步；顺带校正 §一 门禁表与 §2.3 流程图的后端单测计数漏改（212 → 213）；集成冒烟断言数不变（**148 条**）；关联《单元测试用例设计》v1.9）
 > 文档版本：v1.9（v1.9 于 2026-09-22 同步评价闭环断言：集成冒烟断言数 146 → **148 条**（IT-6 新增 reviewed 前后回填 2 条：未评价订单回填 `reviewed=false`、评价后回填 `reviewed=true`），§一/§2.1/流程图同步；后端单测基线 212 → **213 条**（`UT-CONTRACT-22`）；关联《单元测试用例设计》v1.8、《测试用例设计》v1.9、《概要设计》v1.15）
@@ -49,7 +49,7 @@
 
 | 门禁 | 命令 | 拦截什么 |
 | ---- | ---- | -------- |
-| 后端单元测试 | `mvn -B -ntp test`（222 条） | 业务状态机、权限、金额/日期计算、加解密回归、AI 配置持久化与热加载 |
+| 后端单元测试 | `mvn -B -ntp test`（221 条） | 业务状态机、权限、金额/日期计算、加解密回归、AI 配置持久化与热加载 |
 | 前端静态检查与格式 | `npm run lint` + `npm run format:check`（ESLint + Prettier） | 死导入与未使用变量、hook 依赖数组遗漏、缩进引号等风格漂移 |
 | 前端单测 | `npm test`（vitest，32 条） | 运行时地址解析、状态字典、SSE 流式解析、AI 回复内链接渲染 |
 | 前端类型与构建 | `npm run build:web`（`tsc --noEmit` + vite） | TS 严格模式下的类型错误、构建失败 |
@@ -74,7 +74,7 @@
 | ---- | ---- |
 | 检出代码 | `actions/checkout@v5` |
 | 环境 | `actions/setup-java@v5`（temurin 17，`cache: maven`） |
-| 执行 | `mvn -B -ntp test`（工作目录 `server/`，222 条单测） |
+| 执行 | `mvn -B -ntp test`（工作目录 `server/`，221 条单测） |
 | 归档 | `actions/upload-artifact@v6` 上传 `server/target/surefire-reports/`（`if: always()`，失败可下载报告定位） |
 
 不启任何服务容器：本层用例全部为 Mockito 打桩，不连库、不连缓存、不连网络。
@@ -143,7 +143,7 @@
 ```
 push / PR / 手动
         │
-        ├── backend-test      JDK17 ── mvn test（222 条）────────────────────────────────────────┐
+        ├── backend-test      JDK17 ── mvn test（221 条）────────────────────────────────────────┐
         ├── frontend-test     Node20 ── npm ci → lint → format:check → vitest → build:web ───────┤ 并行
         └── integration-smoke JDK17 + mysql:8.0 + redis:7                                        │
                               └─ 建表（19张） → 打包 → 启动 → ci-smoke.sh（158 条）              ┘
