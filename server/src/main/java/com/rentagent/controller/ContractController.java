@@ -6,6 +6,7 @@ import com.rentagent.dto.PageVO;
 import com.rentagent.dto.TradeDto;
 import com.rentagent.entity.Contract;
 import com.rentagent.entity.RentBill;
+import com.rentagent.security.RequireRole;
 import com.rentagent.security.UserContext;
 import com.rentagent.service.AnalysisService;
 import com.rentagent.service.ContractService;
@@ -29,6 +30,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
+@RequireRole({1, 2, 3})
 public class ContractController {
 
     private final ContractService contractService;
@@ -36,6 +38,7 @@ public class ContractController {
 
     @Operation(summary = "发起签约（租客，生成电子合同）")
     @PostMapping("/contracts")
+    @RequireRole(1)
     public R<Contract> create(@Valid @RequestBody TradeDto.ContractCreateReq req) {
         return R.ok(contractService.create(req.houseId(), req.startDate(), req.endDate(), UserContext.userId()));
     }
@@ -86,6 +89,7 @@ public class ContractController {
 
     @Operation(summary = "标记账单已支付（演示：仅记录）")
     @PatchMapping("/bills/{id}/pay")
+    @RequireRole(1)
     public R<Void> payBill(@PathVariable long id) {
         contractService.payBill(id, UserContext.userId());
         return R.ok();

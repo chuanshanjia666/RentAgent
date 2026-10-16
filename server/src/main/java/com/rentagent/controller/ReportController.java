@@ -3,6 +3,7 @@ package com.rentagent.controller;
 import com.rentagent.common.R;
 import com.rentagent.dto.TradeDto;
 import com.rentagent.entity.Report;
+import com.rentagent.security.RequireRole;
 import com.rentagent.security.UserContext;
 import com.rentagent.service.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/reports")
 @RequiredArgsConstructor
+@RequireRole({1, 2, 3})
 public class ReportController {
 
     private final ReportService reportService;

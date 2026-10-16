@@ -46,8 +46,14 @@ public class CryptoUtil {
     }
 
     public String decrypt(String base64) {
+        if (base64 == null) {
+            throw new IllegalArgumentException("密文不可为空");
+        }
         try {
             byte[] all = Base64.getDecoder().decode(base64);
+            if (all.length <= GCM_IV_LEN) {
+                throw new IllegalArgumentException("密文长度不足");
+            }
             // 前 12 字节为随机 IV，其余为密文（含 GCM 认证标签）
             byte[] iv = Arrays.copyOf(all, GCM_IV_LEN);
             Cipher cipher = Cipher.getInstance(AES_TRANSFORMATION);

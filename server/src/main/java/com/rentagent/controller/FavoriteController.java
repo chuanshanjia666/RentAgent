@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rentagent.common.R;
 import com.rentagent.dto.PageVO;
 import com.rentagent.entity.House;
+import com.rentagent.security.RequireRole;
 import com.rentagent.security.UserContext;
 import com.rentagent.service.SearchService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
+@RequireRole({1, 2, 3})
 public class FavoriteController {
 
     private final SearchService searchService;

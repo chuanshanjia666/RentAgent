@@ -437,6 +437,7 @@ class ContractServiceTest {
         order.setTenantId(TENANT);
         order.setLandlordId(LANDLORD);
         when(billMapper.selectById(31L)).thenReturn(bill);
+        when(billMapper.update(any(), any())).thenReturn(1);
         when(orderMapper.selectById(66L)).thenReturn(order);
 
         service.payBill(31L, TENANT);

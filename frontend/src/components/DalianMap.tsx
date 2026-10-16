@@ -44,6 +44,7 @@ export default function DalianMap({
   onPick: (id: number) => void
 }) {
   const el = useRef<HTMLDivElement | null>(null)
+  const chartRef = useRef<echarts.ECharts | null>(null)
   const pickRef = useRef(onPick)
   pickRef.current = onPick
 
@@ -51,6 +52,8 @@ export default function DalianMap({
     if (!el.current) return
     ensureMap()
     const chart = echarts.init(el.current)
+    chartRef.current = chart
+
     chart.setOption({
       tooltip: {
         trigger: 'item',
@@ -95,16 +98,11 @@ export default function DalianMap({
             scale: 1.5,
             itemStyle: { shadowBlur: 8, shadowColor: 'rgba(188,74,29,.45)' }
           },
-          data: points.map(p => ({
-            name: p.title,
-            district: p.district,
-            rent: p.rent,
-            value: [p.lng, p.lat],
-            id: p.id
-          }))
+          data: []
         }
       ]
     })
+
     // 只认散点系列的点击；data 形状由上方 series.data 决定，any 规避 echarts 泛型对 null 联合的误报
     chart.on('click', (p: any) => {
       if (p?.componentType === 'series' && typeof p?.data?.id === 'number') {
@@ -116,7 +114,24 @@ export default function DalianMap({
     return () => {
       window.removeEventListener('resize', onResize)
       chart.dispose()
+      chartRef.current = null
     }
+  }, [])
+
+  useEffect(() => {
+    chartRef.current?.setOption({
+      series: [
+        {
+          data: points.map(p => ({
+            name: p.title,
+            district: p.district,
+            rent: p.rent,
+            value: [p.lng, p.lat],
+            id: p.id
+          }))
+        }
+      ]
+    })
   }, [points])
 
   return <div ref={el} style={{ width: '100%', height: 560, borderRadius: 8 }} />

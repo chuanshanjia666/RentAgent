@@ -5,6 +5,7 @@ import com.rentagent.dto.AiDto;
 import com.rentagent.dto.HouseDto;
 import com.rentagent.dto.PageVO;
 import com.rentagent.entity.AiChatSession;
+import com.rentagent.security.RequireRole;
 import com.rentagent.security.UserContext;
 import com.rentagent.service.AnalysisService;
 import com.rentagent.service.ChatService;
@@ -39,12 +40,14 @@ public class AiController {
 
     @Operation(summary = "创建会话（scene 1找房助手 2智能客服 3合同解读）")
     @PostMapping("/sessions")
+    @RequireRole({1, 2, 3})
     public R<AiChatSession> createSession(@Valid @RequestBody AiDto.SessionCreateReq req) {
         return R.ok(chatService.createSession(UserContext.userId(), req.scene(), req.title()));
     }
 
     @Operation(summary = "我的会话列表")
     @GetMapping("/sessions")
+    @RequireRole({1, 2, 3})
     public R<PageVO<AiChatSession>> sessions(@RequestParam(defaultValue = "1") long page,
                                              @RequestParam(defaultValue = "20") long size) {
         return R.ok(PageVO.of(chatService.sessions(UserContext.userId(), page, size)));
@@ -52,12 +55,14 @@ public class AiController {
 
     @Operation(summary = "会话历史")
     @GetMapping("/sessions/{id}/history")
+    @RequireRole({1, 2, 3})
     public R<List<AiDto.MessageVO>> history(@PathVariable long id) {
         return R.ok(chatService.history(id, UserContext.userId()));
     }
 
     @Operation(summary = "发送消息（SSE 流式返回：delta* + done）")
     @PostMapping(value = "/sessions/{id}/messages", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequireRole({1, 2, 3})
     public SseEmitter send(@PathVariable long id, @Valid @RequestBody AiDto.MessageSendReq req) {
         return chatService.send(id, req.content(), UserContext.userId());
     }
@@ -70,12 +75,14 @@ public class AiController {
 
     @Operation(summary = "智能定价建议（房东，FR-15）")
     @PostMapping("/houses/{id}/pricing-suggestion")
+    @RequireRole({2, 3})
     public R<AiDto.PricingVO> pricing(@PathVariable long id) {
         return R.ok(analysisService.pricing(id, UserContext.userId()));
     }
 
     @Operation(summary = "房源信息智能识别填充（房东，FR-08）")
     @PostMapping("/assist-fill")
+    @RequireRole({2, 3})
     public R<HouseDto.AiFillVO> assistFill(@Valid @RequestBody HouseDto.AiFillReq req) {
         return R.ok(analysisService.assistFill(req, UserContext.userId()));
     }

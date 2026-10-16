@@ -379,6 +379,12 @@ class HouseServiceTest {
         assertEquals(3L, item.reviewCount());
         // 浏览计数走 SQL 自增，不读改写
         verify(houseMapper).update(any(), any());
+
+        // 匿名或 AI 查询（viewer 为 null）不自增浏览计数
+        org.mockito.Mockito.clearInvocations(houseMapper);
+        UserContext.clear();
+        service.detail(101L, null);
+        verify(houseMapper, org.mockito.Mockito.never()).update(any(), any());
     }
 
     @Test

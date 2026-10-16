@@ -4,6 +4,7 @@ import com.rentagent.common.R;
 import com.rentagent.dto.PageVO;
 import com.rentagent.dto.TradeDto;
 import com.rentagent.entity.Review;
+import com.rentagent.security.RequireRole;
 import com.rentagent.security.UserContext;
 import com.rentagent.service.ReviewService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,6 +31,7 @@ public class ReviewController {
 
     @Operation(summary = "提交评价（仅完成合同可评，一单一评）")
     @PostMapping("/reviews")
+    @RequireRole(1)
     public R<Review> create(@Valid @RequestBody TradeDto.ReviewReq req) {
         return R.ok(reviewService.create(req.leaseOrderId(), req.houseScore(), req.landlordScore(),
                 req.content(), UserContext.userId()));

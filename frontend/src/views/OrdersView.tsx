@@ -23,6 +23,7 @@ export default function OrdersView() {
   const isLandlord = auth.role === 2
   const list = usePagedList<OrderVo>('/orders')
   const [bills, setBills] = useState<Record<number, RentBill[]>>({})
+  const [payingBillId, setPayingBillId] = useState<number | null>(null)
   const [reviewRow, setReviewRow] = useState<OrderRow | null>(null)
   const [reviewForm, setReviewForm] = useState({ houseScore: 5, landlordScore: 5, content: '' })
 
@@ -34,9 +35,15 @@ export default function OrdersView() {
   }
 
   async function pay(row: OrderRow, bill: RentBill) {
-    await http.patch(`/bills/${bill.id}/pay`)
-    message.success('已记录支付（演示环境不对接真实支付）')
-    loadBills(row)
+    if (payingBillId !== null) return
+    setPayingBillId(bill.id)
+    try {
+      await http.patch(`/bills/${bill.id}/pay`)
+      message.success('已记录支付（演示环境不对接真实支付）')
+      await loadBills(row)
+    } finally {
+      setPayingBillId(null)
+    }
   }
 
   function openReview(row: OrderRow) {
@@ -136,7 +143,13 @@ export default function OrdersView() {
         title: '操作',
         render: (_, b) =>
           b.status === 0 ? (
-            <Button size="small" type="primary" onClick={() => pay(row, b)}>
+            <Button
+              size="small"
+              type="primary"
+              loading={payingBillId === b.id}
+              disabled={payingBillId !== null && payingBillId !== b.id}
+              onClick={() => pay(row, b)}
+            >
               标记已支付
             </Button>
           ) : null

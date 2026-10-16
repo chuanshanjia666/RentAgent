@@ -26,6 +26,7 @@ export default function HomeView() {
     rentMax: '',
     sort: 'new'
   })
+  const [applied, setApplied] = useState<HouseQuery>(q)
   const [list, setList] = useState<House[]>([])
   const [recommend, setRecommend] = useState<House[]>([])
   const [total, setTotal] = useState(0)
@@ -46,7 +47,7 @@ export default function HomeView() {
     ...extra
   })
 
-  async function load(p: number = page, query: HouseQuery = q) {
+  async function load(p: number = page, query: HouseQuery = applied) {
     const data = await http.get<PageResult<House>>('/houses', {
       params: searchParams(query, { page: p, size })
     })
@@ -58,6 +59,7 @@ export default function HomeView() {
     setPage(1)
     setSearched(true)
     setMapMode(false)
+    setApplied(q)
     load(1, q)
   }
 
@@ -68,7 +70,7 @@ export default function HomeView() {
   async function toggleMap(on: boolean) {
     setMapMode(on)
     if (!on) return
-    const points = await http.get<House[]>('/houses/map', { params: searchParams(q) })
+    const points = await http.get<House[]>('/houses/map', { params: searchParams(applied) })
     setMapList(points)
   }
 
@@ -204,13 +206,6 @@ export default function HomeView() {
           <h3 className="sec-title">
             为你推荐
             <span className="sec-note">基于你的收藏与看房记录</span>
-            <Switch
-              style={{ marginLeft: 'auto', fontWeight: 400 }}
-              checked={mapMode}
-              onChange={toggleMap}
-              checkedChildren="地图"
-              unCheckedChildren="列表"
-            />
           </h3>
           <div className="house-grid" style={{ marginBottom: 24 }}>
             {recommend.map(h => (
@@ -220,28 +215,34 @@ export default function HomeView() {
         </>
       )}
 
-      {mapMode ? (
-        <div className="map-panel">
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <b>地图找房 · 大连市真实区界</b>
-            <span style={{ color: '#82948e', fontSize: 12 }}>
+      <h3 className="sec-title">
+        {mapMode ? (
+          <>
+            地图找房 · 大连市真实区界
+            <span className="sec-note">
               共 {mapPoints.length} 套在租房源，滚轮缩放，点击圆点查看详情
             </span>
-          </div>
+          </>
+        ) : (
+          <>
+            在租房源 <span className="sec-note">共 {total} 套</span>
+          </>
+        )}
+        <Switch
+          style={{ marginLeft: 'auto', fontWeight: 400 }}
+          checked={mapMode}
+          onChange={toggleMap}
+          checkedChildren="地图"
+          unCheckedChildren="列表"
+        />
+      </h3>
+
+      {mapMode ? (
+        <div className="map-panel">
           <DalianMap points={mapPoints} onPick={id => nav(`/app/houses/${id}`)} />
         </div>
       ) : (
         <>
-          <h3 className="sec-title">
-            在租房源 <span className="sec-note">共 {total} 套</span>
-            <Switch
-              style={{ marginLeft: 'auto', fontWeight: 400 }}
-              checked={mapMode}
-              onChange={toggleMap}
-              checkedChildren="地图"
-              unCheckedChildren="列表"
-            />
-          </h3>
           {list.length > 0 ? (
             <div className="house-grid">
               {list.map(h => (

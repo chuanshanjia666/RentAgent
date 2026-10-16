@@ -212,6 +212,9 @@ public class ContractService {
             billMapper.insert(bill);
         }
         House house = houseMapper.selectById(c.getHouseId());
+        if (house == null || house.getStatus() != HouseService.ST_ONLINE) {
+            throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID.getCode(), "房源已被出租或当前状态不允许签约");
+        }
         house.setStatus(HouseService.ST_RENTED);
         houseMapper.updateById(house);
         notification.send(c.getTenantId(), 3, "合同已生效",
@@ -242,7 +245,13 @@ public class ContractService {
         Page<Contract> p = contractMapper.selectPage(new Page<>(page, size), new LambdaQueryWrapper<Contract>()
                 .eq(Contract::getTenantId, uid).or().eq(Contract::getLandlordId, uid)
                 .orderByDesc(Contract::getId));
-        return PageVO.map(p, c -> new TradeDto.ContractVO(c, houseTitle(c)));
+        List<Long> houseIds = p.getRecords().stream().map(Contract::getHouseId).distinct().toList();
+        Map<Long, House> houseMap = houseIds.isEmpty() ? Map.of()
+                : houseMapper.selectBatchIds(houseIds).stream().collect(Collectors.toMap(House::getId, h -> h));
+        return PageVO.map(p, c -> {
+            House h = houseMap.get(c.getHouseId());
+            return new TradeDto.ContractVO(c, h == null ? "房源" : h.getTitle());
+        });
     }
 
     public LeaseOrder orderByContract(long contractId) {
@@ -305,6 +314,7 @@ public class ContractService {
     }
 
     /** 标记账单支付（仅记录，FR-19 范围不含真实支付渠道） */
+    @Transactional
     public void payBill(long billId, long uid) {
         RentBill bill = billMapper.selectById(billId);
         if (bill == null) {
@@ -317,9 +327,17 @@ public class ContractService {
         if (bill.getStatus() != 0) {
             throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "账单状态不允许支付");
         }
+        LocalDateTime now = LocalDateTime.now();
+        int rows = billMapper.update(null, new LambdaUpdateWrapper<RentBill>()
+                .eq(RentBill::getId, billId)
+                .eq(RentBill::getStatus, 0)
+                .set(RentBill::getStatus, 1)
+                .set(RentBill::getPaidAt, now));
+        if (rows == 0) {
+            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "账单状态不允许支付");
+        }
         bill.setStatus(1);
-        bill.setPaidAt(LocalDateTime.now());
-        billMapper.updateById(bill);
+        bill.setPaidAt(now);
         notification.send(order.getLandlordId(), 4, "租金已支付",
                 "第 " + bill.getPeriodNo() + " 期租金 ¥" + bill.getAmount() + " 已确认支付", "order", order.getId());
     }
@@ -346,12 +364,13 @@ public class ContractService {
 
     /** 合同模板渲染：条款集合 JSON（演示模板，条款含风险示例由 AI 解读标红） */
     private String buildClauses(House house, SysUser tenant, SysUser landlord, LocalDate start, LocalDate end) {
+        long months = Math.max(1, ChronoUnit.MONTHS.between(start, end));
         List<Map<String, String>> clauses = new ArrayList<>();
         clauses.add(Map.of("title", "租赁标的", "text", "甲方（房东）" + landlord.getNickname() + "将位于" +
                 house.getCity() + house.getDistrict() + house.getCommunity() + "的房屋（" + house.getLayout() +
                 "，" + house.getArea() + "㎡）出租给乙方（租客）" + tenant.getNickname() + "居住使用。"));
         clauses.add(Map.of("title", "租期", "text", "租赁期自 " + start + " 至 " + end + "，共 " +
-                ChronoUnit.MONTHS.between(start, end) + " 个月。"));
+                months + " 个月。"));
         clauses.add(Map.of("title", "租金与押金", "text", "月租金人民币 " + house.getRent() + " 元，押付方式：" +
                 house.getDepositType() + "，押金人民币 " + house.getRent() + " 元，合同期满无违约无损坏全额退还。"));
         clauses.add(Map.of("title", "费用承担", "text", "租赁期内水费、电费、燃气费、物业费、网络费由乙方承担；房屋主体结构自然损坏的维修由甲方承担。"));

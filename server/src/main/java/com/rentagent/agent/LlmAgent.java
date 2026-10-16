@@ -1,6 +1,7 @@
 package com.rentagent.agent;
 
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.output.Response;
@@ -15,6 +16,7 @@ import com.rentagent.config.AiConfigChangedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -261,6 +263,7 @@ public class LlmAgent implements AgentEngine {
      */
     private void syncRun(long sessionId, String userMessage, Callback callback) {
         try {
+            trimTrailingUserMessage(sessionId);
             String text = assistant().chatSync(sessionId, userMessage);
             if (text == null) {
                 text = "";
@@ -272,6 +275,24 @@ public class LlmAgent implements AgentEngine {
             callback.onComplete(text, citations, text.contains(TRANSFER_MARK));
         } catch (Exception e) {
             fail(sessionId, e, callback);
+        }
+    }
+
+    /**
+     * 重试前清理流式阶段已入记忆的未完结用户消息，防止同一轮次出现连续两条 UserMessage 破坏协议角色交替契约
+     */
+    private void trimTrailingUserMessage(long sessionId) {
+        ChatMemory memory = memories.get(sessionId);
+        if (memory == null) {
+            return;
+        }
+        List<ChatMessage> list = memory.messages();
+        if (!list.isEmpty() && list.get(list.size() - 1) instanceof dev.langchain4j.data.message.UserMessage) {
+            List<ChatMessage> toKeep = new java.util.ArrayList<>(list.subList(0, list.size() - 1));
+            memory.clear();
+            for (ChatMessage m : toKeep) {
+                memory.add(m);
+            }
         }
     }
 
@@ -289,6 +310,8 @@ public class LlmAgent implements AgentEngine {
             if (memory != null) {
                 memory.clear();
             }
+        } else {
+            trimTrailingUserMessage(sessionId);
         }
         callback.onError(error);
     }

@@ -91,9 +91,9 @@ public class AdminService {
                 houseMapper.selectCount(new LambdaQueryWrapper<House>().eq(House::getStatus, HouseService.ST_PENDING)),
                 houseMapper.selectCount(new LambdaQueryWrapper<House>().eq(House::getStatus, HouseService.ST_RENTED)),
                 orderMapper.selectCount(null),
-                trend(userMapper, fmt, "sys_user", "role != 3"),
-                trend(houseMapper, fmt, "house", null),
-                trend(orderMapper, fmt, "lease_order", null),
+                trend(userMapper, fmt, "role != 3"),
+                trend(houseMapper, fmt, null),
+                trend(orderMapper, fmt, null),
                 ai.chatCount(), ai.chatMessageCount(), ai.toolCallCount(), ai.transferredCount(), ai.chatTrend());
     }
 
@@ -104,7 +104,7 @@ public class AdminService {
      * 拿到的是全量数据里最早的那些周期，库龄超过 30 天后看板会永远停在陈年区间、看不到近期增长。
      */
     private <T> List<Map<String, Object>> trend(BaseMapper<T> mapper,
-                                                String fmt, String table, String where) {
+                                                String fmt, String where) {
         QueryWrapper<T> w = new QueryWrapper<T>()
                 .select("DATE_FORMAT(created_at, '" + fmt + "') AS period", "COUNT(*) AS cnt")
                 .groupBy("period").orderByDesc("period").last("LIMIT " + MAX_PERIODS);

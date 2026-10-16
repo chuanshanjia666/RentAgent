@@ -16,6 +16,7 @@ import com.rentagent.mapper.ViewingAppointmentMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -69,6 +70,7 @@ public class AppointmentService {
     }
 
     /** confirm/reject（房东）、cancel（租客）、complete（房东） */
+    @Transactional
     public void act(long id, String action, String reason, long uid, int role) {
         ViewingAppointment a = mapper.selectById(id);
         if (a == null) {

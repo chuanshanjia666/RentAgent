@@ -171,7 +171,7 @@ public class HouseService {
         if (!listed && !isOwner && !isAdmin) {
             throw new BizException(ErrorCode.HOUSE_NOT_FOUND);
         }
-        if (!isOwner && !isAdmin) {
+        if (viewer != null && !isOwner && !isAdmin) {
             houseMapper.update(null, new LambdaUpdateWrapper<House>()
                     .eq(House::getId, id).setSql("view_count = view_count + 1"));
         }
