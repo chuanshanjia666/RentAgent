@@ -4,7 +4,6 @@ import com.rentagent.common.R;
 import com.rentagent.dto.HouseDto;
 import com.rentagent.dto.PageVO;
 import com.rentagent.entity.House;
-import com.rentagent.security.RequireRole;
 import com.rentagent.security.UserContext;
 import com.rentagent.service.HouseService;
 import com.rentagent.service.SearchService;
@@ -36,14 +35,12 @@ public class HouseController {
 
     @Operation(summary = "发布房源（房东，须已实名）")
     @PostMapping("/houses")
-    @RequireRole({2, 3})
     public R<House> create(@Valid @RequestBody HouseDto.SaveReq req) {
         return R.ok(houseService.create(req, UserContext.userId()));
     }
 
     @Operation(summary = "编辑房源（重新进入待审核）")
     @PutMapping("/houses/{id}")
-    @RequireRole({2, 3})
     public R<Void> update(@PathVariable long id, @Valid @RequestBody HouseDto.SaveReq req) {
         houseService.update(id, req, UserContext.userId());
         return R.ok();
@@ -51,7 +48,6 @@ public class HouseController {
 
     @Operation(summary = "上架/下架（房东）")
     @PatchMapping("/houses/{id}/status")
-    @RequireRole({2, 3})
     public R<Void> changeStatus(@PathVariable long id, @Valid @RequestBody HouseDto.StatusReq req) {
         houseService.changeStatus(id, req.action(), UserContext.userId());
         return R.ok();
@@ -59,7 +55,6 @@ public class HouseController {
 
     @Operation(summary = "我的房源（房东）")
     @GetMapping("/landlord/houses")
-    @RequireRole({2, 3})
     public R<PageVO<House>> myHouses(@RequestParam(defaultValue = "1") long page,
                                      @RequestParam(defaultValue = "10") long size) {
         return R.ok(PageVO.of(houseService.myHouses(UserContext.userId(), page, size)));

@@ -3,7 +3,6 @@ package com.rentagent.controller;
 import com.rentagent.common.R;
 import com.rentagent.dto.PageVO;
 import com.rentagent.entity.Notification;
-import com.rentagent.security.RequireRole;
 import com.rentagent.security.UserContext;
 import com.rentagent.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,7 +20,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/notifications")
 @RequiredArgsConstructor
-@RequireRole({1, 2, 3})
 public class NotificationController {
 
     private final NotificationService notificationService;
