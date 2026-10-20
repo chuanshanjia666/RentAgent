@@ -487,11 +487,10 @@ export default function AdminAiConfigView() {
       >
         <div>
           <h2 className="page-title" style={{ marginBottom: 4 }}>
-            AI 供应商独立配置中心
+            AI 供应商配置
           </h2>
           <p style={{ margin: 0, color: '#657771', fontSize: 13 }}>
-            大语言模型（LLM）与词嵌入模型（Embedding）完全解耦，支持分别独立配置端点、API Key
-            与生效激活。
+            支持分别配置大语言模型（LLM）与词嵌入模型（Embedding）的接口地址、密钥及生效状态。
           </p>
         </div>
         <Space>
@@ -584,7 +583,7 @@ export default function AdminAiConfigView() {
         )}
 
         <Form form={form} layout="vertical">
-          <Form.Item label="快捷填充常用厂商预设模板">
+          <Form.Item label="常用服务商预设模板">
             <Select
               placeholder="选择预设自动填充端点与模型参数"
               onChange={applyPreset}
@@ -646,7 +645,7 @@ export default function AdminAiConfigView() {
             label="API Key 凭据"
             rules={editingItem ? [] : [{ required: true, message: '新建配置必须输入 API Key' }]}
             tooltip={
-              editingItem ? '留空表示沿用数据库中已保存的密匙' : '请输入服务提供方签发的 API Key'
+              editingItem ? '留空表示沿用数据库中已保存的密钥' : '请输入服务提供方签发的 API Key'
             }
           >
             <Input.Password

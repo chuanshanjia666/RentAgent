@@ -196,8 +196,8 @@ export default function AiChatView() {
               <b>{scene === 1 ? '找房助手' : '智能客服'}</b>
               <small>
                 {scene === 1
-                  ? '按预算、区域、户型帮你智能匹配全城优质房源'
-                  : '押金规则、提前退租、保修维护等租房问题全天候在线解答'}
+                  ? '按预算、区域与户型检索匹配房源'
+                  : '解答押金规则、提前退租、设施维修等常见问题'}
               </small>
             </div>
           </div>
@@ -210,8 +210,8 @@ export default function AiChatView() {
                 <h3>{scene === 1 ? 'RentAgent AI 找房助手' : 'RentAgent 智能租赁客服'}</h3>
                 <p>
                   {scene === 1
-                    ? '一句话描述你的理想住处，AI 将基于真实房源库进行多维度筛选并给出个性化建议。'
-                    : '租房遇到麻烦？押金、退租、维修、合同争议……在这里都可以随时提问。'}
+                    ? '输入你的租房预算、期望地段或户型，AI 会检索房源库并给出建议。'
+                    : '输入关于押金、退租、维修或合同条款的问题，AI 会基于服务规则进行解答。'}
                 </p>
                 <div className="prompt-grid">
                   {quickPrompts.map(p => (

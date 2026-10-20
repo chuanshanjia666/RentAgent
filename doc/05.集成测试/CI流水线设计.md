@@ -24,11 +24,11 @@
 > 避免异常挂起时吃满 GitHub 默认的 6 小时上限。
 > ③ 容器化前提——新增 `server/Dockerfile`（多阶段 Maven → JRE）与 `server/.dockerignore`，`docker-compose.yml` 的
 > `server` 服务补 `UPLOAD_DIR` 与 `AGGREGATOR_*` 透传（此前 `build: ./server` 指向的上下文里没有 Dockerfile，
-> 且只传了 `AI_API_KEY`，该服务实际起不来、起来了 AI 通道也不可用）；`JWT_SECRET`/`AES_KEY` 故意不在 compose 里
-> 写成 `${VAR:-}`（未设置时会注入空串，比默认值更早炸），对外部署用环境变量或 `env_file`。
+> 且只传了 `AI_API_KEY`，该服务实际起不来、起来了 AI 通道也不可用）；`JWT_SECRET`/`AES_KEY` 不在 compose 里
+> 写成 `${VAR:-}`（未设置时会注入空串，导致应用启动失败），对外部署通过环境变量或 `env_file` 注入。
 > ④ 启动自检——新增 `config/StartupConfigCheck`（`ApplicationRunner`）：启动时检测 JWT_SECRET / AES_KEY / 数据库口令 /
-> 固定验证码仍是仓库默认值即输出 WARN 清单，**只告警不拒绝启动**（本机演示与 CI 都不注入这些变量，fail-fast 会把演示
-> 与门禁一起打死）；CI 日志中出现该告警属预期。
+> 固定验证码仍是仓库默认值即输出 WARN 清单，**只告警不拒绝启动**（本机演示与 CI 默认不注入这些变量，避免因强校验阻断演示
+> 与集成流程）；CI 日志中出现该告警属预期。
 > 变更记录（v1.3，2026-09-18）：前端工程化评审后引入 ESLint（扁平配置 `frontend/eslint.config.js`）与 Prettier
 > （`frontend/prettier.config.js`），`frontend-test` 作业在 `npm ci` 与单测之间插入 `npm run lint` 与
 > `npm run format:check` 两步——前者管"写得对不对"（未使用变量、hook 依赖遗漏），后者管"长得齐不齐"，
@@ -177,7 +177,7 @@ push / PR / 手动
 | `AI_EMBEDDING_API_KEY` | `secrets.AI_EMBEDDING_API_KEY`（可选） | 词嵌入模型专属密钥；未显式指定时，网关自动回退复用 `AGGREGATOR_API_KEY` 或数据库激活网关 |
 
 安全约定：
-- 密钥一律走 GitHub Secrets / 环境变量，仓库内不保存任何真实 Key（`server/run-dev.sh` 含个人 Key，已被 `.gitignore` 忽略，CI 绝不引用）；
+- 密钥一律走 GitHub Secrets / 环境变量，仓库内不保存任何真实 Key（`server/run-dev.sh` 含个人 Key，已被 `.gitignore` 忽略，CI 不会引用）；
 - 集成作业使用一次性数据库容器，无需清理逻辑，也不会污染任何持久数据；
 - 无模型校验步骤通过**同名环境变量置空**（`AGGREGATOR_API_KEY: ''`、`AI_EMBEDDING_BASE_URL: ''`、`AI_EMBEDDING_API_KEY: ''`、`AI_EMBEDDING_ENABLED: 'false'`）构造"未接入模型"的实例，不会误用主实例的凭据。
 

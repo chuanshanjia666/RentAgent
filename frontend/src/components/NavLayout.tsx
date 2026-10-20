@@ -87,7 +87,7 @@ export default function NavLayout() {
           <div className="brand" onClick={() => nav(auth.home)}>
             <span className="seal">租</span>
             <span className="brand-name">RentAgent</span>
-            <span className="brand-plate">AI 智能租房</span>
+            <span className="brand-plate">AI 租房平台</span>
           </div>
           <Menu
             className="nav-menu"

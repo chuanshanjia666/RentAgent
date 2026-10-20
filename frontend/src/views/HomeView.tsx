@@ -110,16 +110,16 @@ export default function HomeView() {
         <p className="hero-sub">一句话让 AI 帮你找房，也可以自己按区域、预算、户型筛选</p>
         <div className="hero-features">
           <span className="hero-feature-item">
-            <span className="hero-feature-dot">✦</span> 100% 真实全城房源
+            <span className="hero-feature-dot">✦</span> 真实房源核验 · 房东实名
           </span>
           <span className="hero-feature-item">
-            <span className="hero-feature-dot">✦</span> AI 找房与智能客服
+            <span className="hero-feature-dot">✦</span> AI 找房与租务解答
           </span>
           <span className="hero-feature-item">
-            <span className="hero-feature-dot">✦</span> 在线签约 · 条款自动解读
+            <span className="hero-feature-dot">✦</span> 在线签约 · 条款辅助解读
           </span>
           <span className="hero-feature-item">
-            <span className="hero-feature-dot">✦</span> 平台资金托管与安心履约
+            <span className="hero-feature-dot">✦</span> 分期账单与线上履约
           </span>
         </div>
         <div className="search-bar">
@@ -250,7 +250,7 @@ export default function HomeView() {
               ))}
             </div>
           ) : (
-            <Empty description="没有符合条件的房源，换个条件试试～" />
+            <Empty description="没有符合条件的房源，可以调整筛选条件重试" />
           )}
           {total > size && (
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 20 }}>

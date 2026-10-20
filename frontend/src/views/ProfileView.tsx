@@ -102,7 +102,7 @@ export default function ProfileView() {
                 type="warning"
                 showIcon
                 style={{ marginBottom: 10 }}
-                message="实名认证审核中，请耐心等待"
+                message="实名认证正在审核，结果将通过站内消息通知"
               />
             )}
             {realname && realname.status === 2 && (

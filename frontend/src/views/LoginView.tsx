@@ -93,7 +93,7 @@ export default function LoginView() {
         </div>
         <div>
           <p className="login-slogan">对话即服务</p>
-          <p className="login-slogan-sub">说说你想怎么住，剩下的交给 AI</p>
+          <p className="login-slogan-sub">描述你的居住需求，由 AI 协助找房与解答</p>
         </div>
         <div className="login-points">
           <div className="login-point">
@@ -102,7 +102,7 @@ export default function LoginView() {
             </span>
             <div>
               <b>对话找房</b>
-              <span>用一句话说清需求，AI 替你筛出合适的房源</span>
+              <span>描述你的居住需求，AI 检索并推荐房源</span>
             </div>
           </div>
           <div className="login-point">
@@ -110,8 +110,8 @@ export default function LoginView() {
               <IconChat size={17} />
             </span>
             <div>
-              <b>智能客服</b>
-              <span>押金、维修、违约，常见问题即时解答</span>
+              <b>租房问答</b>
+              <span>解答押金、退租、维修等常见疑问</span>
             </div>
           </div>
           <div className="login-point">

@@ -416,7 +416,7 @@ export default function LandlordHousesView() {
               icon={<IconWand size={13} />}
               onClick={aiFill}
             >
-              AI 智能填充描述与设施
+              AI 辅助填充描述与设施
             </Button>
           </Form.Item>
           <Form.Item label="房源图片（首图自动作为封面，支持 jpg/png/webp）">
@@ -469,7 +469,7 @@ export default function LandlordHousesView() {
       </Modal>
 
       <Modal
-        title="智能定价建议"
+        title="房源定价建议"
         open={priceOpen}
         footer={null}
         width={460}

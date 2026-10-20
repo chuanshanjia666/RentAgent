@@ -215,7 +215,7 @@ export default function ContractsView() {
       </Modal>
 
       <Modal
-        title="合同智能解读"
+        title="合同条款 AI 解读"
         open={!!interp}
         footer={null}
         width={760}
