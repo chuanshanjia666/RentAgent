@@ -125,6 +125,7 @@ public class LlmGateway {
         }
         try {
             AiProviderConfig active = configMapper.selectOne(new LambdaQueryWrapper<AiProviderConfig>()
+                    .and(w -> w.eq(AiProviderConfig::getCategory, "LLM").or().isNull(AiProviderConfig::getCategory))
                     .eq(AiProviderConfig::getIsActive, 1)
                     .last("LIMIT 1"));
             if (active != null && active.getApiKey() != null && !active.getApiKey().isBlank()) {

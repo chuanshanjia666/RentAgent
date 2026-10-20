@@ -348,4 +348,20 @@ class OpenAiChatCompletionsModelTest {
         }
         return capture;
     }
+
+    @Test
+    @DisplayName("UT-OPENAI-18 大工 AI 网关等端点根路径自动补全 /v1")
+    void normalizesDlutGatewayBaseUrl() {
+        OpenAiChatCompletionsModel m1 = new OpenAiChatCompletionsModel(
+                "http://aigw.dlut.edu.cn", "key", "DeepSeek-V4-Flash-0731-W8A8", 0.7, null, Duration.ofSeconds(30), Map.of());
+        assertEquals("http://aigw.dlut.edu.cn/v1", m1.getBaseUrl());
+
+        OpenAiChatCompletionsModel m2 = new OpenAiChatCompletionsModel(
+                "http://aigw.dlut.edu.cn/", "key", "DeepSeek-V4-Flash-0731-W8A8", 0.7, null, Duration.ofSeconds(30), Map.of());
+        assertEquals("http://aigw.dlut.edu.cn/v1", m2.getBaseUrl());
+
+        OpenAiChatCompletionsModel m3 = new OpenAiChatCompletionsModel(
+                "http://aigw.dlut.edu.cn/v1", "key", "DeepSeek-V4-Flash-0731-W8A8", 0.7, null, Duration.ofSeconds(30), Map.of());
+        assertEquals("http://aigw.dlut.edu.cn/v1", m3.getBaseUrl());
+    }
 }

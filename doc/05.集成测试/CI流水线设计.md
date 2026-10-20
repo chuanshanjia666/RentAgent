@@ -1,6 +1,8 @@
 # RentAgent CI 流水线设计
 
 > 项目名称：RentAgent —— 基于 AI 智能体的房屋租赁系统
+> 文档版本：v1.14（v1.14 于 2026-10-20 支持大模型与词嵌入供应商完全解耦独立配置与 RAG 向量检索：前端与数据库分别支持独立管理 LLM 与 EMBEDDING 供应商；CI 环境变量增加 `AI_EMBEDDING_*` 配置并支持自动回落；无模型反向门禁实例置空嵌入凭据；后端单测基线 222 → **237 条**（新增 `EmbeddingGatewayTest` 5 条、`OpenAiEmbeddingClientTest` 2 条、`KbServiceTest` 6 条、`AiConfigServiceTest` 2 条）；集成冒烟测试覆盖双供应商独立配置与向量检索；关联《概要设计》v1.19）
+> 文档版本：v1.13（v1.13 于 2026-10-17 调整 CI/CD 默认大模型通道为大工 AI 网关的 `DeepSeek-V4-Flash-0731-W8A8`（`openai-chat-completions` 兼容协议，端点 `http://aigw.dlut.edu.cn/v1`）；适配器支持根域名输入时自动规约补全 `/v1`；后端单测基线 221 → **222 条**（新增 `UT-OPENAI-18` 端点规范化测试）；`docker-compose.yml` 与 `application.yml` 同步注册 `dlut-deepseek` 命名后端；关联《概要设计》v1.18）
 > 文档版本：v1.12（v1.12 于 2026-10-14 调整 CI/CD 默认大模型通道为 Opencode GO 的 `deepseek-v4.1-flash`（`openai-chat-completions` 兼容协议，端点 `https://opencode.ai/zen/go/v1`）；通过 `application.yml` 的 `headers` 与 CI 环境变量注入 OpenCode 所需的 `x-opencode-session` 请求头，代码零特判；后端单测基线保持 **221 条**；`docker-compose.yml` 与 `application.yml` 同步注册 `opencode-go` 命名后端；关联《概要设计》v1.17）
 > 文档版本：v1.11（v1.11 于 2026-10-13 同步 AI 供应商动态配置入库与管理控制台功能：数据库表由 18 张增至 **19 张**（新增 `ai_provider_config` 表并同步 CI 建表校验）；后端单测基线 213 → **221 条**（新增 `AiConfigServiceTest` 8 项单测）；集成冒烟断言数 148 → **158 条**（新增非管理员 1007 拦截、配置概览、入库新增、带脱敏更新、删除未激活配置等断言）；精简 `run-dev.sh` 移除个人硬编码 Key；关联《数据库设计简介》v1.7、《单元测试用例设计》v1.10、《概要设计》v1.16）
 > 文档版本：v1.10（v1.10 于 2026-09-22 同步 AI 回复内链接渲染缺陷修复：前端单测门禁 26 → **32 条**（新增 `FT-CHAT-01~06`——找房助手输出的 `[标题](#/app/houses/{id})` 站内链接此前因前缀判定误写 `#:` 恒以纯文本显示、不可点击，渲染逻辑抽至 `chatLinks.tsx` 并补回归），§一/§2.1 同步；顺带校正 §一 门禁表与 §2.3 流程图的后端单测计数漏改（212 → 213）；集成冒烟断言数不变（**148 条**）；关联《单元测试用例设计》v1.9）
@@ -49,7 +51,7 @@
 
 | 门禁 | 命令 | 拦截什么 |
 | ---- | ---- | -------- |
-| 后端单元测试 | `mvn -B -ntp test`（221 条） | 业务状态机、权限、金额/日期计算、加解密回归、AI 配置持久化与热加载 |
+| 后端单元测试 | `mvn -B -ntp test`（237 条） | 业务状态机、权限、金额/日期计算、加解密回归、AI 配置持久化与热加载、RAG 向量检索与嵌入网关 |
 | 前端静态检查与格式 | `npm run lint` + `npm run format:check`（ESLint + Prettier） | 死导入与未使用变量、hook 依赖数组遗漏、缩进引号等风格漂移 |
 | 前端单测 | `npm test`（vitest，32 条） | 运行时地址解析、状态字典、SSE 流式解析、AI 回复内链接渲染 |
 | 前端类型与构建 | `npm run build:web`（`tsc --noEmit` + vite） | TS 严格模式下的类型错误、构建失败 |
@@ -74,7 +76,7 @@
 | ---- | ---- |
 | 检出代码 | `actions/checkout@v5` |
 | 环境 | `actions/setup-java@v5`（temurin 17，`cache: maven`） |
-| 执行 | `mvn -B -ntp test`（工作目录 `server/`，221 条单测） |
+| 执行 | `mvn -B -ntp test`（工作目录 `server/`，237 条单测） |
 | 归档 | `actions/upload-artifact@v6` 上传 `server/target/surefire-reports/`（`if: always()`，失败可下载报告定位） |
 
 不启任何服务容器：本层用例全部为 Mockito 打桩，不连库、不连缓存、不连网络。
@@ -143,7 +145,7 @@
 ```
 push / PR / 手动
         │
-        ├── backend-test      JDK17 ── mvn test（221 条）────────────────────────────────────────┐
+        ├── backend-test      JDK17 ── mvn test（237 条）────────────────────────────────────────┐
         ├── frontend-test     Node20 ── npm ci → lint → format:check → vitest → build:web ───────┤ 并行
         └── integration-smoke JDK17 + mysql:8.0 + redis:7                                        │
                               └─ 建表（19张） → 打包 → 启动 → ci-smoke.sh（158 条）              ┘
@@ -165,15 +167,19 @@ push / PR / 手动
 | `UPLOAD_DIR` | `${{ runner.temp }}/rentagent-uploads` | 写在**步骤级** env：job 级 env 不提供 `runner` 上下文 |
 | `BASE_URL` | `http://localhost:8080` | 冒烟脚本基址 |
 | `TZ` | `Asia/Shanghai` | 全流程统一时区 |
-| `AI_BACKEND` | `secrets.AI_BACKEND`，缺省 `opencode-go` | 选择命名后端（协议+端点+模型组合） |
-| `AGGREGATOR_BASE_URL` | `secrets.AGGREGATOR_BASE_URL`，缺省 `https://opencode.ai/zen/go/v1` | 模型端点 |
-| `AGGREGATOR_MODEL` | `secrets.AGGREGATOR_MODEL`，缺省 `deepseek-v4.1-flash` | 模型名 |
-| `AGGREGATOR_API_KEY` | `secrets.AGGREGATOR_API_KEY`（**必填**） | 模型凭据。只读 Secrets，不落文件、不 echo；GitHub 会对其做日志脱敏 |
+| `AI_BACKEND` | `secrets.AI_BACKEND`，缺省 `dlut-deepseek` | 选择命名后端（协议+端点+模型组合） |
+| `AGGREGATOR_BASE_URL` | `secrets.AGGREGATOR_BASE_URL`，缺省 `http://aigw.dlut.edu.cn/v1` | 模型端点 |
+| `AGGREGATOR_MODEL` | `secrets.AGGREGATOR_MODEL`，缺省 `DeepSeek-V4-Flash-0731-W8A8` | 模型名 |
+| `AGGREGATOR_API_KEY` | `secrets.AGGREGATOR_API_KEY`（**必填**） | 模型凭据。由 GitHub Actions Secrets 注入，仓库内绝不留存；GitHub 会对其做日志脱敏 |
+| `AI_EMBEDDING_ENABLED` | `secrets.AI_EMBEDDING_ENABLED`，缺省 `true` | 是否启用词嵌入与 RAG 向量检索通道 |
+| `AI_EMBEDDING_MODEL` | `secrets.AI_EMBEDDING_MODEL`，缺省 `bge-m3` | 词嵌入模型名称（如 `bge-m3`） |
+| `AI_EMBEDDING_BASE_URL` | `secrets.AI_EMBEDDING_BASE_URL`（可选） | 词嵌入模型专属端点；未显式指定时，网关自动回退复用 `AGGREGATOR_BASE_URL` 或数据库激活网关 |
+| `AI_EMBEDDING_API_KEY` | `secrets.AI_EMBEDDING_API_KEY`（可选） | 词嵌入模型专属密钥；未显式指定时，网关自动回退复用 `AGGREGATOR_API_KEY` 或数据库激活网关 |
 
 安全约定：
 - 密钥一律走 GitHub Secrets / 环境变量，仓库内不保存任何真实 Key（`server/run-dev.sh` 含个人 Key，已被 `.gitignore` 忽略，CI 绝不引用）；
 - 集成作业使用一次性数据库容器，无需清理逻辑，也不会污染任何持久数据；
-- 无模型校验步骤通过**同名环境变量置空**（`AGGREGATOR_API_KEY: ''`）构造"未接入模型"的实例，不会误用主实例的凭据。
+- 无模型校验步骤通过**同名环境变量置空**（`AGGREGATOR_API_KEY: ''`、`AI_EMBEDDING_BASE_URL: ''`、`AI_EMBEDDING_API_KEY: ''`、`AI_EMBEDDING_ENABLED: 'false'`）构造"未接入模型"的实例，不会误用主实例的凭据。
 
 ---
 

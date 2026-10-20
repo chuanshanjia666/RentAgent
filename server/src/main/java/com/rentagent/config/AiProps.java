@@ -43,6 +43,18 @@ public class AiProps {
     private Integer maxTokens = 4096;
     private Integer timeoutSeconds = 60;
 
+    /** 词嵌入模型配置（RAG 知识库语义检索支撑） */
+    private Embedding embedding = new Embedding();
+
+    @Data
+    public static class Embedding {
+        private String baseUrl;
+        private String apiKey;
+        private String model = "bge-m3";
+        private Double similarityThreshold = 0.58;
+        private Integer timeoutSeconds = 30;
+    }
+
     @Data
     public static class Backend {
         /** openai | anthropic */

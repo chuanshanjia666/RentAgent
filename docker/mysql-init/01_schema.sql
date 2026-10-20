@@ -324,10 +324,12 @@ CREATE TABLE IF NOT EXISTS kb_chunk (
 CREATE TABLE IF NOT EXISTS ai_provider_config (
   id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name            VARCHAR(50)  NOT NULL COMMENT '供应商名称',
+  category        VARCHAR(20)  NOT NULL DEFAULT 'LLM' COMMENT '供应商类型: LLM(大语言模型) / EMBEDDING(词嵌入模型)',
   protocol        VARCHAR(50)  NOT NULL DEFAULT 'openai-chat-completions' COMMENT '协议: openai-chat-completions / anthropic-messages / openai-responses',
   base_url        VARCHAR(255) NOT NULL COMMENT '接口基址',
   api_key         VARCHAR(255) NOT NULL COMMENT 'API Key凭据',
   model           VARCHAR(100) NOT NULL COMMENT '模型名称',
+  embedding_model VARCHAR(100) NOT NULL DEFAULT 'bge-m3' COMMENT '词嵌入模型名称',
   temperature     DECIMAL(3,2) NOT NULL DEFAULT 0.70 COMMENT '采样温度',
   max_tokens      INT UNSIGNED NOT NULL DEFAULT 4096 COMMENT '最大Token预算',
   timeout_seconds INT UNSIGNED NOT NULL DEFAULT 60 COMMENT '超时时间(秒)',
@@ -337,6 +339,7 @@ CREATE TABLE IF NOT EXISTS ai_provider_config (
   created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY idx_active (is_active)
+  KEY idx_active (is_active),
+  KEY idx_category_active (category, is_active)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'AI API供应商配置表';
 

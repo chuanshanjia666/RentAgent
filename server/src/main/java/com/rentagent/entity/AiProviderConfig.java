@@ -23,6 +23,9 @@ public class AiProviderConfig {
     /** 供应商名称/描述（如 DeepSeek、OpenAI、通义千问等） */
     private String name;
 
+    /** 供应商类型：LLM (大语言模型) / EMBEDDING (词嵌入模型) */
+    private String category;
+
     /** 通信协议：openai-chat-completions / anthropic-messages / openai-responses */
     private String protocol;
 
@@ -34,6 +37,9 @@ public class AiProviderConfig {
 
     /** 模型名称 */
     private String model;
+
+    /** 词嵌入模型名称（用于 RAG 知识库密集向量检索，默认 bge-m3） */
+    private String embeddingModel;
 
     /** 采样温度 */
     private BigDecimal temperature;

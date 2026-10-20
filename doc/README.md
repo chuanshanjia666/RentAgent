@@ -10,7 +10,7 @@
 | `02.需求分析/` | 二、需求分析 | `需求分析矩阵.md`、`原型工具使用方法.md`、`需求分析评审报告.md`、`原型设计评审报告.md`、`需求跟踪矩阵.md` + `RentAgent_需求跟踪矩阵.xlsx`；`images/rtm/`（原型截图）、`prototype/`（可运行原型源码） | 需求分析矩阵与原型（已成稿） |
 | `03.概要设计/` | 三、概要设计 | `概要设计说明.md`、`数据库设计简介.md`、`概要设计.docx / .pdf`、`数据库表.xlsx / .xls`、`er.svg / er.pdf`（Workbench 逆向 ER 图）、模板与参考示例、`assets/`（生成脚本与图源） | **《概要设计》.docx / .pdf** + **《数据库表》.xlsx / .xls** ✅ |
 | `04.编码/` | 四、编码 | `单元测试用例设计.md`（后端 212 条 + 前端 26 条单元用例，含首轮缺陷记录 BUG-01）；代码位于仓库根目录 `frontend/`、`server/`、`docker/` 与 `docker-compose.yml`；前端一套代码两种分发（Web 版 + Electron 桌面端，见 `frontend/electron/`）；前端风格门禁为 ESLint + Prettier（`frontend/eslint.config.js`、`frontend/prettier.config.js`，`npm run lint` / `npm run format:check`） | 待补（编码阶段说明） |
-| `05.集成测试/` | 五、集成测试 | `测试用例设计.md`（接口/集成/端到端 146 条断言 + FR-12 解析判分表 + 需求追溯矩阵）、`CI流水线设计.md`（三作业门禁与本地一致性）；可执行脚本 `scripts/ci-smoke.sh`、流水线 `.github/workflows/ci.yml` | 《集成测试报告》待补 |
+| `05.集成测试/` | 五、集成测试 | `测试用例设计.md`（接口/集成/端到端 158 条断言 + FR-12 解析判分表 + 需求追溯矩阵）、`CI流水线设计.md`、`集成测试报告.md`；可执行脚本 `scripts/ci-smoke.sh`、`scripts/ci-no-model-check.sh`、流水线 `.github/workflows/ci.yml` | **《集成测试成绩书》.xlsx**（标准 D0000-PPCMT005 格式）+ **《集成测试报告》.md** ✅ |
 | `06.技术调查/` | 六、技术调查 | 待补 | 《技术调查技术报告》待补 |
 | `最终答辩成果物/` | 答辩 | 待补 | 待补 |
 
@@ -25,6 +25,7 @@
 | `01.需求定义/需求定义说明书.docx / .pdf` | `01.需求定义/assets/build_reqdef.py` | graphviz、libreoffice、python-docx、pymupdf、Pillow |
 | `03.概要设计/概要设计.docx / .pdf` | `03.概要设计/assets/build_doc.py` | 同上 |
 | `03.概要设计/数据库表.xlsx` | `03.概要设计/assets/gen_db_dict.py` | openpyxl（数据源 `docker/mysql-init/01_schema.sql`） |
+| `05.集成测试/RentAgent_集成测试成绩书.xlsx` | `05.集成测试/gen_test_report_excel.py` | openpyxl、Pillow（数据源实训标准模版 `参考.xlsx`） |
 
 两阶段的 Word 交付物共用 `03.概要设计/assets/build_doc.py` 中的版式构件，
 因此都以学校模板（`03.概要设计/概要设计模板.doc`）的封面、页眉、目录域与标题/表格样式为基础。

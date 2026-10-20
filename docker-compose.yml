@@ -44,10 +44,10 @@ services:
       UPLOAD_DIR: /app/uploads
       # AI 通道：系统不绑定厂商，按后端名切换（与 application.yml 的 backends 一致）。
       # Key 为空即 AI 能力报 4001，属预期行为（不打任何规则兜底）。
-      AI_BACKEND: ${AI_BACKEND:-}
+      AI_BACKEND: ${AI_BACKEND:-dlut-deepseek}
       AI_API_KEY: ${AI_API_KEY:-}
-      AGGREGATOR_BASE_URL: ${AGGREGATOR_BASE_URL:-https://opencode.ai/zen/go/v1}
-      AGGREGATOR_MODEL: ${AGGREGATOR_MODEL:-deepseek-v4.1-flash}
+      AGGREGATOR_BASE_URL: ${AGGREGATOR_BASE_URL:-http://aigw.dlut.edu.cn/v1}
+      AGGREGATOR_MODEL: ${AGGREGATOR_MODEL:-DeepSeek-V4-Flash-0731-W8A8}
       AGGREGATOR_API_KEY: ${AGGREGATOR_API_KEY:-}
       # JWT_SECRET / AES_KEY 故意不在此透传：写成 ${JWT_SECRET:-} 会在未设置时注入空串，
       # 反而比仓库默认值更早炸（密钥长度不足直接启动失败）。对外部署时用

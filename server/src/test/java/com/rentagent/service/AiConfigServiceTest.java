@@ -33,6 +33,8 @@ class AiConfigServiceTest {
     @Mock
     private LlmGateway llmGateway;
     @Mock
+    private com.rentagent.agent.EmbeddingGateway embeddingGateway;
+    @Mock
     private AuditLogService auditLogService;
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -50,7 +52,7 @@ class AiConfigServiceTest {
         props.setBaseUrl("https://api.openai.com/v1");
         props.setApiKey("file-key");
         props.setModel("gpt-4.1-mini");
-        service = new AiConfigServiceImpl(mapper, props, llmGateway, auditLogService, eventPublisher, jdbcTemplate);
+        service = new AiConfigServiceImpl(mapper, props, llmGateway, embeddingGateway, auditLogService, eventPublisher, jdbcTemplate);
     }
 
     @Test
@@ -92,13 +94,14 @@ class AiConfigServiceTest {
     @DisplayName("UT-AICONFIG-03 新增配置若设为激活，需清空其余激活状态并派发热更事件")
     void saveActiveConfigResetsOthersAndPublishesEvent() {
         AdminDto.AiConfigSaveReq req = new AdminDto.AiConfigSaveReq(
-                "通义千问", "openai-chat-completions", "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "sk-qwen12345678", "qwen-plus", 0.7, 4096, 60, null, "{\"x-custom\":\"test\"}", true
+                "通义千问", "LLM", "openai-chat-completions", "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "sk-qwen12345678", "qwen-plus", "text-embedding-v3", 0.7, 4096, 60, null, "{\"x-custom\":\"test\"}", true
         );
 
         AdminDto.AiConfigVO vo = service.save(req, 1L);
         assertNotNull(vo);
         assertEquals("通义千问", vo.name());
+        assertEquals("text-embedding-v3", vo.embeddingModel());
         assertEquals(1, vo.isActive());
         assertEquals("{\"x-custom\":\"test\"}", vo.customHeaders());
 
@@ -111,8 +114,8 @@ class AiConfigServiceTest {
     @DisplayName("UT-AICONFIG-04 新增配置缺少 API Key 时拒绝保存")
     void saveRejectsMissingApiKey() {
         AdminDto.AiConfigSaveReq req = new AdminDto.AiConfigSaveReq(
-                "测试", "openai-chat-completions", "https://api.test.com",
-                "", "test-model", 0.7, 4096, 60, null, null, false
+                "测试", "LLM", "openai-chat-completions", "https://api.test.com",
+                "", "test-model", "bge-m3", 0.7, 4096, 60, null, null, false
         );
 
         assertThrows(BizException.class, () -> service.save(req, 1L));
@@ -124,17 +127,19 @@ class AiConfigServiceTest {
         AiProviderConfig existing = new AiProviderConfig();
         existing.setId(20L);
         existing.setName("旧名称");
+        existing.setCategory("LLM");
         existing.setProtocol("openai-chat-completions");
         existing.setBaseUrl("https://api.old.com");
         existing.setApiKey("sk-secret-keep-this");
         existing.setModel("old-model");
+        existing.setEmbeddingModel("bge-m3");
         existing.setIsActive(0);
 
         when(mapper.selectById(20L)).thenReturn(existing);
 
         AdminDto.AiConfigSaveReq req = new AdminDto.AiConfigSaveReq(
-                "新名称", "openai-chat-completions", "https://api.new.com",
-                "", "new-model", 0.5, 2048, 45, null, "{\"x-session\":\"123\"}", false
+                "新名称", "LLM", "openai-chat-completions", "https://api.new.com",
+                "", "new-model", "text-embedding-3-small", 0.5, 2048, 45, null, "{\"x-session\":\"123\"}", false
         );
 
         service.update(20L, req, 1L);
@@ -142,6 +147,7 @@ class AiConfigServiceTest {
         assertEquals("sk-secret-keep-this", existing.getApiKey());
         assertEquals("新名称", existing.getName());
         assertEquals("https://api.new.com", existing.getBaseUrl());
+        assertEquals("text-embedding-3-small", existing.getEmbeddingModel());
         assertEquals("{\"x-session\":\"123\"}", existing.getCustomHeaders());
         verify(mapper).updateById(existing);
     }
@@ -188,6 +194,45 @@ class AiConfigServiceTest {
         assertEquals(1, vo.isActive());
         assertEquals("gpt-4.1-mini", vo.model());
         verify(mapper).insert(any(AiProviderConfig.class));
+        verify(eventPublisher).publishEvent(any(AiConfigChangedEvent.class));
+    }
+
+    @Test
+    @DisplayName("UT-AICONFIG-09 保存时词嵌入模型为空自动兜底为bge-m3且概览带出嵌入描述")
+    void saveDefaultEmbeddingModelAndExposesInOverview() {
+        when(embeddingGateway.available()).thenReturn(true);
+        when(embeddingGateway.describe()).thenReturn("bge-m3 @ http://aigw.dlut.edu.cn/v1");
+
+        AdminDto.AiConfigSaveReq req = new AdminDto.AiConfigSaveReq(
+                "大工网关", "LLM", "openai-chat-completions", "http://aigw.dlut.edu.cn/v1",
+                "sk-test", "DeepSeek-V4-Flash", "", 0.7, 4096, 60, null, null, false
+        );
+
+        AdminDto.AiConfigVO vo = service.save(req, 1L);
+        assertEquals("bge-m3", vo.embeddingModel());
+
+        AdminDto.AiConfigOverviewVO overview = service.getOverview();
+        assertEquals("bge-m3 @ http://aigw.dlut.edu.cn/v1", overview.activeEmbeddingDescribe());
+    }
+
+    @Test
+    @DisplayName("UT-AICONFIG-10 独立激活词嵌入供应商时仅重置EMBEDDING类激活项且保留LLM激活")
+    void activateEmbeddingConfigResetsOnlyEmbeddingCategory() {
+        AiProviderConfig embTarget = new AiProviderConfig();
+        embTarget.setId(50L);
+        embTarget.setName("大工词嵌入专用");
+        embTarget.setCategory("EMBEDDING");
+        embTarget.setApiKey("sk-emb-50");
+        embTarget.setModel("bge-m3");
+        embTarget.setIsActive(0);
+
+        when(mapper.selectById(50L)).thenReturn(embTarget);
+
+        service.activate(50L, 1L);
+
+        verify(mapper).update(any(), any(LambdaUpdateWrapper.class));
+        assertEquals(1, embTarget.getIsActive());
+        verify(mapper).updateById(embTarget);
         verify(eventPublisher).publishEvent(any(AiConfigChangedEvent.class));
     }
 }

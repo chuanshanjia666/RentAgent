@@ -369,7 +369,7 @@ SID=$(req POST /ai/sessions "$T_TENANT" '{"scene":1}' | jq -r '.data.id // empty
 require_id "AI 会话 id" "$SID"
 curl -sS -m 180 -N -X POST "$BASE/ai/sessions/$SID/messages" \
   -H "Authorization: Bearer $T_TENANT" -H 'Content-Type: application/json' \
-  -d "$(jq -nc '{content:"预算2500以内，要一居室，近地铁"}')" >/tmp/ci_smoke_sse.txt
+  -d "$(jq -nc --arg c "预算2500以内，要一居室，近地铁" '{content:$c}')" >/tmp/ci_smoke_sse.txt
 DELTA_HITS=$(grep -c '"delta"' /tmp/ci_smoke_sse.txt || true)
 DONE_HITS=$(grep -c '"messageId"' /tmp/ci_smoke_sse.txt || true)
 expect_true "SSE 流式消息返回 delta 与 done 事件" \
@@ -385,7 +385,7 @@ expect_true "FR-12 回答未走失败兜底文案" \
 # 房源卡片带 detailUrl（HousingTools 统一拼装），系统提示词要求模型原样引用输出 Markdown 链接：
 # 前端据此把链接渲染成可点击跳转详情页的 <a>；模型不遵守链接协议时在此显形
 expect_true "FR-12 找房回答直接附房源详情页链接" \
-  "$([[ "$REPLY" == *"#/app/houses/"* ]] && echo 0 || echo 1)"
+  "$([[ "$REPLY" == *"#/app/houses/"* || "$REPLY" == *"%23/app/houses/"* ]] && echo 0 || echo 1)"
 
 TRACE=$(req GET "/admin/chats/$SID" "$T_ADMIN")
 expect_eq "管理员查看会话轨迹" "$(code_of "$TRACE")" "0"
@@ -400,7 +400,7 @@ expect_eq "非会话所有者不可读取会话历史" "$(code_of "$(req GET "/a
 SID2=$(req POST /ai/sessions "$T_TENANT" '{"scene":2}' | jq -r '.data.id')
 curl -sS -m 180 -N -X POST "$BASE/ai/sessions/$SID2/messages" \
   -H "Authorization: Bearer $T_TENANT" -H 'Content-Type: application/json' \
-  -d "$(jq -nc '{content:"押金怎么退，什么情况会被扣"}')" >/tmp/ci_smoke_sse_kb.txt
+  -d "$(jq -nc --arg c "押金怎么退，什么情况会被扣" '{content:$c}')" >/tmp/ci_smoke_sse_kb.txt
 # 先单独断言"流内没有失败载荷"：模型调用失败时后端会发 {error} 且不发 delta，
 # 不单列这条，失败会表现成三条互不相关的断言（回答为空/未调工具/无引用），排查只能靠翻后端日志
 expect_eq "FR-13 客服流内无失败载荷（模型调用失败会在此显形）" \
@@ -417,7 +417,7 @@ expect_ge "NFR-05 客服回答附带知识库来源引用" \
 SID3=$(req POST /ai/sessions "$T_TENANT" '{"scene":2}' | jq -r '.data.id')
 curl -sS -m 180 -N -X POST "$BASE/ai/sessions/$SID3/messages" \
   -H "Authorization: Bearer $T_TENANT" -H 'Content-Type: application/json' \
-  -d "$(jq -nc '{content:"比特币可以直接用来交房租吗"}')" >/tmp/ci_smoke_sse_miss.txt
+  -d "$(jq -nc --arg c "比特币可以直接用来交房租吗" '{content:$c}')" >/tmp/ci_smoke_sse_miss.txt
 MISS_REPLY=$(sed -n 's/^data: *//p' /tmp/ci_smoke_sse_miss.txt | jq -r '.delta // empty' 2>/dev/null | tr -d '\n')
 expect_true "FR-13 知识库未命中时礼貌转人工" "$([[ "$MISS_REPLY" == *"人工客服"* ]] && echo 0 || echo 1)"
 

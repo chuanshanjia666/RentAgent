@@ -70,10 +70,12 @@ public class AdminDto {
     /** AI 供应商配置保存/更新请求 */
     public record AiConfigSaveReq(
             @jakarta.validation.constraints.NotBlank(message = "供应商名称不可为空") String name,
+            String category, // "LLM" 或 "EMBEDDING"，缺省为 "LLM"
             @jakarta.validation.constraints.NotBlank(message = "通信协议不可为空") String protocol,
             @jakarta.validation.constraints.NotBlank(message = "接口基址不可为空") String baseUrl,
             String apiKey,
             @jakarta.validation.constraints.NotBlank(message = "模型名称不可为空") String model,
+            String embeddingModel,
             Double temperature,
             Integer maxTokens,
             Integer timeoutSeconds,
@@ -86,11 +88,13 @@ public class AdminDto {
     public record AiConfigVO(
             Long id,
             String name,
+            String category, // "LLM" 或 "EMBEDDING"
             String protocol,
             String baseUrl,
             String maskedApiKey,
             boolean hasApiKey,
             String model,
+            String embeddingModel,
             Double temperature,
             Integer maxTokens,
             Integer timeoutSeconds,
@@ -106,16 +110,21 @@ public class AdminDto {
             String activeSource, // "DATABASE", "CONFIG_FILE", "NONE"
             String activeDescribe,
             Long activeConfigId,
+            String activeEmbeddingSource, // "DATABASE", "CONFIG_FILE", "NONE"
+            String activeEmbeddingDescribe,
+            Long activeEmbeddingConfigId,
             List<AiConfigVO> configs
     ) {}
 
     /** AI 供应商连通性测试入参 */
     public record AiConfigTestReq(
             Long id,
+            String category, // "LLM" 或 "EMBEDDING"
             String protocol,
             String baseUrl,
             String apiKey,
             String model,
+            String embeddingModel,
             Double temperature,
             Integer maxTokens,
             Integer timeoutSeconds,

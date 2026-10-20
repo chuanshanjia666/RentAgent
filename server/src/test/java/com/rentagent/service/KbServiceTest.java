@@ -1,5 +1,6 @@
 package com.rentagent.service;
 
+import com.rentagent.agent.EmbeddingModelClient;
 import com.rentagent.entity.KbChunk;
 import com.rentagent.entity.KbDocument;
 import com.rentagent.mapper.KbChunkMapper;
@@ -226,4 +227,136 @@ class KbServiceTest {
         assertEquals(content, chunks.get(0).getContent() + chunks.get(1).getContent() + chunks.get(2).getContent());
         assertEquals(3, saved.getChunkCount());
     }
+
+    // ── RAG 向量语义检索与降级（UT-KB-13 ~ UT-KB-18） ──
+
+    @Test
+    @DisplayName("UT-KB-13 向量余弦相似度计算与边界测试")
+    void calculatesCosineSimilarity() {
+        assertEquals(0.0, KbService.cosineSimilarity(null, new float[]{1.0f}));
+        assertEquals(0.0, KbService.cosineSimilarity(new float[]{1.0f}, new float[]{1.0f, 2.0f}));
+        assertEquals(0.0, KbService.cosineSimilarity(new float[]{0.0f, 0.0f}, new float[]{1.0f, 1.0f}));
+
+        // 相同方向向量相似度为 1.0
+        float[] v1 = new float[]{1.0f, 2.0f, 3.0f};
+        float[] v2 = new float[]{2.0f, 4.0f, 6.0f};
+        assertEquals(1.0, KbService.cosineSimilarity(v1, v2), 1e-5);
+
+        // 正交向量相似度为 0.0
+        float[] ortho1 = new float[]{1.0f, 0.0f};
+        float[] ortho2 = new float[]{0.0f, 1.0f};
+        assertEquals(0.0, KbService.cosineSimilarity(ortho1, ortho2), 1e-5);
+    }
+
+    @Test
+    @DisplayName("UT-KB-14 向量 Base64 序列化与反序列化一致性")
+    void encodesAndDecodesVectorBase64() {
+        float[] original = new float[]{0.123f, -0.456f, 0.789f};
+        String base64 = KbService.encodeVector(original);
+        float[] restored = KbService.decodeVector(base64);
+
+        assertEquals(original.length, restored.length);
+        for (int i = 0; i < original.length; i++) {
+            assertEquals(original[i], restored[i], 1e-6);
+        }
+    }
+
+    @Test
+    @DisplayName("UT-KB-15 RAG 向量语义检索按相似度降序排序并截断 topK")
+    void ranksByVectorSimilarity() {
+        EmbeddingModelClient mockEmb = org.mockito.Mockito.mock(EmbeddingModelClient.class);
+        when(mockEmb.available()).thenReturn(true);
+
+        KbChunk c1 = chunk(1L, "押金相关规定");
+        c1.setId(101L);
+        KbChunk c2 = chunk(2L, "维修相关规定");
+        c2.setId(102L);
+
+        when(chunkMapper.selectList(any())).thenReturn(List.of(c1, c2));
+        when(documentMapper.selectById(1L)).thenReturn(doc(1L, "押金文档"));
+        when(documentMapper.selectById(2L)).thenReturn(doc(2L, "维修文档"));
+        when(chunkMapper.selectById(101L)).thenReturn(c1);
+        when(chunkMapper.selectById(102L)).thenReturn(c2);
+
+        // c1 向量与 query 极其相似，c2 次之
+        when(mockEmb.embedBatch(any())).thenReturn(List.of(
+                new float[]{1.0f, 0.0f},
+                new float[]{0.7f, 0.7f}
+        ));
+        when(mockEmb.embed("押金")).thenReturn(new float[]{1.0f, 0.0f});
+
+        KbService ragService = new KbService(documentMapper, chunkMapper, mockEmb, null, null);
+        List<Map<String, String>> result = ragService.search("押金", 1);
+
+        assertEquals(1, result.size());
+        assertEquals("1", result.get(0).get("docId"));
+        assertEquals("押金文档", result.get(0).get("title"));
+    }
+
+    @Test
+    @DisplayName("UT-KB-16 向量相似度均低于阈值时判定不命中返回空")
+    void returnsEmptyWhenVectorSimilarityBelowThreshold() {
+        EmbeddingModelClient mockEmb = org.mockito.Mockito.mock(EmbeddingModelClient.class);
+        when(mockEmb.available()).thenReturn(true);
+
+        KbChunk c1 = chunk(1L, "房东实名认证说明");
+        c1.setId(201L);
+        when(chunkMapper.selectList(any())).thenReturn(List.of(c1));
+        when(mockEmb.embedBatch(any())).thenReturn(List.of(new float[]{1.0f, 0.0f}));
+
+        // query 与 chunk 正交，相似度为 0 < 0.58 阈值
+        when(mockEmb.embed("比特币交房租")).thenReturn(new float[]{0.0f, 1.0f});
+
+        KbService ragService = new KbService(documentMapper, chunkMapper, mockEmb, null, null);
+        List<Map<String, String>> result = ragService.search("比特币交房租", 2);
+
+        assertTrue(result.isEmpty(), "相似度低于阈值应判定未命中");
+        assertFalse(ragService.hit("比特币交房租"));
+    }
+
+    @Test
+    @DisplayName("UT-KB-17 向量服务异常时平滑降级至关键词检索")
+    void fallbacksToKeywordSearchOnEmbeddingException() {
+        EmbeddingModelClient mockEmb = org.mockito.Mockito.mock(EmbeddingModelClient.class);
+        when(mockEmb.available()).thenReturn(true);
+
+        KbChunk c1 = chunk(1L, "押金退还细则");
+        c1.setId(301L);
+        when(chunkMapper.selectList(any())).thenReturn(List.of(c1));
+        when(documentMapper.selectById(1L)).thenReturn(doc(1L, "押金规则"));
+
+        // embed 抛出异常
+        when(mockEmb.embedBatch(any())).thenThrow(new RuntimeException("API 超时"));
+
+        KbService ragService = new KbService(documentMapper, chunkMapper, mockEmb, null, null);
+        List<Map<String, String>> result = ragService.search("押金退还", 2);
+
+        assertFalse(result.isEmpty(), "应降级至关键词检索并返回结果");
+        assertEquals("押金规则", result.get(0).get("title"));
+    }
+
+    @Test
+    @DisplayName("UT-KB-18 文档导入时自动向量化并回填 vector_ref")
+    void generatesVectorOnImport() {
+        EmbeddingModelClient mockEmb = org.mockito.Mockito.mock(EmbeddingModelClient.class);
+        when(mockEmb.available()).thenReturn(true);
+        when(mockEmb.embedBatch(any())).thenReturn(List.of(new float[]{0.1f, 0.2f}));
+
+        when(documentMapper.insert(any(KbDocument.class))).thenAnswer(inv -> {
+            ((KbDocument) inv.getArgument(0)).setId(10L);
+            return 1;
+        });
+        when(chunkMapper.insert(any(KbChunk.class))).thenAnswer(inv -> {
+            ((KbChunk) inv.getArgument(0)).setId(100L);
+            return 1;
+        });
+
+        KbService ragService = new KbService(documentMapper, chunkMapper, mockEmb, null, null);
+        KbDocument saved = ragService.importDoc("新规则", 1, null, "简短内容说明。");
+
+        assertEquals(1, saved.getChunkCount());
+        verify(mockEmb, times(1)).embedBatch(any());
+        verify(chunkMapper, times(1)).updateById(any(KbChunk.class));
+    }
 }
+

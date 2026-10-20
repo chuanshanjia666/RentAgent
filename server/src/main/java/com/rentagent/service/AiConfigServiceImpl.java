@@ -38,6 +38,7 @@ public class AiConfigServiceImpl implements AiConfigService {
     private final AiProviderConfigMapper mapper;
     private final AiProps props;
     private final LlmGateway llmGateway;
+    private final com.rentagent.agent.EmbeddingGateway embeddingGateway;
     private final AuditLogService auditLogService;
     private final ApplicationEventPublisher eventPublisher;
     private final JdbcTemplate jdbcTemplate;
@@ -53,6 +54,7 @@ public class AiConfigServiceImpl implements AiConfigService {
                       base_url        VARCHAR(255) NOT NULL COMMENT '接口基址',
                       api_key         VARCHAR(255) NOT NULL COMMENT 'API Key凭据',
                       model           VARCHAR(100) NOT NULL COMMENT '模型名称',
+                      embedding_model VARCHAR(100) NOT NULL DEFAULT 'bge-m3' COMMENT '词嵌入模型名称',
                       temperature     DECIMAL(3,2) NOT NULL DEFAULT 0.70 COMMENT '采样温度',
                       max_tokens      INT UNSIGNED NOT NULL DEFAULT 4096 COMMENT '最大Token预算',
                       timeout_seconds INT UNSIGNED NOT NULL DEFAULT 60 COMMENT '超时时间(秒)',
@@ -65,6 +67,16 @@ public class AiConfigServiceImpl implements AiConfigService {
                       KEY idx_active (is_active)
                     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'AI API供应商配置表';
                     """);
+            try {
+                jdbcTemplate.execute("ALTER TABLE ai_provider_config ADD COLUMN category VARCHAR(20) NOT NULL DEFAULT 'LLM' COMMENT '供应商类型: LLM / EMBEDDING' AFTER name");
+            } catch (Exception ignored) {
+                // 列已存在则忽略
+            }
+            try {
+                jdbcTemplate.execute("ALTER TABLE ai_provider_config ADD COLUMN embedding_model VARCHAR(100) NOT NULL DEFAULT 'bge-m3' COMMENT '词嵌入模型名称' AFTER model");
+            } catch (Exception ignored) {
+                // 列已存在则忽略
+            }
         } catch (Exception e) {
             log.warn("自检 ai_provider_config 表异常（若非 MySQL 环境可忽略）: {}", e.getMessage());
         }
@@ -77,10 +89,16 @@ public class AiConfigServiceImpl implements AiConfigService {
                 .orderByDesc(AiProviderConfig::getId));
 
         List<AdminDto.AiConfigVO> voList = new ArrayList<>(list.size());
-        AiProviderConfig activeFromDb = null;
+        AiProviderConfig activeLlmFromDb = null;
+        AiProviderConfig activeEmbFromDb = null;
         for (AiProviderConfig c : list) {
+            String cat = c.getCategory() != null ? c.getCategory() : "LLM";
             if (c.getIsActive() != null && c.getIsActive() == 1) {
-                activeFromDb = c;
+                if ("EMBEDDING".equalsIgnoreCase(cat)) {
+                    activeEmbFromDb = c;
+                } else {
+                    activeLlmFromDb = c;
+                }
             }
             voList.add(toVO(c));
         }
@@ -89,10 +107,10 @@ public class AiConfigServiceImpl implements AiConfigService {
         String activeDescribe;
         Long activeConfigId = null;
 
-        if (activeFromDb != null && activeFromDb.getApiKey() != null && !activeFromDb.getApiKey().isBlank()) {
+        if (activeLlmFromDb != null && activeLlmFromDb.getApiKey() != null && !activeLlmFromDb.getApiKey().isBlank()) {
             activeSource = "DATABASE";
-            activeDescribe = LlmGateway.normalizeProtocol(activeFromDb.getProtocol()) + ":" + activeFromDb.getModel();
-            activeConfigId = activeFromDb.getId();
+            activeDescribe = LlmGateway.normalizeProtocol(activeLlmFromDb.getProtocol()) + ":" + activeLlmFromDb.getModel();
+            activeConfigId = activeLlmFromDb.getId();
         } else if (llmGateway.available()) {
             activeSource = "CONFIG_FILE";
             activeDescribe = llmGateway.describe();
@@ -101,7 +119,27 @@ public class AiConfigServiceImpl implements AiConfigService {
             activeDescribe = "none";
         }
 
-        return new AdminDto.AiConfigOverviewVO(activeSource, activeDescribe, activeConfigId, voList);
+        String activeEmbeddingSource;
+        String activeEmbeddingDescribe;
+        Long activeEmbeddingConfigId = null;
+
+        if (activeEmbFromDb != null && activeEmbFromDb.getApiKey() != null && !activeEmbFromDb.getApiKey().isBlank()) {
+            activeEmbeddingSource = "DATABASE";
+            activeEmbeddingDescribe = "DATABASE(" + activeEmbFromDb.getName() + "):" + activeEmbFromDb.getModel();
+            activeEmbeddingConfigId = activeEmbFromDb.getId();
+        } else if (embeddingGateway.available()) {
+            activeEmbeddingSource = "CONFIG_FILE";
+            activeEmbeddingDescribe = embeddingGateway.describe();
+        } else {
+            activeEmbeddingSource = "NONE";
+            activeEmbeddingDescribe = "none";
+        }
+
+        return new AdminDto.AiConfigOverviewVO(
+                activeSource, activeDescribe, activeConfigId,
+                activeEmbeddingSource, activeEmbeddingDescribe, activeEmbeddingConfigId,
+                voList
+        );
     }
 
     @Override
@@ -111,18 +149,22 @@ public class AiConfigServiceImpl implements AiConfigService {
             throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "新建 AI 供应商配置必须填写 API Key 凭据");
         }
 
+        String category = req.category() != null && !req.category().isBlank() ? req.category().trim().toUpperCase() : "LLM";
         boolean active = Boolean.TRUE.equals(req.isActive());
         if (active) {
             mapper.update(null, new LambdaUpdateWrapper<AiProviderConfig>()
+                    .eq(AiProviderConfig::getCategory, category)
                     .set(AiProviderConfig::getIsActive, 0));
         }
 
         AiProviderConfig entity = new AiProviderConfig();
         entity.setName(req.name().trim());
+        entity.setCategory(category);
         entity.setProtocol(LlmGateway.normalizeProtocol(req.protocol()));
         entity.setBaseUrl(req.baseUrl().trim());
         entity.setApiKey(req.apiKey().trim());
         entity.setModel(req.model().trim());
+        entity.setEmbeddingModel(req.embeddingModel() != null && !req.embeddingModel().isBlank() ? req.embeddingModel().trim() : "bge-m3");
         entity.setTemperature(req.temperature() != null ? BigDecimal.valueOf(req.temperature()) : BigDecimal.valueOf(0.70));
         entity.setMaxTokens(req.maxTokens() != null ? req.maxTokens() : 4096);
         entity.setTimeoutSeconds(req.timeoutSeconds() != null ? req.timeoutSeconds() : 60);
@@ -150,9 +192,15 @@ public class AiConfigServiceImpl implements AiConfigService {
             throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "未找到指定的 AI 供应商配置");
         }
 
+        String category = req.category() != null && !req.category().isBlank()
+                ? req.category().trim().toUpperCase()
+                : (existing.getCategory() != null ? existing.getCategory() : "LLM");
+        existing.setCategory(category);
+
         boolean shouldActivate = Boolean.TRUE.equals(req.isActive());
         if (shouldActivate) {
             mapper.update(null, new LambdaUpdateWrapper<AiProviderConfig>()
+                    .eq(AiProviderConfig::getCategory, category)
                     .ne(AiProviderConfig::getId, id)
                     .set(AiProviderConfig::getIsActive, 0));
         }
@@ -164,6 +212,9 @@ public class AiConfigServiceImpl implements AiConfigService {
             existing.setApiKey(req.apiKey().trim());
         }
         existing.setModel(req.model().trim());
+        if (req.embeddingModel() != null && !req.embeddingModel().isBlank()) {
+            existing.setEmbeddingModel(req.embeddingModel().trim());
+        }
         if (req.temperature() != null) {
             existing.setTemperature(BigDecimal.valueOf(req.temperature()));
         }
@@ -204,7 +255,9 @@ public class AiConfigServiceImpl implements AiConfigService {
             throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "该配置未配置 API Key，无法设为生效");
         }
 
+        String cat = config.getCategory() != null ? config.getCategory() : "LLM";
         mapper.update(null, new LambdaUpdateWrapper<AiProviderConfig>()
+                .eq(AiProviderConfig::getCategory, cat)
                 .set(AiProviderConfig::getIsActive, 0));
 
         config.setIsActive(1);
@@ -272,7 +325,16 @@ public class AiConfigServiceImpl implements AiConfigService {
                 return new AdminDto.AiConfigTestVO(false, 0, "缺少模型名称");
             }
 
-            Duration timeout = Duration.ofSeconds(req.timeoutSeconds() == null ? 15 : Math.min(req.timeoutSeconds(), 30));
+            int timeoutSec = req.timeoutSeconds() == null ? 15 : Math.min(req.timeoutSeconds(), 30);
+            Duration timeout = Duration.ofSeconds(timeoutSec);
+
+            if ("EMBEDDING".equalsIgnoreCase(req.category())) {
+                var embClient = new com.rentagent.agent.OpenAiEmbeddingClient(baseUrl, apiKey, model, timeout);
+                float[] vector = embClient.embed("RentAgent 词嵌入连通性测试");
+                long latency = System.currentTimeMillis() - start;
+                return new AdminDto.AiConfigTestVO(true, latency, "词嵌入服务连接成功（生成 " + vector.length + " 维稠密向量，耗时 " + latency + "ms）");
+            }
+
             ChatLanguageModel testClient;
             String norm = LlmGateway.normalizeProtocol(protocol);
 
@@ -298,7 +360,6 @@ public class AiConfigServiceImpl implements AiConfigService {
 
             var resp = testClient.generate(UserMessage.from("Hi"));
             long latency = System.currentTimeMillis() - start;
-            String text = resp != null && resp.content() != null ? resp.content().text() : "";
             return new AdminDto.AiConfigTestVO(true, latency, "连接成功（响应耗时 " + latency + "ms）");
         } catch (Exception e) {
             long latency = System.currentTimeMillis() - start;
@@ -317,16 +378,21 @@ public class AiConfigServiceImpl implements AiConfigService {
         }
 
         mapper.update(null, new LambdaUpdateWrapper<AiProviderConfig>()
+                .eq(AiProviderConfig::getCategory, "LLM")
                 .set(AiProviderConfig::getIsActive, 0));
 
         AiProviderConfig entity = new AiProviderConfig();
         String name = props.getActive() != null && !props.getActive().isBlank()
                 ? props.getActive() : "导入自配置文件 (" + b.getModel() + ")";
         entity.setName(name);
+        entity.setCategory("LLM");
         entity.setProtocol(LlmGateway.normalizeProtocol(b.getProtocol()));
         entity.setBaseUrl(b.getBaseUrl() == null || b.getBaseUrl().isBlank() ? "https://api.openai.com/v1" : b.getBaseUrl());
         entity.setApiKey(b.getApiKey());
         entity.setModel(b.getModel());
+        String embModel = props.getEmbedding() != null && props.getEmbedding().getModel() != null && !props.getEmbedding().getModel().isBlank()
+                ? props.getEmbedding().getModel() : "bge-m3";
+        entity.setEmbeddingModel(embModel);
         entity.setTemperature(b.getTemperature() != null ? BigDecimal.valueOf(b.getTemperature()) : BigDecimal.valueOf(0.70));
         entity.setMaxTokens(b.getMaxTokens() != null ? b.getMaxTokens() : 4096);
         entity.setTimeoutSeconds(b.getTimeoutSeconds() != null ? b.getTimeoutSeconds() : 60);
@@ -362,11 +428,13 @@ public class AiConfigServiceImpl implements AiConfigService {
         return new AdminDto.AiConfigVO(
                 c.getId(),
                 c.getName(),
+                c.getCategory() != null ? c.getCategory() : "LLM",
                 c.getProtocol(),
                 c.getBaseUrl(),
                 maskedKey,
                 hasKey,
                 c.getModel(),
+                c.getEmbeddingModel() != null && !c.getEmbeddingModel().isBlank() ? c.getEmbeddingModel() : "bge-m3",
                 c.getTemperature() != null ? c.getTemperature().doubleValue() : 0.70,
                 c.getMaxTokens(),
                 c.getTimeoutSeconds(),

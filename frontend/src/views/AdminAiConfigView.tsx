@@ -3,16 +3,19 @@ import {
   Alert,
   Button,
   Card,
+  Col,
   Form,
   Input,
   InputNumber,
   Modal,
   Popconfirm,
   Radio,
+  Row,
   Select,
   Space,
   Switch,
   Table,
+  Tabs,
   Tag,
   Typography,
   message
@@ -29,8 +32,20 @@ import type {
 
 const { Text } = Typography
 
-/** 常用大模型 API 预设模板 */
-const PRESETS = [
+/** 常用大语言模型 API 预设模板 */
+const LLM_PRESETS = [
+  {
+    label: '大工 AI 网关 (DeepSeek-V4-Flash)',
+    name: '大工 AI 网关',
+    protocol: 'openai-chat-completions',
+    baseUrl: 'http://aigw.dlut.edu.cn/v1',
+    model: 'DeepSeek-V4-Flash-0731-W8A8',
+    temperature: 0.7,
+    maxTokens: 4096,
+    timeoutSeconds: 60,
+    userAgent: 'RentAgent-Platform/1.0',
+    customHeaders: ''
+  },
   {
     label: 'DeepSeek (官方 API)',
     name: 'DeepSeek 官方',
@@ -82,37 +97,53 @@ const PRESETS = [
     timeoutSeconds: 60,
     userAgent: 'RentAgent-Platform/1.0',
     customHeaders: JSON.stringify({ 'x-opencode-session': 'rentagent-session-default' }, null, 2)
-  },
+  }
+]
+
+/** 常用词嵌入（Embedding）模型 API 预设模板 */
+const EMBEDDING_PRESETS = [
   {
-    label: 'Command Code GOAT (OpenAI兼容)',
-    name: 'Command Code GOAT',
+    label: '大工 AI 网关 (BGE-M3 稠密向量嵌入)',
+    name: '大工 AI 网关 (BGE-M3)',
     protocol: 'openai-chat-completions',
-    baseUrl: 'https://api.commandcode.ai/provider/v1',
-    model: 'inclusionai/ling-3.1-flash:free',
-    temperature: 0.7,
-    maxTokens: 4096,
-    timeoutSeconds: 60,
+    baseUrl: 'http://aigw.dlut.edu.cn/v1',
+    model: 'bge-m3',
+    timeoutSeconds: 30,
     userAgent: 'RentAgent-Platform/1.0',
     customHeaders: ''
   },
   {
-    label: 'CommandCode 聚合网关 (OpenAI兼容)',
-    name: 'CommandCode 聚合通道',
+    label: 'OpenAI (text-embedding-3-small 官方)',
+    name: 'OpenAI Embedding',
     protocol: 'openai-chat-completions',
-    baseUrl: 'https://api.commandcode.ai/provider/v1',
-    model: 'deepseek/deepseek-v4.1-flash',
-    temperature: 0.7,
-    maxTokens: 4096,
-    timeoutSeconds: 60,
-    userAgent: 'RentAgent-Platform/1.0',
-    customHeaders: ''
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'text-embedding-3-small',
+    timeoutSeconds: 30
+  },
+  {
+    label: '通义千问 (text-embedding-v3 百炼兼容)',
+    name: '通义千问 Embedding',
+    protocol: 'openai-chat-completions',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model: 'text-embedding-v3',
+    timeoutSeconds: 30
+  },
+  {
+    label: '智谱 AI (Embedding-3 兼容模式)',
+    name: '智谱 Embedding',
+    protocol: 'openai-chat-completions',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    model: 'embedding-3',
+    timeoutSeconds: 30
   }
 ]
 
 export default function AdminAiConfigView() {
   const [overview, setOverview] = useState<AiConfigOverviewVO | null>(null)
   const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState<'LLM' | 'EMBEDDING'>('LLM')
   const [modalVisible, setModalVisible] = useState(false)
+  const [modalCategory, setModalCategory] = useState<'LLM' | 'EMBEDDING'>('LLM')
   const [editingItem, setEditingItem] = useState<AiConfigVO | null>(null)
   const [testingId, setTestingId] = useState<number | null>(null)
   const [testingModal, setTestingModal] = useState(false)
@@ -136,27 +167,35 @@ export default function AdminAiConfigView() {
     loadData()
   }, [])
 
-  function openCreate() {
+  function openCreate(category: 'LLM' | 'EMBEDDING') {
     setEditingItem(null)
+    setModalCategory(category)
     setTestResult(null)
     form.resetFields()
     form.setFieldsValue({
+      category,
       protocol: 'openai-chat-completions',
+      model: category === 'EMBEDDING' ? 'bge-m3' : 'DeepSeek-V4-Flash-0731-W8A8',
       temperature: 0.7,
       maxTokens: 4096,
-      timeoutSeconds: 60,
+      timeoutSeconds: category === 'EMBEDDING' ? 30 : 60,
       customHeaders: '',
-      isActive: (overview?.configs.length ?? 0) === 0
+      isActive:
+        overview?.configs.filter(c => (c.category || 'LLM') === category && c.isActive === 1)
+          .length === 0
     })
     setModalVisible(true)
   }
 
   function openEdit(item: AiConfigVO) {
+    const cat = item.category || 'LLM'
     setEditingItem(item)
+    setModalCategory(cat)
     setTestResult(null)
     form.resetFields()
     form.setFieldsValue({
       name: item.name,
+      category: cat,
       protocol: item.protocol,
       baseUrl: item.baseUrl,
       apiKey: '',
@@ -172,43 +211,49 @@ export default function AdminAiConfigView() {
   }
 
   function applyPreset(presetIndex: number) {
-    const p = PRESETS[presetIndex]
+    const list = modalCategory === 'EMBEDDING' ? EMBEDDING_PRESETS : LLM_PRESETS
+    const p = list[presetIndex]
     if (!p) return
     form.setFieldsValue({
       name: p.name,
       protocol: p.protocol,
       baseUrl: p.baseUrl,
       model: p.model,
-      temperature: p.temperature,
-      maxTokens: p.maxTokens,
       timeoutSeconds: p.timeoutSeconds,
       userAgent: p.userAgent ?? '',
       customHeaders: p.customHeaders ?? ''
     })
+    if ('temperature' in p) {
+      form.setFieldValue('temperature', p.temperature)
+    }
+    if ('maxTokens' in p) {
+      form.setFieldValue('maxTokens', p.maxTokens)
+    }
     message.info(`已填充「${p.label}」参数模板，请输入 API Key`)
   }
 
   async function handleSave() {
     try {
       const values = await form.validateFields()
+      values.category = modalCategory
       if (editingItem) {
         await http.put(`/admin/ai-configs/${editingItem.id}`, values)
         message.success('供应商配置已更新')
       } else {
         await http.post('/admin/ai-configs', values)
-        message.success('新建供应商配置成功并已存入数据库')
+        message.success('新供应商配置已保存并入库')
       }
       setModalVisible(false)
       loadData()
     } catch {
-      /* 表单校验失败不动作 */
+      /* 验证或请求异常 */
     }
   }
 
   async function handleActivate(id: number) {
     try {
       await http.patch(`/admin/ai-configs/${id}/activate`)
-      message.success('已切换为当前生效供应商，运行时已热更新')
+      message.success('已切换当前生效供应商')
       loadData()
     } catch {
       /* 忽略 */
@@ -218,7 +263,7 @@ export default function AdminAiConfigView() {
   async function handleDeactivate() {
     try {
       await http.patch('/admin/ai-configs/deactivate')
-      message.success('已停用数据库配置，将回退为配置文件定义或未配置状态')
+      message.info('已停用当前生效供应商，回退为配置文件默认')
       loadData()
     } catch {
       /* 忽略 */
@@ -238,7 +283,7 @@ export default function AdminAiConfigView() {
   async function handleImportFromFile() {
     try {
       await http.post('/admin/ai-configs/import-from-file')
-      message.success('已成功从后端配置文件导入并启用该配置')
+      message.success('已成功从后端配置文件导入大模型配置并启用')
       loadData()
     } catch {
       /* 忽略 */
@@ -255,6 +300,7 @@ export default function AdminAiConfigView() {
     try {
       const res = await runTestConnection({
         id: item.id,
+        category: item.category,
         protocol: item.protocol,
         baseUrl: item.baseUrl,
         model: item.model,
@@ -281,6 +327,7 @@ export default function AdminAiConfigView() {
       setTestingModal(true)
       const res = await runTestConnection({
         id: editingItem?.id,
+        category: modalCategory,
         protocol: values.protocol,
         baseUrl: values.baseUrl,
         apiKey: currentApiKey,
@@ -297,7 +344,7 @@ export default function AdminAiConfigView() {
         message.warning(res.message)
       }
     } catch {
-      message.warning('请先填写协议、基址与模型名称后再进行测试')
+      /* 校验错误 */
     } finally {
       setTestingModal(false)
     }
@@ -305,19 +352,31 @@ export default function AdminAiConfigView() {
 
   const columns: ColumnsType<AiConfigVO> = [
     {
+      title: '状态',
+      dataIndex: 'isActive',
+      width: 100,
+      render: (val: number) =>
+        val === 1 ? <Tag color="success">当前生效</Tag> : <Tag color="default">未激活</Tag>
+    },
+    {
       title: '供应商名称',
       dataIndex: 'name',
-      render: (val: string, r) => (
-        <Space size="small">
-          <Text strong>{val}</Text>
-          {r.isActive === 1 && <Tag color="green">当前生效</Tag>}
-        </Space>
+      width: 180,
+      render: (text: string, r) => (
+        <div>
+          <span style={{ fontWeight: 600 }}>{text}</span>
+          {r.isActive === 1 && (
+            <Tag color="cyan" style={{ marginLeft: 6, fontSize: 11 }}>
+              运行中
+            </Tag>
+          )}
+        </div>
       )
     },
     {
       title: '通信协议',
       dataIndex: 'protocol',
-      width: 170,
+      width: 150,
       render: (p: string) => {
         if (p === 'anthropic-messages') return <Tag color="purple">Claude 原生</Tag>
         if (p === 'openai-responses') return <Tag color="orange">Responses API</Tag>
@@ -325,43 +384,52 @@ export default function AdminAiConfigView() {
       }
     },
     {
-      title: '接口基址',
+      title: '接口基址 (Base URL)',
       dataIndex: 'baseUrl',
       ellipsis: true,
       render: (url: string) => <Text code>{url}</Text>
     },
     {
-      title: '模型标识',
+      title: activeTab === 'EMBEDDING' ? '嵌入模型 (Embedding)' : '语言模型 (LLM)',
       dataIndex: 'model',
-      render: (m: string) => <Text code>{m}</Text>
+      width: 180,
+      render: (m: string) => (
+        <Tag color={activeTab === 'EMBEDDING' ? 'geekblue' : 'cyan'}>
+          <Text code style={{ color: 'inherit' }}>
+            {m}
+          </Text>
+        </Tag>
+      )
     },
     {
-      title: 'API Key',
+      title: 'API Key 凭据',
       dataIndex: 'maskedApiKey',
       width: 140,
       render: (key: string, r) =>
         r.hasApiKey ? <Text code>{key}</Text> : <Tag color="red">未设置</Tag>
     },
     {
-      title: '运行参数',
-      width: 160,
+      title: '参数',
+      width: 130,
       render: (_, r) => (
         <span style={{ fontSize: 12, color: '#657771' }}>
-          T:{r.temperature} | {r.maxTokens} tokens | {r.timeoutSeconds}s
+          {r.category === 'EMBEDDING'
+            ? `${r.timeoutSeconds}s 超时`
+            : `T:${r.temperature} | ${r.timeoutSeconds}s`}
         </span>
       )
     },
     {
       title: '更新时间',
       dataIndex: 'updatedAt',
-      width: 160,
+      width: 150,
       render: (t: string) => (
         <span style={{ fontSize: 12, color: '#888' }}>{t?.replace('T', ' ')}</span>
       )
     },
     {
       title: '操作',
-      width: 220,
+      width: 200,
       render: (_, r) => (
         <Space size="small">
           {r.isActive === 1 ? (
@@ -402,6 +470,10 @@ export default function AdminAiConfigView() {
 
   const activeSource = overview?.activeSource ?? 'NONE'
   const activeDescribe = overview?.activeDescribe ?? 'none'
+  const activeEmbSource = overview?.activeEmbeddingSource ?? 'NONE'
+  const activeEmbDescribe = overview?.activeEmbeddingDescribe ?? 'none'
+
+  const currentConfigs = overview?.configs.filter(c => (c.category || 'LLM') === activeTab) ?? []
 
   return (
     <div className="page">
@@ -415,122 +487,148 @@ export default function AdminAiConfigView() {
       >
         <div>
           <h2 className="page-title" style={{ marginBottom: 4 }}>
-            AI API 供应商配置
+            AI 供应商独立配置中心
           </h2>
           <p style={{ margin: 0, color: '#657771', fontSize: 13 }}>
-            在管理员控制台配置大模型供应商参数，保存后即时存入数据库并热生效，无需手动改动后端配置文件。
+            大语言模型（LLM）与词嵌入模型（Embedding）完全解耦，支持分别独立配置端点、API Key
+            与生效激活。
           </p>
         </div>
         <Space>
-          <Button onClick={handleImportFromFile}>从配置文件导入</Button>
-          <Button type="primary" onClick={openCreate}>
-            新建供应商配置
+          <Button onClick={handleImportFromFile}>从配置文件导入大模型</Button>
+          <Button type="primary" onClick={() => openCreate(activeTab)}>
+            {activeTab === 'EMBEDDING' ? '+ 新建词嵌入供应商' : '+ 新建大语言模型供应商'}
           </Button>
         </Space>
       </div>
 
       <Card style={{ marginBottom: 16 }} bodyStyle={{ padding: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <Space size="middle">
-              <span style={{ fontWeight: 600 }}>当前运行时生效状态：</span>
-              {activeSource === 'DATABASE' && (
-                <Tag color="success" style={{ fontSize: 13, padding: '2px 8px' }}>
-                  数据库配置生效中
-                </Tag>
-              )}
-              {activeSource === 'CONFIG_FILE' && (
-                <Tag color="warning" style={{ fontSize: 13, padding: '2px 8px' }}>
-                  配置文件/环境变量默认中（数据库未激活）
-                </Tag>
-              )}
-              {activeSource === 'NONE' && (
-                <Tag color="error" style={{ fontSize: 13, padding: '2px 8px' }}>
-                  未接入大模型服务 (4001)
-                </Tag>
-              )}
-              <Text code strong>
+        <Row gutter={[16, 12]}>
+          <Col xs={24} md={12}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, width: 140 }}>🤖 大语言模型 (LLM)：</span>
+              {activeSource === 'DATABASE' && <Tag color="success">数据库生效</Tag>}
+              {activeSource === 'CONFIG_FILE' && <Tag color="warning">配置/环境变量</Tag>}
+              {activeSource === 'NONE' && <Tag color="error">未接入 (4001)</Tag>}
+              <Text code strong style={{ marginLeft: 4 }}>
                 {activeDescribe}
               </Text>
-            </Space>
-          </div>
-          {activeSource === 'CONFIG_FILE' && (
-            <span style={{ color: '#888', fontSize: 12 }}>
-              提示：点击右上角「从配置文件导入」可将当前配置固化进数据库管理
-            </span>
-          )}
-        </div>
+            </div>
+          </Col>
+          <Col xs={24} md={12}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, width: 140 }}>🧠 词嵌入模型 (RAG)：</span>
+              {activeEmbSource === 'DATABASE' && <Tag color="success">数据库生效</Tag>}
+              {activeEmbSource === 'CONFIG_FILE' && <Tag color="warning">配置/环境变量</Tag>}
+              {activeEmbSource === 'NONE' && <Tag color="error">未配置 (降级关键词)</Tag>}
+              <Text code strong style={{ marginLeft: 4 }}>
+                {activeEmbDescribe}
+              </Text>
+            </div>
+          </Col>
+        </Row>
       </Card>
+
+      <Tabs
+        activeKey={activeTab}
+        onChange={k => setActiveTab(k as 'LLM' | 'EMBEDDING')}
+        type="card"
+        items={[
+          {
+            key: 'LLM',
+            label: `🤖 大语言模型供应商 (Chat / Completions) (${overview?.configs.filter(c => (c.category || 'LLM') === 'LLM').length ?? 0})`
+          },
+          {
+            key: 'EMBEDDING',
+            label: `🧠 词嵌入模型供应商 (Embedding / RAG) (${overview?.configs.filter(c => c.category === 'EMBEDDING').length ?? 0})`
+          }
+        ]}
+      />
 
       <Table
         rowKey="id"
         columns={columns}
-        dataSource={overview?.configs ?? []}
+        dataSource={currentConfigs}
         loading={loading}
         pagination={false}
       />
 
       <Modal
-        title={editingItem ? `编辑供应商配置 - ${editingItem.name}` : '新建 AI 供应商配置'}
+        title={
+          editingItem
+            ? `编辑${modalCategory === 'EMBEDDING' ? '词嵌入' : '大语言模型'}供应商 - ${editingItem.name}`
+            : `新建${modalCategory === 'EMBEDDING' ? '词嵌入' : '大语言模型'}供应商配置`
+        }
         open={modalVisible}
         width={620}
         onCancel={() => setModalVisible(false)}
         footer={[
-          <Button
-            key="test"
-            loading={testingModal}
-            onClick={handleTestInModal}
-            style={{ float: 'left' }}
-          >
-            测试连通性
-          </Button>,
           <Button key="cancel" onClick={() => setModalVisible(false)}>
             取消
           </Button>,
+          <Button key="test" loading={testingModal} onClick={handleTestInModal}>
+            连通性测试
+          </Button>,
           <Button key="submit" type="primary" onClick={handleSave}>
-            保存并应用
+            保存并入库
           </Button>
         ]}
       >
-        <div style={{ marginBottom: 16 }}>
-          <Space size="middle">
-            <span style={{ fontSize: 12, color: '#666' }}>快速填充模板：</span>
-            <Select
-              style={{ width: 340 }}
-              placeholder="选择常用大模型厂商预设..."
-              onChange={applyPreset}
-              options={PRESETS.map((p, idx) => ({ value: idx, label: p.label }))}
-            />
-          </Space>
-        </div>
-
         {testResult && (
           <Alert
             style={{ marginBottom: 16 }}
-            type={testResult.success ? 'success' : 'error'}
-            message={testResult.message}
+            type={testResult.success ? 'success' : 'warning'}
             showIcon
+            message={testResult.message}
           />
         )}
 
         <Form form={form} layout="vertical">
+          <Form.Item label="快捷填充常用厂商预设模板">
+            <Select
+              placeholder="选择预设自动填充端点与模型参数"
+              onChange={applyPreset}
+              options={(modalCategory === 'EMBEDDING' ? EMBEDDING_PRESETS : LLM_PRESETS).map(
+                (p, idx) => ({
+                  value: idx,
+                  label: p.label
+                })
+              )}
+            />
+          </Form.Item>
+
           <Form.Item
             name="name"
-            label="供应商名称"
-            rules={[{ required: true, message: '请输入供应商名称' }]}
+            label="供应商配置名称"
+            rules={[{ required: true, message: '请输入配置名称' }]}
           >
-            <Input placeholder="例如：DeepSeek 生产通道 / 通义百炼 / 聚合网关" />
+            <Input
+              placeholder={
+                modalCategory === 'EMBEDDING'
+                  ? '例如：大工 AI 网关 (BGE-M3 嵌入)'
+                  : '例如：DeepSeek 官方 API'
+              }
+            />
           </Form.Item>
 
           <Form.Item
             name="protocol"
             label="通信协议"
             rules={[{ required: true, message: '请选择协议' }]}
+            tooltip={
+              modalCategory === 'EMBEDDING'
+                ? '词嵌入通常使用标准 OpenAI 兼容的 /v1/embeddings 协议'
+                : '绝大多数国产聚合网关与 OpenAI、DeepSeek 均兼容 openai-chat-completions'
+            }
           >
             <Radio.Group>
-              <Radio value="openai-chat-completions">OpenAI Chat Completions (通用经典协议)</Radio>
-              <Radio value="anthropic-messages">Anthropic Messages (Claude 原生)</Radio>
-              <Radio value="openai-responses">OpenAI Responses API</Radio>
+              <Radio.Button value="openai-chat-completions">OpenAI 兼容</Radio.Button>
+              {modalCategory === 'LLM' && (
+                <>
+                  <Radio.Button value="anthropic-messages">Claude 原生</Radio.Button>
+                  <Radio.Button value="openai-responses">Responses API</Radio.Button>
+                </>
+              )}
             </Radio.Group>
           </Form.Item>
 
@@ -538,9 +636,9 @@ export default function AdminAiConfigView() {
             name="baseUrl"
             label="接口基址 (Base URL)"
             rules={[{ required: true, message: '请输入接口基址' }]}
-            tooltip="例如：https://api.openai.com/v1 或 https://api.deepseek.com/v1"
+            tooltip="例如：http://aigw.dlut.edu.cn/v1 或 https://api.openai.com/v1"
           >
-            <Input placeholder="https://api.openai.com/v1" />
+            <Input placeholder="http://aigw.dlut.edu.cn/v1" />
           </Form.Item>
 
           <Form.Item
@@ -558,43 +656,63 @@ export default function AdminAiConfigView() {
 
           <Form.Item
             name="model"
-            label="模型标识 (Model)"
+            label={
+              modalCategory === 'EMBEDDING'
+                ? '词嵌入模型标识 (Embedding Model)'
+                : '大语言模型标识 (LLM Model)'
+            }
             rules={[{ required: true, message: '请输入模型标识' }]}
-            tooltip="例如 deepseek-chat、gpt-4o-mini、qwen-plus 等"
+            tooltip={
+              modalCategory === 'EMBEDDING'
+                ? '例如 bge-m3、text-embedding-3-small、text-embedding-v3 等'
+                : '例如 deepseek-chat、DeepSeek-V4-Flash-0731-W8A8、gpt-4o-mini 等'
+            }
           >
-            <Input placeholder="例如 deepseek-chat" />
+            <Input placeholder={modalCategory === 'EMBEDDING' ? 'bge-m3' : 'deepseek-chat'} />
           </Form.Item>
 
-          <Space size="middle" style={{ display: 'flex' }}>
-            <Form.Item
-              name="temperature"
-              label="采样温度 (0.0~2.0)"
-              tooltip="生成随机性，找房助手推荐设 0.7"
-            >
-              <InputNumber min={0} max={2} step={0.1} style={{ width: 130 }} />
-            </Form.Item>
+          {modalCategory === 'LLM' && (
+            <Space size="middle" style={{ display: 'flex' }}>
+              <Form.Item
+                name="temperature"
+                label="采样温度 (0.0~2.0)"
+                tooltip="生成随机性，找房助手推荐设 0.7"
+              >
+                <InputNumber min={0} max={2} step={0.1} style={{ width: 130 }} />
+              </Form.Item>
 
-            <Form.Item
-              name="maxTokens"
-              label="最大 Token 预算"
-              tooltip="单轮生成上限，推理模型包含思维链长度，建议 ≥ 4096"
-            >
-              <InputNumber min={256} max={32768} step={512} style={{ width: 140 }} />
-            </Form.Item>
+              <Form.Item
+                name="maxTokens"
+                label="最大 Token 预算"
+                tooltip="单轮生成上限，推理模型建议 ≥ 4096"
+              >
+                <InputNumber min={256} max={32768} step={512} style={{ width: 140 }} />
+              </Form.Item>
 
+              <Form.Item
+                name="timeoutSeconds"
+                label="超时 (秒)"
+                tooltip="单次请求最长等待时间，默认 60s"
+              >
+                <InputNumber min={10} max={600} step={10} style={{ width: 130 }} />
+              </Form.Item>
+            </Space>
+          )}
+
+          {modalCategory === 'EMBEDDING' && (
             <Form.Item
               name="timeoutSeconds"
-              label="上游超时 (秒)"
-              tooltip="单次请求大模型上游的最长等待时间，默认 60s"
+              label="词嵌入请求超时 (秒)"
+              tooltip="单次向量化请求超时时间，默认 30s"
             >
-              <InputNumber min={10} max={600} step={10} style={{ width: 130 }} />
+              <InputNumber min={5} max={180} step={5} style={{ width: 150 }} />
             </Form.Item>
-          </Space>
+          )}
 
           <Form.Item
             name="userAgent"
             label="自定义 User-Agent 请求头 (可选)"
-            tooltip="部分聚合通道或云厂商 WAF 对默认 Java/OkHttp 客户端有访问限制，可填入常见浏览器或客户端标识"
+            tooltip="部分聚合通道对默认客户端有限制，可填入常见浏览器标识"
           >
             <Input placeholder="留空使用网关默认 User-Agent" />
           </Form.Item>
@@ -602,7 +720,7 @@ export default function AdminAiConfigView() {
           <Form.Item
             name="customHeaders"
             label="自定义扩展 HTTP 请求头 (JSON 格式，可选)"
-            tooltip='适用于特定厂商/代理网关要求的额外 Header（如 OpenCode 要求 {"x-opencode-session": "..."}），留空或填 {} 表示无额外头'
+            tooltip="适用于特定代理网关要求的额外 Header，留空或填 {}"
             rules={[
               {
                 validator: async (_, value) => {
@@ -622,7 +740,7 @@ export default function AdminAiConfigView() {
             ]}
           >
             <Input.TextArea
-              rows={3}
+              rows={2}
               placeholder={'例如：{\n  "x-opencode-session": "my-session-uuid-123"\n}'}
             />
           </Form.Item>

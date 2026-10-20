@@ -81,6 +81,10 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
         this.customHeaders = customHeaders == null ? Map.of() : customHeaders;
     }
 
+    String getBaseUrl() {
+        return baseUrl;
+    }
+
     // ── 同步 ───────────────────────────────────────────────────────────
 
     @Override
@@ -280,7 +284,7 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
         }
         String content = text.toString();
         if (!requests.isEmpty()) {
-            return content.isEmpty() ? new AiMessage(requests) : new AiMessage(content, requests);
+            return content.isBlank() ? new AiMessage(requests) : new AiMessage(content, requests);
         }
         if (!content.isEmpty()) {
             return new AiMessage(content);
@@ -389,7 +393,7 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
             throw new LlmEmptyResponseException("模型未返回正文与工具调用（同步响应）");
         }
         return requests.isEmpty() ? new AiMessage(content)
-                : (content.isEmpty() ? new AiMessage(requests) : new AiMessage(content, requests));
+                : (content.isBlank() ? new AiMessage(requests) : new AiMessage(content, requests));
     }
 
     private TokenUsage tokenUsage(JsonNode usage) {
@@ -410,7 +414,11 @@ public class OpenAiChatCompletionsModel implements ChatLanguageModel, StreamingC
     }
 
     private static String trimSlash(String url) {
-        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+        String trimmed = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+        if ("http://aigw.dlut.edu.cn".equalsIgnoreCase(trimmed) || "https://aigw.dlut.edu.cn".equalsIgnoreCase(trimmed)) {
+            return trimmed + "/v1";
+        }
+        return trimmed;
     }
 
     /** 模型名可能是带厂商前缀的网关别名（如 openai/o3-mini），按最后一段判定是否推理型模型 */

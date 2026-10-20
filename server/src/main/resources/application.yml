@@ -61,11 +61,11 @@ ai:
   #   anthropic-messages       Anthropic Messages 原生协议
   #   openai-responses         OpenAI Responses API 新接口（内置适配器）
   # 生效顺序：数据库中已激活的供应商配置优先 → 配置文件中 AI_BACKEND 指定的命名后端 → 快捷单后端 → 均未配置则返回 4001（硬报错无兜底）
-  active: ${AI_BACKEND:}
+  active: ${AI_BACKEND:dlut-deepseek}
   protocol: ${AI_PROTOCOL:openai-chat-completions}
-  base-url: ${AI_BASE_URL:https://api.openai.com/v1}
+  base-url: ${AI_BASE_URL:http://aigw.dlut.edu.cn/v1}
   api-key: ${AI_API_KEY:}
-  model: ${AI_MODEL:gpt-4.1-mini}
+  model: ${AI_MODEL:DeepSeek-V4-Flash-0731-W8A8}
   temperature: 0.7
   # 单轮回复的 token 上限。推理类模型的思维链也计入本预算：实测一轮对话
   # （系统提示 + 工具定义 + 知识库片段 + 思维链 + 正文）约 1.6k~2.0k tokens，
@@ -73,24 +73,38 @@ ai:
   # 表现为客服场景回答为空，故留出约 2 倍余量。
   max-tokens: ${AI_MAX_TOKENS:4096}
   timeout-seconds: 60
+  # ── RAG 知识库词嵌入模型配置 ─────────────────────────
+  # 生效顺序：环境变量 AI_EMBEDDING_* 显式配置优先 → 数据库激活的 AI 供应商配置 → 配置文件生效后端
+  embedding:
+    base-url: ${AI_EMBEDDING_BASE_URL:}
+    api-key: ${AI_EMBEDDING_API_KEY:}
+    model: ${AI_EMBEDDING_MODEL:bge-m3}
+    similarity-threshold: ${AI_EMBEDDING_THRESHOLD:0.58}
+    timeout-seconds: 30
   # 命名多后端：配好 Key 后用 AI_BACKEND=<name> 一键切换（一个名字＝一套"协议+端点+模型"组合）：
-  #   AI_BACKEND=commandcode-chat AGGREGATOR_API_KEY=<key> mvn spring-boot:run
+  #   AI_BACKEND=dlut-deepseek AGGREGATOR_API_KEY=<key> mvn spring-boot:run
   backends:
+    dlut-deepseek: # 大工 AI 网关通道（DeepSeek-V4-Flash-0731-W8A8）
+      protocol: openai-chat-completions
+      base-url: ${AGGREGATOR_BASE_URL:http://aigw.dlut.edu.cn/v1}
+      api-key: ${AGGREGATOR_API_KEY:}
+      model: ${AGGREGATOR_MODEL:DeepSeek-V4-Flash-0731-W8A8}
+      user-agent: ${AGGREGATOR_USER_AGENT:RentAgent-Platform/1.0}
     opencode-go: # OpenCode GO 端点（OpenAI 兼容协议，模型 deepseek-v4.1-flash）
       protocol: openai-chat-completions
-      base-url: ${AGGREGATOR_BASE_URL:https://opencode.ai/zen/go/v1}
-      api-key: ${AGGREGATOR_API_KEY:}
-      model: ${AGGREGATOR_MODEL:deepseek-v4.1-flash}
-      user-agent: ${AGGREGATOR_USER_AGENT:RentAgent-Platform/1.0}
+      base-url: ${OPENCODE_BASE_URL:https://opencode.ai/zen/go/v1}
+      api-key: ${OPENCODE_API_KEY:}
+      model: ${OPENCODE_MODEL:deepseek-v4.1-flash}
+      user-agent: ${OPENCODE_USER_AGENT:RentAgent-Platform/1.0}
       headers:
         x-opencode-session: ${OPENCODE_SESSION:rentagent-session-default}
     commandcode-chat: # 聚合网关通道：同一端点下可指定任意模型（模型名形如 <厂商>/<模型>）
       protocol: openai-chat-completions
-      base-url: ${AGGREGATOR_BASE_URL:https://api.commandcode.ai/provider/v1}
-      api-key: ${AGGREGATOR_API_KEY:}
-      model: ${AGGREGATOR_MODEL:inclusionai/ling-3.1-flash:free}
+      base-url: ${COMMANDCODE_BASE_URL:https://api.commandcode.ai/provider/v1}
+      api-key: ${COMMANDCODE_API_KEY:}
+      model: ${COMMANDCODE_MODEL:inclusionai/ling-3.1-flash:free}
       # 该网关的边缘按 UA 放行，默认客户端 UA（okhttp/java）会被限流或截断流式响应，故显式覆盖
-      user-agent: ${AGGREGATOR_USER_AGENT:curl/8.5.0}
+      user-agent: ${COMMANDCODE_USER_AGENT:curl/8.5.0}
     claude-messages: # Claude 官方端点（Anthropic Messages 原生协议）
       protocol: anthropic-messages
       base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}

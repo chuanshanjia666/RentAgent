@@ -308,11 +308,13 @@ export interface AuditLogRow {
 export interface AiConfigVO {
   id: number
   name: string
+  category: 'LLM' | 'EMBEDDING'
   protocol: string
   baseUrl: string
   maskedApiKey: string
   hasApiKey: boolean
   model: string
+  embeddingModel?: string
   temperature: number
   maxTokens: number
   timeoutSeconds: number
@@ -328,16 +330,21 @@ export interface AiConfigOverviewVO {
   activeSource: 'DATABASE' | 'CONFIG_FILE' | 'NONE'
   activeDescribe: string
   activeConfigId?: number | null
+  activeEmbeddingSource?: 'DATABASE' | 'CONFIG_FILE' | 'NONE'
+  activeEmbeddingDescribe?: string
+  activeEmbeddingConfigId?: number | null
   configs: AiConfigVO[]
 }
 
 /** AI 供应商配置保存/更新入参 */
 export interface AiConfigSaveReq {
   name: string
+  category?: 'LLM' | 'EMBEDDING'
   protocol: string
   baseUrl: string
   apiKey?: string
   model: string
+  embeddingModel?: string
   temperature?: number
   maxTokens?: number
   timeoutSeconds?: number
@@ -349,10 +356,12 @@ export interface AiConfigSaveReq {
 /** 连通性测试入参 */
 export interface AiConfigTestReq {
   id?: number
+  category?: 'LLM' | 'EMBEDDING'
   protocol: string
   baseUrl: string
   apiKey?: string
   model: string
+  embeddingModel?: string
   temperature?: number
   maxTokens?: number
   timeoutSeconds?: number
