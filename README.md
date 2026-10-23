@@ -6,9 +6,9 @@
 | -- | ------ |
 | 前端（final） | React 18 + TypeScript + Vite 5 + Ant Design 5 + ECharts（`frontend/`，一套代码两种分发：**浏览器 Web 版** + **Electron 桌面端**） |
 | 后端 | Spring Boot 3.x + MyBatis-Plus + LangChain4j（AiServices 编排）+ 自研 LLM 协议适配器（三种协议均自研，`server/`） |
-| 数据 | MySQL 8（18 张业务表）+ Redis Stack（缓存 / 向量检索预留） |
-| AI | **模型无关的 LLM 网关**：三协议适配（OpenAI Chat Completions / Anthropic Messages / OpenAI Responses），三种协议的模型客户端均为自研（厂商内置客户端在"正文与工具调用同轮并存"的流式响应下会丢弃工具调用，导致工具永不执行），端点、模型、Key 全部可配置，换模型只改配置；四项 AI 分析的输出结构优先用 `response_format=json_schema` 强约束（端点不支持则退回提示词约束）。当前演示通道经聚合网关接入 `deepseek/deepseek-v4.1-flash`。**AI 能力必须接真实模型**：未配置模型或模型调用失败时统一返回 4001 并提示，不做任何规则/模拟兜底 |
-| 设计文档 | `doc/`（需求定义说明书、需求分析矩阵、概要设计说明 v1.12、数据库设计简介 v1.6 等） |
+| 数据 | MySQL 8（19 张业务表，含 ai_provider_config）+ Redis 7（缓存 / 验证码 / 限流） |
+| AI | **模型无关的双通道 AI 网关**：自研大语言模型网关 `LlmGateway`（三协议自研客户端：OpenAI Chat Completions / Anthropic Messages / OpenAI Responses）与词嵌入网关 `EmbeddingGateway`（bge-m3 / OpenAI Embedding 协议），彻底解决正文与工具调用同轮并存丢调用问题；支持在管理后台可视化配置并热切换生效；知识库全面采用稠密向量 RAG 检索（余弦相似度计算与阈值过滤）；四项 AI 分析优先采用 `response_format=json_schema` 强约束。**AI 能力必须接真实模型**：未配置或调用失败统一返回 4001 并附带原因，不做任何规则/模拟兜底 |
+| 设计文档 | `doc/`（需求定义说明书、需求分析矩阵、概要设计说明 v1.19、数据库设计简介 v1.7、集成测试成绩书等） |
 | 演示原型 | `doc/02.需求分析/prototype/`（React 高保真原型，规则模拟 AI，无需后端） |
 
 ## 快速启动
@@ -17,7 +17,7 @@
 
 ```bash
 docker compose up -d mysql redis
-# 首次启动自动建库建表（docker/mysql-init/01_schema.sql，18 张表）
+# 首次启动自动建库建表（docker/mysql-init/01_schema.sql，19 张表）
 ```
 
 > 国内环境拉不动 Docker Hub 时，可走镜像站后重打标签：

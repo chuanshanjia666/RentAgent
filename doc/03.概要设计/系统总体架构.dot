@@ -1,0 +1,98 @@
+digraph rentagent_system_architecture {
+  graph [fontname="Microsoft YaHei", rankdir=TB, bgcolor="white", compound=true,
+         label="RentAgent 系统总体架构设计",
+         labelloc=t, fontsize=18, nodesep=0.45, ranksep=0.6];
+  node  [fontname="Microsoft YaHei", fontsize=11, shape=box, style="filled,rounded",
+         fillcolor="#eef4fb", color="#4a7ebb", penwidth=1.1, margin="0.18,0.12"];
+  edge  [fontname="Microsoft YaHei", fontsize=9.5, color="#5c5c5c", penwidth=1.0, arrowsize=0.7];
+
+  /* ───────────────── ① 客户端层 ───────────────── */
+  subgraph cluster_client {
+    label="① 表现层（客户端） —— 一套代码（frontend/dist），两种交付形态"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=12;
+    web      [label="浏览器 Web 版\nReact 18 + TS strict + antd 5 + ECharts\nHashRouter · api.ts 统一拦截 · ssePost 流式"];
+    electron [label="Electron 桌面端\n同源构建产物以 file:// 本地加载\n启动时自动注入后端 API 基址"];
+  }
+
+  /* ───────────────── ② 接入层 ───────────────── */
+  subgraph cluster_access {
+    label="② 接入与网关层（Spring Boot 3.3.4 · :8080）"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=12;
+    access [label="RESTful API /api/v1/*（统一响应 R{code, message, data}）\nJWT 过滤器 + @RequireRole 权限拦截器\nSSE 流式通道 /ai/sessions/{id}/messages · 静态资产 /uploads/**"];
+  }
+
+  /* ───────────────── ③ 业务逻辑层 ───────────────── */
+  subgraph cluster_biz {
+    label="③ 核心业务层（Controller → Service → Mapper，业务规则/留痕/通知均内聚于 Service）"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=12;
+    m1 [label="用户与认证\n登录注册 · JWT · BCrypt\n实名认证审核（FR-01~04）"];
+    m2 [label="房源管理\n29套种子房源（覆大连8区）\n发布/审核/上下架（FR-05~07）"];
+    m3 [label="交易与履约\n看房预约 · 电子合同\n订单与租金账单（FR-17~19）"];
+    m4 [label="评价与互动\n租后评价 · 违规举报\n房源收藏 · 推荐（FR-11/20/23/25）"];
+    m5 [label="运营与管理\n通知中心 · 审计日志\n运营看板 · 供应商维护（FR-21~24）"];
+    m6 [label="知识库中心\n平台规则与租赁政策切片\n稠密向量嵌入与管理（FR-13）"];
+  }
+
+  /* ───────────────── ④ AI 智能体层 ───────────────── */
+  subgraph cluster_ai {
+    label="④ AI 智能体与模型网关层（真调模型，零假数据兜底，双通道独立解耦）"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=12;
+    chat  [label="ChatService\nSSE 长连接编排 · 会话生命周期\n助手与工具执行全量落库"];
+    agent [label="AgentEngine (LlmAgent)\n场景系统提示词（含房源链接协议）\n12 轮滑动记忆 · 异常清记忆"];
+    tools [label="HousingToolProvider（工具提供器 · 留痕 role=3）\nHousingTools：searchHouses / getHouseDetail / searchKnowledge\n单轮调用上限 8 次拦截 · detailUrl 统一封装", fillcolor="#f7f0e6", color="#b08a5c"];
+    gw    [label="LlmGateway（自研大语言模型网关）\n支持 openai-chat-completions / anthropic / responses\n正文与 Tool Calls 同轮并发捕获 · 推理模型自适应", fillcolor="#f7f0e6", color="#b08a5c"];
+    embgw [label="EmbeddingGateway（自研向量嵌入网关）\n支持 bge-m3 / text-embedding-3 等稠密模型\n切片自动向量化 · 余弦相似度计算与阈值过滤", fillcolor="#f7f0e6", color="#b08a5c"];
+    jsonc [label="AiJsonClient（结构化分析）\nresponse_format=json_schema(strict) 强约束\n定价建议 / 虚假房源检测 / 合同解读 / 辅助录入", fillcolor="#f7f0e6", color="#b08a5c"];
+    aicfg [label="AiConfigService（供应商配置中心）\nLLM / EMBEDDING 双通道独立持久化\nSpring 事件驱动网关热刷新生效", fillcolor="#f7f0e6", color="#b08a5c"];
+  }
+
+  /* ───────────────── ⑤ 数据持久层 ───────────────── */
+  subgraph cluster_data {
+    label="⑤ 数据持久层"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=12;
+    mysql   [label="MySQL 8（19 张业务表）\nhouse · sys_user · contract · lease_order\nai_chat_message · ai_provider_config · kb_chunk …"];
+    redis   [label="Redis 7 缓存与高频计数\n验证码 TTL · 登录失败锁定 · 推荐热度"];
+    uploads [label="静态资产存储\n房源图片 · 真实种子图像集"];
+  }
+
+  /* ───────────────── 外部大模型与嵌入服务 ───────────────── */
+  ext [label="外部：大模型 / 向量模型服务提供商\n大工 AI 网关 / DeepSeek / 通义千问 / 智谱 GLM / OpenAI 等",
+       fillcolor="#f7e7e7", color="#c07070"];
+
+  /* 调用关系 */
+  web      -> access [label="HTTP (localhost CORS)"];
+  electron -> access [label="HTTP (基址注入)"];
+
+  access   -> m1;
+  access   -> m2;
+  access   -> m3;
+  access   -> m4;
+  access   -> m5;
+  access   -> chat   [label="找房 / 客服 SSE"];
+  access   -> jsonc  [label="四项 AI 分析"];
+
+  m1 -> mysql;
+  m2 -> mysql;
+  m2 -> uploads;
+  m3 -> mysql;
+  m4 -> mysql;
+  m5 -> mysql;
+  m5 -> aicfg  [label="维护模型参数"];
+  m6 -> embgw  [label="切片向量化入库"];
+  m6 -> mysql;
+
+  chat  -> agent  [label="编排"];
+  agent -> gw     [label="流式对话"];
+  agent -> tools  [label="Function Calling"];
+  tools -> mysql  [label="执行房源检索"];
+  tools -> embgw  [label="RAG 向量相似度匹配", style=dashed];
+  jsonc -> gw     [label="JSON 约束调用", style=dashed];
+
+  aicfg -> mysql  [label="读写 ai_provider_config"];
+  aicfg -> gw     [label="发布热刷新事件", style=dashed];
+  aicfg -> embgw  [label="发布热刷新事件", style=dashed];
+
+  gw    -> ext    [label="HTTPS 协议适配出网"];
+  embgw -> ext    [label="HTTPS 向量嵌入出网"];
+}
+

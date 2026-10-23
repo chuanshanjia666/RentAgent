@@ -10,7 +10,7 @@
 | `server/` | Spring Boot 3.3.4（Java 17）+ MyBatis-Plus 3.5.7。分层：`controller/` → `service/` → `mapper/` → `entity/`；`dto/`（入参与响应 record）、`common/`（`R`/`ErrorCode`/`BizException`/`JsonColumns`）、`security/`（JWT 过滤器 + `@RequireRole` 拦截器）、`config/`、`agent/`（LLM 网关与智能体） |
 | `frontend/` | React 18 + TS strict + Vite 5 + antd 5 + ECharts。**一套代码两种分发**：Web 版与 Electron 桌面端共用 `frontend/dist` |
 | `scripts/` | `ci-smoke.sh`（集成冒烟门禁，事实上的接口契约测试）、`ci-no-model-check.sh`（反向门禁）、`smoke.sh`（人工排障打印版） |
-| `docker/mysql-init/01_schema.sql` | 18 张表的建表脚本（外键与中文 COMMENT 齐全，是《数据库表》生成源） |
+| `docker/mysql-init/01_schema.sql` | 19 张表的建表脚本（含 ai_provider_config，外键与中文 COMMENT 齐全，是《数据库表》生成源） |
 | `doc/` | 课程六阶段交付物；`.md` 是底稿、`.docx/.pdf/.xlsx` 是提交件。见 `doc/README.md` |
 | `.github/workflows/ci.yml` | 三作业并行：`backend-test` / `frontend-test` / `integration-smoke`（后者含无模型门禁） |
 
@@ -23,16 +23,16 @@ docker compose up -d mysql redis
 # 后端（8080）
 cd server && mvn -q compile            # 改完先编译，避免 spring-boot:run 跑旧 class
 ./run-dev.sh                            # 本地开发启动脚本
-mvn test                                # 单测 221 条，不连库/缓存/网络
+mvn test                                # 单测 237 条，不连库/缓存/网络
 mvn -Dtest=HouseServiceTest test        # 单测单类（配合 -DfailIfNoSpecifiedTests=false 更省事）
 
 # 前端（5173；浏览器请用 localhost 而非 127.0.0.1，CORS 白名单按来源区分）
 cd frontend && npm run dev
-npm run check          # = lint + format:check + test ← 提交前必跑，等价于 CI 的 frontend-test 前 3 步
+npm run check          # = lint + format:check + test ← 提交前必跑，等价于 CI 的 frontend-test 前 3 步（32 条单测）
 npm run format         # Prettier 自动修；CI 会卡格式（见"门禁"一节）
 npm run build:web      # tsc --noEmit && vite build（desktop 与 Web 共用该产物）
 
-# 集成冒烟（需 MySQL + Redis + 运行中的后端；130 条断言，退出码 0 通过 / 1 断言失败 / 2 前置未就绪）
+# 集成冒烟（需 MySQL + Redis + 运行中的后端；158 条断言，退出码 0 通过 / 1 断言失败 / 2 前置未就绪）
 bash scripts/ci-smoke.sh
 BASE_URL=http://localhost:8081 bash scripts/ci-no-model-check.sh   # 需另起一个无 AI 凭据的实例
 
@@ -73,8 +73,10 @@ python3 "doc/01.需求定义/assets/build_reqdef.py"     # 需求定义说明书
 
 - **AI 能力必须调真实模型**：未配置模型或调用失败统一返回 4001 并附可读原因，**不做任何规则/模拟兜底**
   （规则引擎 `MockAgent` 已删除）。因此不要提议"离线降级""本地假回答"。
-- 三种协议（openai-chat-completions / anthropic-messages / openai-responses）的模型客户端**均为自研**：
-  厂商客户端在"同一轮正文与工具调用并存"时会丢 tool_calls。改适配器时保持"正文与 tool_calls 分别累积后合并"。
+- **双通道解耦管理与自研网关**：大语言模型（LLM）与词嵌入模型（EMBEDDING）支持在后台独立配置、测试与热切换；
+  大模型自研三种协议客户端（openai-chat-completions / anthropic-messages / openai-responses），
+  词嵌入自研 `OpenAiEmbeddingClient`（支持 bge-m3、text-embedding-3 等），知识库切片与检索走真实向量余弦相似度 RAG。
+- 厂商客户端在"同一轮正文与工具调用并存"时会丢 tool_calls。改适配器时保持"正文与 tool_calls 分别累积后合并"。
 - **响应既无正文也无工具调用时必须报错**（`LlmEmptyResponseException`），不得伪造回答；可自愈故障
   （空返回 / 429 / 5xx / 超时）由 `LlmAgent` 非流式重跑一次，4xx 不重跑。
 - 聚合通道是**推理模型**：思维链计入 `max_tokens`（实测一轮 1.6k~2.0k tokens），预算过紧会被

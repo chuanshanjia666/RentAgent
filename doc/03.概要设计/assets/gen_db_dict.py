@@ -388,6 +388,28 @@ TABLES.append(dict(
         F("DATETIME", "", "created_at", "Y", "CURRENT_TIMESTAMP", "", "入库时间", "datetime", "Y"),
     ]))
 
+TABLES.append(dict(
+    name="ai_provider_config", desc="AI API供应商配置表",
+    remark="存储大语言模型（LLM）与词嵌入模型（EMBEDDING）的供应商端点、协议、凭据与参数，支持管理员控制台动态维护与热切换生效",
+    fields=[
+        F("BIGINT", 20, "id", "Y", "", "主键 自增 UNSIGNED", "主键"),
+        F("VARCHAR", 50, "name", "Y", "", "", "供应商名称", "input", "Y"),
+        F("VARCHAR", 20, "category", "Y", "LLM", "idx_category_active 联合索引", "供应商类型: LLM / EMBEDDING", "select", "Y", "LLM(大语言模型) / EMBEDDING(词嵌入模型)"),
+        F("VARCHAR", 50, "protocol", "Y", "openai-chat-completions", "", "接口协议", "select", "Y", "openai-chat-completions / anthropic-messages / openai-responses"),
+        F("VARCHAR", 255, "base_url", "Y", "", "", "接口基址", "input", "Y"),
+        F("VARCHAR", 255, "api_key", "Y", "", "", "API Key凭据（脱敏回显）", "password"),
+        F("VARCHAR", 100, "model", "Y", "", "", "大模型名称", "input", "Y"),
+        F("VARCHAR", 100, "embedding_model", "Y", "bge-m3", "", "词嵌入模型名称", "input", "Y"),
+        F("DECIMAL", "3,2", "temperature", "Y", "0.70", "", "采样温度", "input"),
+        F("INT", 10, "max_tokens", "Y", "4096", "", "最大Token预算", "input"),
+        F("INT", 10, "timeout_seconds", "Y", "60", "", "超时时间(秒)", "input"),
+        F("VARCHAR", 255, "user_agent", "", "", "", "自定义User-Agent", "input"),
+        F("TEXT", "", "custom_headers", "", "", "", "自定义请求头JSON键值对", "textarea"),
+        F("TINYINT", 1, "is_active", "Y", "0", "idx_active 索引 / 业务保证同类别单激活", "是否当前生效: 1是 0否", "radio", "Y", "1:是; 0:否"),
+        F("DATETIME", "", "created_at", "Y", "CURRENT_TIMESTAMP", "", "创建时间", "datetime", "Y"),
+        F("DATETIME", "", "updated_at", "Y", "CURRENT_TIMESTAMP", "ON UPDATE CURRENT_TIMESTAMP", "更新时间", "datetime", "Y"),
+    ]))
+
 
 # ── 样式 ────────────────────────────────────────────────────────────────────
 THIN = Side(style="thin", color="808080")
@@ -487,7 +509,7 @@ def build_index(wb):
               "viewing_appointment": "交易域", "contract": "交易域", "lease_order": "交易域",
               "rent_bill": "交易域", "review": "交易域", "report": "交易域", "audit_log": "交易域",
               "ai_chat_session": "AI 域", "ai_chat_message": "AI 域", "ai_analysis": "AI 域",
-              "kb_document": "AI 域", "kb_chunk": "AI 域"}
+              "kb_document": "AI 域", "kb_chunk": "AI 域", "ai_provider_config": "AI 域"}
 
     for n, t in enumerate(TABLES, start=1):
         fks = [f["note"].split("→")[1].split(".")[0].strip()
@@ -503,7 +525,7 @@ def build_index(wb):
             c.alignment = CENTER if i in (1, 3, 4, 5, 6) else LEFT
 
     ws.cell(row=len(TABLES) + 3, column=1,
-            value="说明：本工作簿共 18 张业务表，与《数据库设计简介》4.3 数据字典、"
+            value="说明：本工作簿共 19 张业务表，与《数据库设计简介》4.3 数据字典、"
                   "docker/mysql-init/01_schema.sql 三者一致；改字段请以 schema.sql 为准并同步更新本表。").font = BOLD
     ws.freeze_panes = "A2"
     ws.sheet_view.showGridLines = False
@@ -524,7 +546,10 @@ def main():
     for i, t in enumerate(TABLES):
         build_sheet(wb, t, i)
     wb.save(OUT)
-    print("written:", OUT, "| sheets:", len(wb.sheetnames))
+    # 同步更新上级目录的 数据库表.xlsx
+    parent_out = OUT.parent.parent / "数据库表.xlsx"
+    wb.save(parent_out)
+    print("written:", OUT, "and", parent_out, "| sheets:", len(wb.sheetnames))
     print("tables:", len(TABLES), "| fields total:", sum(len(t["fields"]) for t in TABLES))
 
 

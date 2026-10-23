@@ -1,0 +1,81 @@
+digraph rentagent_agent_workflow {
+  graph [fontname="Microsoft YaHei", rankdir=TB, bgcolor="white", compound=true,
+         label="RentAgent 智能体工作原理与找房交互全流程",
+         labelloc=t, fontsize=18, nodesep=0.4, ranksep=0.55];
+  node  [fontname="Microsoft YaHei", fontsize=11, shape=box, style="filled,rounded",
+         penwidth=1.1, margin="0.20,0.12"];
+  edge  [fontname="Microsoft YaHei", fontsize=9.5, color="#5c5c5c", penwidth=1.1, arrowsize=0.75];
+
+  /* ───────────────── 阶段 1：用户交互与通道建立 ───────────────── */
+  subgraph cluster_phase1 {
+    label="【阶段一】请求发起与上下文装配"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=12;
+
+    step1 [label="1. 租客输入找房需求\n（例如：「预算2500以内，要一居室，近地铁」\nscene=1 找房助手场景）",
+           fillcolor="#eef4fb", color="#4a7ebb"];
+    step2 [label="2. 前端发起 ssePost 长连接\nChatService 动态装配执行上下文：\n① 场景系统提示词（含房源 Markdown 链接生成协议）\n② 12 轮会话记忆历史 + 动态 @Tool 工具清单",
+           fillcolor="#eaf6ea", color="#5c9c5c"];
+  }
+
+  /* ───────────────── 阶段 2：模型推理与工具决策 ───────────────── */
+  subgraph cluster_phase2 {
+    label="【阶段二】双通道累积与模型决策"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#fbf9f4"; color="#b08a5c"; margin=12;
+
+    step3 [label="3. LlmAgent 驱动 LlmGateway 发起调用\n自研协议适配器接收上游 SSE 流式分片：\n【关键算法】并行累加正文并同时捕获完整 tool_calls\n（彻底解决厂商客户端因正文非空丢弃工具调用的缺陷）",
+           fillcolor="#fdeeee", color="#c07070"];
+    step4 [label="4. 大模型自主决策发起工具调用（非凭空虚构）\n识别意图并提取结构化参数：\nsearchHouses(maxRent=2500, layoutKeyword=\"1室\", subway=true)",
+           fillcolor="#fdeeee", color="#c07070"];
+  }
+
+  /* ───────────────── 阶段 3：工具执行与业务检索 ───────────────── */
+  subgraph cluster_phase3 {
+    label="【阶段三】工具安全执行、检索与留痕"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#fbf9f4"; color="#b08a5c"; margin=12;
+
+    step5 [label="5. HousingToolProvider 代理执行与安全拦截\n① 单轮调用上限护栏拦截（超 8 次强制阻断，防模型无限递归）\n② 工具耗时统计与参数留痕（落库 ai_chat_message，role=3）",
+           fillcolor="#f7f0e6", color="#b08a5c"];
+    step6 [label="6. SearchService 执行 MySQL 真实多维检索\n仅检索 status=3（已上架在售在租）房源\n统一生成合法详情链接：detailUrl = \"#/app/houses/{id}\"",
+           fillcolor="#f7f0e6", color="#b08a5c"];
+  }
+
+  /* ───────────────── 阶段 4：结果回填与流式生成 ───────────────── */
+  subgraph cluster_phase4 {
+    label="【阶段四】结果回填、流式生成与闭环交互"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#f6f9fd"; color="#4a7ebb"; margin=12;
+
+    step7 [label="7. 检索数据回填模型上下文\n模型依据真实结果生成推荐语与房源卡片：\n严格按协议输出 Markdown 链接：[标题](detailUrl)\n系统约束禁止模型编造不存在的房源与外链",
+           fillcolor="#fdeeee", color="#c07070"];
+    step8 [label="8. SSE 逐字向前端推送\n① 逐字下发 delta 载荷，前端实现打字机式平滑渲染\n② 收尾推送 done 事件：{messageId, citations, transferred, latencyMs}",
+           fillcolor="#eaf6ea", color="#5c9c5c"];
+    step9 [label="9. 前端解析站内路由并渲染为可交互组件\nchatLinks.tsx 正则捕获 #/app/houses/* 链接：\n渲染为蓝色超链接标签，租客点击直达房源详情页，全流程落库可审计",
+           fillcolor="#eef4fb", color="#4a7ebb"];
+  }
+
+  /* ───────────────── 异常自愈与可靠性护栏 ───────────────── */
+  subgraph cluster_guard {
+    label="【可靠性护栏与故障自愈体系】"; labeljust=l; fontsize=12;
+    style="rounded,filled"; fillcolor="#fcf2f2"; color="#c07070"; margin=12;
+
+    guard_retry [label="可自愈异常非流式重跑：\n遇 429 限流 / 5xx 服务端错误 / 网络超时 / 空返回\n或模型仅输出过程语而漏调工具时，自动非流式重跑一次",
+                 fillcolor="#ffffff", color="#c07070", style="filled,dashed"];
+    guard_fail  [label="硬报错与残缺记忆清理：\n未配 Key / 两次均失败如实抛出 4001（零伪造回答）；\n工具异常中止时自动清空本轮残缺记忆，防后续会话 400 崩溃",
+                 fillcolor="#ffffff", color="#c07070", style="filled,dashed"];
+  }
+
+  /* 流程连线 */
+  step1 -> step2 [label="创建会话并推流"];
+  step2 -> step3 [label="提交Prompt与工具元数据"];
+  step3 -> step4 [label="模型意图判定"];
+  step4 -> step5 [label="触发Function Calling"];
+  step5 -> step6 [label="执行业务数据查询"];
+  step6 -> step7 [label="返回房源数据集合", color="#b08a5c", style=dashed];
+  step7 -> step8 [label="模型生成回复正文"];
+  step8 -> step9 [label="SSE 渲染完成，实现业务闭环"];
+
+  /* 异常保护关联 */
+  step3 -> guard_retry [style=dotted, color="#c07070", label="异常捕获"];
+  guard_retry -> step3 [style=dashed, color="#c07070", label="自动重试"];
+  guard_retry -> guard_fail [style=dotted, color="#c07070", label="重试仍失败"];
+}
+

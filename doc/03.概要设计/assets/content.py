@@ -163,6 +163,17 @@ CHANGE_ROWS = [
      "配置变更无需重启服务端即时热生效；④ 前端管理端新增「AI 供应商配置」界面，支持厂商模板快速填充与连通性验证。"
      "同步单测（新增 UT-AICONFIG-01~08，单测增至 221 条）与集成断言",
      "2026-10-13"),
+    ("15", "V1.14",
+     "CI/CD 与本地开发默认大模型通道切换为大工 AI 网关的 DeepSeek-V4-Flash-0731-W8A8（端点 http://aigw.dlut.edu.cn/v1），"
+     "协议适配器支持根域名输入时自动规约补全 /v1；管理后台新增对应预设模板；后端单测基线扩充至 222 条",
+     "2026-10-17"),
+    ("16", "V1.15",
+     "知识库全面升级为稠密向量 RAG 检索体系，大模型与词嵌入供应商解耦独立管理：① 自研向量网关 EmbeddingGateway 与 "
+     "OpenAiEmbeddingClient，接入 bge-m3 稠密向量模型；② KbService 落地向量嵌入、Base64 存储、余弦相似度（Cosine Similarity）"
+     "高维计算与阈值过滤，实现高精度 RAG 语义召回；③ 管理后台与数据库支持独立管理 LLM 与 EMBEDDING 双供应商（多通道热切换）；"
+     "④ 后端单测扩充至 237 条（新增 EmbeddingGatewayTest、OpenAiEmbeddingClientTest、KbServiceTest 向量单测等），"
+     "前端单测 32 条，CI 冒烟断言扩充至 158 条",
+     "2026-10-20"),
 ]
 
 # ── 1 文档概述 ───────────────────────────────────────────────────────────────
@@ -172,7 +183,7 @@ SEC1_PURPOSE = [
     "模块划分与模块内结构、数据库设计、模块间接口函数与关键数据结构，作为后续详细设计、编码实现、"
     "集成测试与维护的共同基准。",
     "文档范围覆盖 RentAgent 的全部已确认功能模块与支撑性设计：系统分层与部署形态、七大业务模块的"
-    "职责边界与内部结构、18 张业务表及其联系、对外接口规范与函数级约定、贯穿全系统的状态字典与错误码。"
+    "职责边界与内部结构、19 张业务表及其联系、对外接口规范与函数级约定、贯穿全系统的状态字典与错误码。"
     "需求实现程度的逐条追溯见《08-需求跟踪矩阵》，数据库字段级细节见《数据库设计简介》。",
     "本文档的阅读对象为：项目负责人、系统架构与后端开发人员、前端开发人员、测试人员、数据库设计人员"
     "以及课程指导教师与评审组。",
@@ -386,14 +397,17 @@ MODULES_CONTENT = [
             "response_format=json_schema（strict）由服务端强制约束返回结构，Schema 由目标返回类型经 JsonSchemas "
             "生成，端点不支持该参数时退回“提示词声明字段 + 解析容错”，并对结果做字段与取值域校验。"
             "本系统不提供规则引擎或模拟实现：未配置模型、调用失败或返回结构不合规时统一返回 4001 并附可读原因。",
-            "模型接入由 LlmGateway 统一收口，支持三种协议后端（openai-chat-completions、anthropic-messages、"
-            "openai-responses），端点、密钥与模型均可配置，并通过命名为后端的一键切换适配不同供应商。"
-            "三种协议的适配器均为本项目自研实现：openai-chat-completions 与 anthropic-messages 的适配器"
+            "模型接入由 LlmGateway 与 EmbeddingGateway 统一收口：前者负责大语言模型（LLM）对话与结构化分析，"
+            "支持三种协议后端（openai-chat-completions、anthropic-messages、openai-responses）；"
+            "后者负责稠密词嵌入模型（EMBEDDING，如 bge-m3、text-embedding-3-small），支持高维向量生成与余弦相似度计算。"
+            "系统支持在管理后台独立配置、测试与动态切换两类供应商（存入 ai_provider_config 表并通过 Spring 事件热生效）。"
+            "三种协议的适配器与向量客户端均为本项目自研实现：openai-chat-completions 与 anthropic-messages 的适配器"
             "对同一轮内的正文与工具调用分别累积后合并（模型普遍“先叙述再调工具”，若按“有正文即丢弃工具调用”"
             "处理，工具永远不会被执行），其中 anthropic-messages 适配器还兼容端点的思维链块并主动关闭 thinking "
             "以压缩首字延迟。",
-            "内容合规通过两条硬约束保障：知识库问答强制附带来源引用，合同与资金类问题只允许按知识库口径作答并"
-            "附加“AI 生成，仅供参考”声明；全部对话与工具调用记录落库可追溯（NFR-05）。",
+            "知识库问答全面采用稠密向量 RAG 检索体系：文档导入切片后自动向量化并存储，用户提问时由 EmbeddingGateway "
+            "实时嵌入并计算余弦相似度，按相关度重排召回 Top-K 切片（结合阈值过滤），再组装进系统提示词由模型带引用生成回答（NFR-05）；"
+            "未命中知识库时礼貌提示转人工。合同与资金类问题只允许按知识库口径作答并附加“AI 生成，仅供参考”声明；全部对话与工具留痕落库可追溯。",
         ],
         funcs=[
             ("1", "AI 找房助手", "对话式自然语言找房：意图理解 → 条件结构化 → 调用房源检索工具 → 生成带推荐理由的"
@@ -622,7 +636,7 @@ SEC42_TAIL = [
     "以及以唯一索引表达的各类业务约束。",
 ]
 
-# 表4-3：18 张业务表清单与关键字段（字段级完整字典见《数据库设计简介》4.3 节）
+# 表4-3：19 张业务表清单与关键字段（字段级完整字典见《数据库设计简介》4.3 节）
 TABLE_LIST = [
     ("1", "sys_user", "用户", "id", "—", "username、phone 唯一；password(BCrypt)；role 1/2/3；status；deleted"),
     ("2", "realname_auth", "实名认证", "id", "user_id", "real_name；id_card_no_enc(AES)；id_card_hash(比对)；status"),
@@ -647,7 +661,7 @@ TABLE_LIST = [
     ("16", "ai_analysis", "AI 分析结果", "id", "user_id（逻辑关联）", "type 定价/检测/解读/识别；target_type、target_id；input_snapshot；result(JSON)；model"),
     ("17", "kb_document", "知识库文档", "id", "—", "title；category；source_url；content；status；chunk_count"),
     ("18", "kb_chunk", "知识库切片", "id", "document_id", "seq；content；token_count；vector_ref；UNIQUE(document_id, seq)"),
-    ("19", "ai_provider_config", "AI供应商配置", "id", "—", "name；protocol；base_url；api_key；model；temperature；max_tokens；timeout_seconds；custom_headers(自定义请求头JSON)；is_active(生效标记)"),
+    ("19", "ai_provider_config", "AI供应商配置", "id", "—", "name；category(LLM/EMBEDDING)；protocol；base_url；api_key；model；embedding_model；temperature；max_tokens；timeout_seconds；custom_headers；is_active(生效标记)"),
 ]
 
 PHYS_CONV = [
@@ -1230,6 +1244,73 @@ SPECS = [
                "通知与留痕都在服务层完成，与房源审核、举报处理同一口径。",
         notes="驳回后申请人可修改后重新提交（认证状态以最新一条记录为准）；"
               "审核通过是房东发布房源的前置条件，校验点在 HouseService.create 中执行。",
+    ),
+    dict(
+        module="后台管理模块",
+        name="aiConfigs",
+        file="AdminController.java / AiConfigService.java",
+        summary="AI 供应商配置概览与列表：展示全部大模型与词嵌入供应商及当前生效项",
+        params=[],
+        ret_type="R<AdminDto.AiConfigOverviewVO>",
+        ret_vals=[
+            ("成功", "code = 0，data 含 activeSource / activeDescribe / activeEmbeddingSource / activeEmbeddingDescribe 与 configs[] 列表；API Key 统一脱敏回显"),
+            ("失败", "code = 1007 无权限执行该操作（非管理员）"),
+        ],
+        detail="查询 ai_provider_config 表，返回全部配置行，并解析当前生效中的大模型（LLM）与词嵌入模型（EMBEDDING）来源（DATABASE / CONFIG_FILE / NONE）。"
+               "Key 凭据按“前3位+4个星号+后4位”脱敏返回，保障安全展示。",
+        notes="支持管理员在控制台可视化掌控全站大模型与向量通道的运行状况，支持双通道解耦管理。",
+    ),
+    dict(
+        module="后台管理模块",
+        name="saveAiConfig",
+        file="AdminController.java / AiConfigService.java",
+        summary="新增或更新 AI 供应商配置：支持 LLM / EMBEDDING 双分类入库与参数维护",
+        params=[
+            ("Long", "id", "IN", "更新时为路径参数配置 ID，新增时为空"),
+            ("AiConfigSaveReq", "req", "IN", "name 必填、category(LLM/EMBEDDING)、protocol、baseUrl、apiKey、model、embeddingModel、maxTokens 等"),
+        ],
+        ret_type="R<AdminDto.AiConfigVO>",
+        ret_vals=[
+            ("成功", "code = 0，返回持久化后的 AI 供应商配置对象"),
+            ("失败", "code = 1000 参数校验失败（必填项缺失）；code = 1007 无权限执行该操作"),
+        ],
+        detail="校验入参有效性，更新时若 apiKey 传空则自动保留原凭据，防止二次编辑丢失密钥；"
+               "若保存时指定 isActive=true，则先原子清空同 category 的其他活跃项并派发热生效事件。",
+        notes="配置直接持久化于 MySQL，彻底摆脱频繁修改 application.yml 重启服务器的运维负担。",
+    ),
+    dict(
+        module="后台管理模块",
+        name="activateAiConfig",
+        file="AdminController.java / AiConfigService.java",
+        summary="动态生效 AI 供应商配置：一键将指定配置设为当前活跃通道（Spring 事件驱动即时生效）",
+        params=[
+            ("long", "id", "IN", "待激活生效的配置 ID（路径参数）"),
+        ],
+        ret_type="R<Void>",
+        ret_vals=[
+            ("成功", "code = 0，指定配置被标记为生效，网关与智能体热刷新"),
+            ("失败", "code = 1006 供应商配置不存在；code = 1007 无权限执行该操作"),
+        ],
+        detail="将指定 category 下原先生效记录置 0，当前记录置 1；发布 AiConfigChangedEvent 事件，"
+               "由 LlmGateway / EmbeddingGateway 监听并即时重建模型客户端，无需重启应用。",
+        notes="支持在多模型通道（如 DeepSeek / 通义千问 / 聚合网关 / BGE-M3）间热切换与秒级倒换。",
+    ),
+    dict(
+        module="后台管理模块",
+        name="testAiConfig",
+        file="AdminController.java / AiConfigService.java",
+        summary="测试 AI 供应商连通性：向目标端点发起最小探测请求并返回时延与状态",
+        params=[
+            ("AiConfigTestReq", "req", "IN", "测试入参（可直接传配置 ID 或未保存的临时端点/密钥/模型信息）"),
+        ],
+        ret_type="R<AdminDto.AiConfigTestVO>",
+        ret_vals=[
+            ("成功", "code = 0，data = { success: true/false, latencyMs, message }"),
+            ("失败", "code = 1007 无权限执行该操作"),
+        ],
+        detail="根据 category 分流：LLM 类别发送 1 token 的极简补全探针；EMBEDDING 类别发送简单字符串嵌入探测。"
+               "统计网络往返耗时，遇连接超时或鉴权失败返回清晰的失败根因。",
+        notes="在正式切换生效前供管理员验证连通性，防止将服务切换至不可用通道导致 4001 异常。",
     ),
 ]
 
