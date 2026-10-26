@@ -733,13 +733,21 @@ body {
 }
 
 /* AI 对话气泡 Markdown 渲染排版 */
-.msg-row.ai .bubble:has(.chat-markdown),
-.trace-bubble.ai:has(.chat-markdown) {
-  white-space: normal;
-}
 .chat-markdown {
   word-break: break-word;
   line-height: 1.75;
+  white-space: normal;
+}
+.chat-markdown a.md-link,
+.msg-row.ai .bubble a {
+  color: var(--glaze);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.chat-markdown a.md-link:hover,
+.msg-row.ai .bubble a:hover {
+  text-decoration: underline;
 }
 .chat-markdown .md-p {
   margin: 0 0 8px 0;

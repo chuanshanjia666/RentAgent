@@ -1,4 +1,4 @@
-import { parseBlocks, renderInline } from './chatMarkdownParser'
+import { LinkStore, parseBlocks, renderInlineText } from './chatMarkdownParser'
 
 export interface ChatMarkdownProps {
   content: string
@@ -7,16 +7,19 @@ export interface ChatMarkdownProps {
 
 /**
  * 适用于 AI 气泡对话的 Markdown 渲染组件：
- * 1. 深度支持标题、粗体、斜体、列表、代码块、引用、安全链接；
- * 2. 针对大模型输出习惯（如加粗包含中文标点、空格等）具备强容错性；
- * 3. 完美兼容流式输出与末尾光标闪烁，不依赖任何第三方重量级库，零 XSS 注入风险。
+ * 1. 采用 Link-First 两阶段解析架构，绝对优先保护跳转链接，确保房源跳转与 Markdown 排版互不冲突；
+ * 2. 深度支持标题、粗体、斜体、列表、代码块、引用、安全链接；
+ * 3. 针对大模型输出习惯（如加粗包含中文标点、空格等）具备强容错性；
+ * 4. 完美兼容流式输出与末尾光标闪烁，零第三方库依赖，零 XSS 注入风险。
  */
 export function ChatMarkdown({ content, typing }: ChatMarkdownProps) {
   if (!content) {
     return typing ? <span className="cursor" /> : null
   }
 
-  const blocks = parseBlocks(content)
+  const linkStore = new LinkStore()
+  const tokenized = linkStore.tokenize(content)
+  const blocks = parseBlocks(tokenized)
 
   const renderedBlocks = blocks.map((block, bi) => {
     switch (block.type) {
@@ -32,7 +35,7 @@ export function ChatMarkdown({ content, typing }: ChatMarkdownProps) {
         const Comp = block.level <= 2 ? 'h4' : block.level === 3 ? 'h5' : 'h6'
         return (
           <Comp key={bi} className="md-h">
-            {renderInline(block.text, `h-${bi}`)}
+            {renderInlineText(block.text, linkStore, `h-${bi}`)}
           </Comp>
         )
       }
@@ -42,7 +45,7 @@ export function ChatMarkdown({ content, typing }: ChatMarkdownProps) {
           <ul key={bi} className="md-ul">
             {block.items.map((item, ii) => (
               <li key={ii} className="md-li">
-                {renderInline(item, `ul-${bi}-${ii}`)}
+                {renderInlineText(item, linkStore, `ul-${bi}-${ii}`)}
               </li>
             ))}
           </ul>
@@ -53,7 +56,7 @@ export function ChatMarkdown({ content, typing }: ChatMarkdownProps) {
           <ol key={bi} className="md-ol">
             {block.items.map((item, ii) => (
               <li key={ii} className="md-li">
-                {renderInline(item, `ol-${bi}-${ii}`)}
+                {renderInlineText(item, linkStore, `ol-${bi}-${ii}`)}
               </li>
             ))}
           </ol>
@@ -63,7 +66,7 @@ export function ChatMarkdown({ content, typing }: ChatMarkdownProps) {
         return (
           <blockquote key={bi} className="md-quote">
             {block.lines.map((line, li) => (
-              <div key={li}>{renderInline(line, `q-${bi}-${li}`)}</div>
+              <div key={li}>{renderInlineText(line, linkStore, `q-${bi}-${li}`)}</div>
             ))}
           </blockquote>
         )
@@ -77,7 +80,7 @@ export function ChatMarkdown({ content, typing }: ChatMarkdownProps) {
             {block.lines.map((line, li) => (
               <span key={li}>
                 {li > 0 && <br />}
-                {renderInline(line, `p-${bi}-${li}`)}
+                {renderInlineText(line, linkStore, `p-${bi}-${li}`)}
               </span>
             ))}
           </div>

@@ -23,7 +23,48 @@ describe('chatMarkdown 单元测试', () => {
     })
   })
 
-  describe('renderInline 行内解析', () => {
+  describe('renderInline 行内解析与跳转链接互不冲突', () => {
+    it('粗体与跳转链接嵌套：**[标题](url)** 外层粗体内层可点击链接', () => {
+      const nodes = renderInline('推荐：**[金州站前一居 交通枢纽旁](#/app/houses/16)**')
+      expect(nodes).toHaveLength(2)
+      expect(nodes[0]).toBe('推荐：')
+      const strong = nodes[1] as ReactElement
+      expect(strong.type).toBe('strong')
+      const a = (strong.props.children as ReactElement[])[0]
+      expect(a.type).toBe('a')
+      expect(a.props.href).toBe('#/app/houses/16')
+    })
+
+    it('下划线标识符与跳转链接不打架：房源_1 与房源_2 不误吞中间的链接', () => {
+      const nodes = renderInline(
+        '房源_1：[金州站前一居](#/app/houses/16) 房源_2：[沙河口两居](#/app/houses/97)'
+      )
+      const links = nodes.filter(
+        n => typeof n !== 'string' && (n as ReactElement).type === 'a'
+      ) as ReactElement[]
+      expect(links).toHaveLength(2)
+      expect(links[0].props.href).toBe('#/app/houses/16')
+      expect(links[1].props.href).toBe('#/app/houses/97')
+    })
+
+    it('标题包含下划线时不被破坏成斜体', () => {
+      const nodes = renderInline('推荐房源：[金州_站前一居_精装修](#/app/houses/16)')
+      const link = nodes.find(
+        n => typeof n !== 'string' && (n as ReactElement).type === 'a'
+      ) as ReactElement
+      expect(link).toBeDefined()
+      expect(link.props.href).toBe('#/app/houses/16')
+    })
+
+    it('星号列表与链接混排时不误匹配为斜体', () => {
+      const nodes = renderInline('* 房源：[金州站前一居](#/app/houses/16) * 租金：1300元')
+      const link = nodes.find(
+        n => typeof n !== 'string' && (n as ReactElement).type === 'a'
+      ) as ReactElement
+      expect(link).toBeDefined()
+      expect(link.props.href).toBe('#/app/houses/16')
+    })
+
     it('支持加粗与嵌套标点', () => {
       const nodes = renderInline('关于**房屋维修责任**划分如下')
       expect(nodes).toHaveLength(3)
@@ -40,16 +81,27 @@ describe('chatMarkdown 单元测试', () => {
       )
     })
 
-    it('支持行内代码与链接混排', () => {
-      const nodes = renderInline('执行 `npm test` 并访问 [首页](#/app/home)')
-      expect(nodes.some(n => typeof n !== 'string' && (n as ReactElement).type === 'code')).toBe(
-        true
-      )
-      expect(nodes.some(n => typeof n !== 'string' && (n as ReactElement).type === 'a')).toBe(true)
+    it('拦截恶意脚本协议为纯文本', () => {
+      const nodes = renderInline('点此：[危险脚本](javascript:alert(1))')
+      expect(nodes.every(n => typeof n === 'string')).toBe(true)
+      expect(nodes.join('')).toContain('[危险脚本](javascript:alert(1))')
     })
   })
 
   describe('parseBlocks 块级解析', () => {
+    it('解析找房助手的房源推荐多行结构', () => {
+      const md = `为您推荐以下房源：
+1. [金州站前一居 交通枢纽旁](#/app/houses/16) - 月租 1300 元
+2. [沙河口台山新村两居](#/app/houses/97) - 月租 2600 元`
+      const blocks = parseBlocks(md)
+      expect(blocks.length).toBe(2)
+      expect(blocks[0].type).toBe('p')
+      expect(blocks[1].type).toBe('ol')
+      if (blocks[1].type === 'ol') {
+        expect(blocks[1].items).toHaveLength(2)
+      }
+    })
+
     it('解析用户关于维修责任的真实问答结构', () => {
       const md = `我来帮您查询平台关于维修责任的相关规定。
 
@@ -96,12 +148,14 @@ describe('chatMarkdown 单元测试', () => {
     })
   })
 
-  describe('ChatMarkdown 组件渲染', () => {
-    it('正确渲染带 typing 光标的组件结构', () => {
-      const element = ChatMarkdown({ content: '回复内容', typing: true })
+  describe('ChatMarkdown 复合完整渲染', () => {
+    it('正确渲染带跳转链接与 Markdown 复合格式的内容', () => {
+      const content = `为您找到房源：
+1. **[金州站前一居](#/app/houses/16)** 月租 1300 元
+2. [沙河口两居](#/app/houses/97) 月租 2600 元`
+      const element = ChatMarkdown({ content, typing: false })
       expect(element).not.toBeNull()
       expect(element?.props.className).toBe('chat-markdown')
-      expect(element?.props.children).toBeDefined()
     })
 
     it('空内容但 typing 时渲染光标', () => {

@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react'
 
 /**
- * 格式化并校验链接地址：
- * 1. 兼容部分模型输出 %23 转义的 hash 路由（如 %23/app/houses/16）；
- * 2. 兼容漏写 # 的站内房源地址（如 /app/houses/16 自动补为 #/app/houses/16）；
- * 3. 仅放行以 #/ 或 http(s):// 开头的合法协议，其余（如 javascript:）拦截为纯文本。
+ * 提取并规范化链接地址：
+ * 1. 兼容部分模型将 # 编码为 %23（如 %23/app/houses/16）；
+ * 2. 兼容部分模型漏写 hash 符号的站内地址（如 /app/houses/16）；
+ * 3. 严格校验协议，仅放行 #/ 与 http(s):// 地址，其余一律拒绝以防 XSS。
  */
 export function sanitizeHref(rawHref: string): string | null {
   let href = rawHref.trim()
@@ -24,9 +24,48 @@ export function sanitizeHref(rawHref: string): string | null {
   return null
 }
 
-export function renderInline(text: string, keyPrefix = 'in'): ReactNode[] {
+export interface ExtractedLink {
+  raw: string
+  title: string
+  href: string | null
+}
+
+/**
+ * 链接优先抽取容器（LinkStore）：
+ * 在解析任何 Markdown 标记之前，优先保护所有形如 [标题](url) 的跳转链接，
+ * 将其置换为安全的私有占位符 \x00LINK_i\x00，从根本上杜绝下划线、星号或代码块将链接切碎。
+ */
+export class LinkStore {
+  private links: ExtractedLink[] = []
+
+  tokenize(text: string): string {
+    const linkRe = /\[([^\]\n]+)\]\(([^)\s]+)\)/g
+    return text.replace(linkRe, (raw, title, rawHref) => {
+      const id = this.links.length
+      this.links.push({
+        raw,
+        title,
+        href: sanitizeHref(rawHref)
+      })
+      return `@@LINK_${id}@@`
+    })
+  }
+
+  get(id: number): ExtractedLink | undefined {
+    return this.links[id]
+  }
+}
+
+/**
+ * 行内渲染核心：在已隔离链接占位符的文本中，递归解析行内代码、粗体、斜体、删除线与链接还原。
+ */
+export function renderInlineText(
+  text: string,
+  linkStore: LinkStore,
+  keyPrefix = 'in'
+): ReactNode[] {
   const inlineRe =
-    /(`([^`\n]+)`)|(\[([^\]\n]+)\]\(([^)\s]+)\))|(\*\*([^\n]+?)\*\*)|(__([^\n]+?)__)|(\*([^\n*]+?)\*)|(_([^\n_]+?)_)|(~~([^\n~]+?)~~)/g
+    /(`([^`\n]+)`)|(\*\*([^\n]+?)\*\*)|(__([^\n]+?)__)|((?<!\*)\*([^\s*](?:[^\n*]*?[^\s*])?)\*(?!\*))|(~~([^\n~]+?)~~)|(@@LINK_(\d+)@@)/g
   const nodes: ReactNode[] = []
   let lastIndex = 0
   let match: RegExpExecArray | null
@@ -45,48 +84,53 @@ export function renderInline(text: string, keyPrefix = 'in'): ReactNode[] {
           {match[2]}
         </code>
       )
-    } else if (match[3]) {
-      // 链接 [text](url)
-      const label = match[4]
-      const rawHref = match[5]
-      const validHref = sanitizeHref(rawHref)
-      if (validHref) {
-        nodes.push(
-          <a
-            key={key}
-            href={validHref}
-            className="md-link"
-            {...(validHref.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
-          >
-            {renderInline(label, `${key}-lbl`)}
-          </a>
-        )
-      } else {
-        nodes.push(match[0])
-      }
-    } else if (match[6] || match[8]) {
+    } else if (match[3] || match[5]) {
       // 粗体 **bold** 或 __bold__
-      const content = match[7] ?? match[9]
+      const content = match[4] ?? match[6]
       nodes.push(
         <strong key={key} className="md-bold">
-          {renderInline(content, `${key}-b`)}
+          {renderInlineText(content, linkStore, `${key}-b`)}
         </strong>
       )
-    } else if (match[10] || match[12]) {
-      // 斜体 *italic* 或 _italic_
-      const content = match[11] ?? match[13]
+    } else if (match[7]) {
+      // 斜体 *italic*（要求星号两侧非空白，避免误伤列表项与强调符号）
       nodes.push(
         <em key={key} className="md-italic">
-          {renderInline(content, `${key}-i`)}
+          {renderInlineText(match[8], linkStore, `${key}-i`)}
         </em>
       )
-    } else if (match[14]) {
+    } else if (match[9]) {
       // 删除线 ~~del~~
       nodes.push(
         <del key={key} className="md-del">
-          {renderInline(match[15], `${key}-d`)}
+          {renderInlineText(match[10], linkStore, `${key}-d`)}
         </del>
       )
+    } else if (match[11]) {
+      // 还原跳转链接 Token
+      const linkId = Number(match[12])
+      const link = linkStore.get(linkId)
+      if (link && link.href) {
+        const isHttp = link.href.startsWith('http')
+        nodes.push(
+          <a
+            key={key}
+            href={link.href}
+            className="md-link chat-house-link"
+            {...(isHttp ? { target: '_blank', rel: 'noreferrer' } : {})}
+            onClick={() => {
+              if (!isHttp && link.href?.startsWith('#/')) {
+                // 确保 SPA 路由顺畅响应 hash 变更
+                window.location.hash = link.href
+              }
+            }}
+          >
+            {renderInlineText(link.title, linkStore, `${key}-lbl`)}
+          </a>
+        )
+      } else {
+        nodes.push(link ? link.raw : match[0])
+      }
     }
 
     lastIndex = match.index + match[0].length
@@ -97,6 +141,12 @@ export function renderInline(text: string, keyPrefix = 'in'): ReactNode[] {
   }
 
   return nodes
+}
+
+export function renderInline(text: string, keyPrefix = 'in'): ReactNode[] {
+  const linkStore = new LinkStore()
+  const tokenized = linkStore.tokenize(text)
+  return renderInlineText(tokenized, linkStore, keyPrefix)
 }
 
 export interface BlockCode {
@@ -268,7 +318,17 @@ export function parseBlocks(markdown: string): Block[] {
       continue
     }
 
-    // 8. 普通段落行
+    // 8. 普通行：如果当前正处于有序列表中且该行看起来是房源信息的缩进描述，追加到当前列表中
+    if (currOl && /^\s{2,}/.test(line)) {
+      currOl[currOl.length - 1] += '\n' + line.trim()
+      continue
+    }
+    if (currUl && /^\s{2,}/.test(line)) {
+      currUl[currUl.length - 1] += '\n' + line.trim()
+      continue
+    }
+
+    // 9. 普通段落行
     flushList()
     if (!currP) currP = []
     currP.push(line)
@@ -276,7 +336,6 @@ export function parseBlocks(markdown: string): Block[] {
 
   // 循环结束时冲刷遗留块
   if (inCode) {
-    // 流式输出未收完右围栏时，容错呈现为代码块
     blocks.push({ type: 'code', lang: codeLang, lines: codeLines })
   }
   flushAllNonCode()
