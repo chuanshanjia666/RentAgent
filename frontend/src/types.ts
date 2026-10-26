@@ -375,3 +375,11 @@ export interface AiConfigTestVO {
   latencyMs: number
   message: string
 }
+
+/** 房源虚假检测响应：POST /admin/houses/{id}/fake-detect */
+export interface DetectVO {
+  riskScore: number
+  suspicions: string[]
+  suggestion: string
+  model?: string
+}

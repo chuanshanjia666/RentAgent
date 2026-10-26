@@ -14,6 +14,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import http from '../api'
+import { ChatMarkdown } from '../chatMarkdown'
 import { IconWrench } from '../components/icons'
 import { fmtTime, SCENE_COLOR, USER_ROLE } from '../constants'
 import type { AdminChatDetail, AdminChatMessage, AdminChatSession } from '../types'
@@ -395,7 +396,7 @@ function TraceStep({ m }: { m: AdminChatMessage }) {
         <span>#{m.id}</span>
       </div>
       <div className={'trace-bubble ' + (isUser ? 'user' : 'ai')}>
-        {m.content || '（空）'}
+        {isUser ? m.content || '（空）' : <ChatMarkdown content={m.content || '（空）'} />}
         {m.citations && m.citations.length > 0 && (
           <div className="cite-tags">
             {m.citations.map((c, i) => (

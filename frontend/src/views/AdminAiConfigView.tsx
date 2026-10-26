@@ -17,6 +17,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   message
 } from 'antd'
@@ -361,7 +362,7 @@ export default function AdminAiConfigView() {
     {
       title: '供应商名称',
       dataIndex: 'name',
-      width: 180,
+      width: 160,
       render: (text: string, r) => (
         <div>
           <span style={{ fontWeight: 600 }}>{text}</span>
@@ -376,7 +377,7 @@ export default function AdminAiConfigView() {
     {
       title: '通信协议',
       dataIndex: 'protocol',
-      width: 150,
+      width: 130,
       render: (p: string) => {
         if (p === 'anthropic-messages') return <Tag color="purple">Claude 原生</Tag>
         if (p === 'openai-responses') return <Tag color="orange">Responses API</Tag>
@@ -387,18 +388,34 @@ export default function AdminAiConfigView() {
       title: '接口基址 (Base URL)',
       dataIndex: 'baseUrl',
       ellipsis: true,
-      render: (url: string) => <Text code>{url}</Text>
+      render: (url: string) => (
+        <Tooltip title={url} placement="topLeft">
+          <Text code style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {url}
+          </Text>
+        </Tooltip>
+      )
     },
     {
       title: activeTab === 'EMBEDDING' ? '嵌入模型 (Embedding)' : '语言模型 (LLM)',
       dataIndex: 'model',
-      width: 180,
+      width: 300,
       render: (m: string) => (
-        <Tag color={activeTab === 'EMBEDDING' ? 'geekblue' : 'cyan'}>
-          <Text code style={{ color: 'inherit' }}>
-            {m}
-          </Text>
-        </Tag>
+        <Tooltip title={m} placement="topLeft">
+          <Tag
+            color={activeTab === 'EMBEDDING' ? 'geekblue' : 'cyan'}
+            style={{
+              maxWidth: '100%',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              verticalAlign: 'middle'
+            }}
+          >
+            <Text code style={{ color: 'inherit' }}>
+              {m}
+            </Text>
+          </Tag>
+        </Tooltip>
       )
     },
     {
@@ -410,7 +427,7 @@ export default function AdminAiConfigView() {
     },
     {
       title: '参数',
-      width: 130,
+      width: 110,
       render: (_, r) => (
         <span style={{ fontSize: 12, color: '#657771' }}>
           {r.category === 'EMBEDDING'
@@ -422,14 +439,14 @@ export default function AdminAiConfigView() {
     {
       title: '更新时间',
       dataIndex: 'updatedAt',
-      width: 150,
+      width: 160,
       render: (t: string) => (
         <span style={{ fontSize: 12, color: '#888' }}>{t?.replace('T', ' ')}</span>
       )
     },
     {
       title: '操作',
-      width: 200,
+      width: 260,
       render: (_, r) => (
         <Space size="small">
           {r.isActive === 1 ? (
@@ -504,23 +521,23 @@ export default function AdminAiConfigView() {
       <Card style={{ marginBottom: 16 }} bodyStyle={{ padding: 14 }}>
         <Row gutter={[16, 12]}>
           <Col xs={24} md={12}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontWeight: 600, width: 140 }}>🤖 大语言模型 (LLM)：</span>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+              <span style={{ fontWeight: 600 }}>🤖 大语言模型 (LLM)：</span>
               {activeSource === 'DATABASE' && <Tag color="success">数据库生效</Tag>}
               {activeSource === 'CONFIG_FILE' && <Tag color="warning">配置/环境变量</Tag>}
               {activeSource === 'NONE' && <Tag color="error">未接入 (4001)</Tag>}
-              <Text code strong style={{ marginLeft: 4 }}>
+              <Text code strong style={{ wordBreak: 'break-all' }}>
                 {activeDescribe}
               </Text>
             </div>
           </Col>
           <Col xs={24} md={12}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontWeight: 600, width: 140 }}>🧠 词嵌入模型 (RAG)：</span>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+              <span style={{ fontWeight: 600 }}>🧠 词嵌入模型 (RAG)：</span>
               {activeEmbSource === 'DATABASE' && <Tag color="success">数据库生效</Tag>}
               {activeEmbSource === 'CONFIG_FILE' && <Tag color="warning">配置/环境变量</Tag>}
               {activeEmbSource === 'NONE' && <Tag color="error">未配置 (降级关键词)</Tag>}
-              <Text code strong style={{ marginLeft: 4 }}>
+              <Text code strong style={{ wordBreak: 'break-all' }}>
                 {activeEmbDescribe}
               </Text>
             </div>

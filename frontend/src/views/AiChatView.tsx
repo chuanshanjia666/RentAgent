@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, Input, message, Radio } from 'antd'
 import http, { ssePost } from '../api'
-import { renderWithLinks } from '../chatLinks'
+import { ChatMarkdown } from '../chatMarkdown'
 import { IconBot, IconPlus, IconSend } from '../components/icons'
 import { fmtTime } from '../constants'
 import type { ChatMsg } from '../types'
@@ -226,8 +226,12 @@ export default function AiChatView() {
             {messages.map((m, i) => (
               <div key={i} className={'msg-row ' + (m.role === 1 ? 'me' : 'ai')}>
                 <div className="bubble">
-                  {m.role === 1 ? m.content : renderWithLinks(m.content)}
-                  {m.typing ? <span className="cursor" /> : ''}
+                  {m.role === 1 ? (
+                    m.content
+                  ) : (
+                    <ChatMarkdown content={m.content} typing={m.typing} />
+                  )}
+                  {m.role === 1 && m.typing ? <span className="cursor" /> : null}
                   {m.citations && m.citations.length > 0 && (
                     <div className="cite-tags">
                       {m.citations.map((c, ci) => (
