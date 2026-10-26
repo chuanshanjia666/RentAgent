@@ -24,6 +24,15 @@ describe('FT-CHAT AI 回复内链接渲染', () => {
     expect(a.props.href).toBe('#/app/houses/16')
     expect(a.props.target).toBeUndefined()
     expect(a.props.children).toBe('金州站前一居 交通枢纽旁')
+
+    // 兼容部分大模型将 # URL 编码为 %23 或漏写 hash 符号
+    const encodedNodes = renderWithLinks('推荐：[沙河口台山新村两居](%23/app/houses/97)')
+    const encodedA = linkAt(encodedNodes, 1)
+    expect(encodedA.props.href).toBe('#/app/houses/97')
+
+    const noHashNodes = renderWithLinks('推荐：[甘井子三居](/app/houses/101)')
+    const noHashA = linkAt(noHashNodes, 1)
+    expect(noHashA.props.href).toBe('#/app/houses/101')
   })
 
   it('FT-CHAT-02 http(s) 链接新窗口打开（target=_blank + noreferrer）', () => {

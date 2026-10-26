@@ -85,7 +85,7 @@ public class HousingTools {
             "district 为行政区名（甘井子区/沙河口区/高新园区/中山区/西岗区）；keyword 为标题/小区/地址关键词；" +
             "subway 为 true 时筛选近地铁房源；facilities 为逗号分隔的设施标签，可选值：近地铁/精装修/家电齐全/拎包入住/电梯/采光好；" +
             "sort 取 rent_asc（租金升序，默认）或 rent_desc（租金降序）。" +
-            "返回 JSON：total 为符合条件的房源总数，list 为房源卡片数组，卡片内 detailUrl 为房源详情页链接（输出链接时必须原样使用）。")
+            "返回 JSON：total 为符合条件的房源总数，list 为房源卡片数组，卡片内 detailUrl 为房源详情页链接（输出链接时必须原样使用，切勿编码 # 为 %23）。")
     public String searchHouses(Integer minRent, Integer maxRent, String layoutKeyword, String district,
                                String keyword, Boolean subway, String facilities, String sort) {
         try {
