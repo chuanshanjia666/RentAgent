@@ -1,0 +1,382 @@
+package com.rentagent.service;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.rentagent.common.BizException;
+import com.rentagent.common.ErrorCode;
+import com.rentagent.dto.PageVO;
+import com.rentagent.dto.TradeDto;
+import com.rentagent.common.JsonColumns;
+import com.rentagent.entity.Contract;
+import com.rentagent.entity.House;
+import com.rentagent.entity.LeaseOrder;
+import com.rentagent.entity.RentBill;
+import com.rentagent.entity.Review;
+import com.rentagent.entity.SysUser;
+import com.rentagent.mapper.ContractMapper;
+import com.rentagent.mapper.HouseMapper;
+import com.rentagent.mapper.LeaseOrderMapper;
+import com.rentagent.mapper.RentBillMapper;
+import com.rentagent.mapper.ReviewMapper;
+import com.rentagent.mapper.SysUserMapper;
+import com.rentagent.security.UserContext;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * 在线签约（FR-18）与订单/租金（FR-19）：
+ * 合同状态机 0待租客确认 → 1待房东确认 → 2已生效（派生订单与账单） / 4已作废；退租 2→3。
+ */
+@Service
+@RequiredArgsConstructor
+public class ContractService {
+
+    public static final int ST_TENANT_CONFIRM = 0;
+    public static final int ST_LANDLORD_CONFIRM = 1;
+    public static final int ST_EFFECTIVE = 2;
+    public static final int ST_TERMINATED = 3;
+    public static final int ST_VOIDED = 4;
+
+    private final ContractMapper contractMapper;
+    private final LeaseOrderMapper orderMapper;
+    private final RentBillMapper billMapper;
+    private final HouseMapper houseMapper;
+    private final SysUserMapper userMapper;
+    private final ReviewMapper reviewMapper;
+    private final NotificationService notification;
+    private final JsonColumns jsonColumns;
+
+    /** 生成电子合同：模板 + 双方信息自动填充（FR-18） */
+    @Transactional
+    public Contract create(long houseId, LocalDate start, LocalDate end, long tenantId) {
+        House house = houseMapper.selectById(houseId);
+        if (house == null || house.getStatus() != HouseService.ST_ONLINE) {
+            throw new BizException(ErrorCode.HOUSE_NOT_FOUND);
+        }
+        if (tenantId == house.getLandlordId()) {
+            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "不能签约自己的房源");
+        }
+        if (!end.isAfter(start) || start.isBefore(LocalDate.now())) {
+            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "租期不合法：起止日期需晚于今天且起止有序");
+        }
+        // 唯一性按**房源**维度判定，不能只按 (房源, 租客)：
+        // 房源要到合同生效才会置为"已出租"，只按租客判重的话，A 的合同还在待确认时
+        // B 可以再发起一份，房东把两份都签了就会得到两个订单、两套账单、同一套房被重复出租。
+        long active = contractMapper.selectCount(new LambdaQueryWrapper<Contract>()
+                .eq(Contract::getHouseId, houseId)
+                .in(Contract::getStatus, ST_TENANT_CONFIRM, ST_LANDLORD_CONFIRM, ST_EFFECTIVE));
+        if (active > 0) {
+            throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID.getCode(), "该房源已有进行中的合同，请勿重复发起");
+        }
+        SysUser tenant = userMapper.selectById(tenantId);
+        SysUser landlord = userMapper.selectById(house.getLandlordId());
+        Contract c = new Contract();
+        c.setHouseId(houseId);
+        c.setTenantId(tenantId);
+        c.setLandlordId(house.getLandlordId());
+        c.setStartDate(start);
+        c.setEndDate(end);
+        c.setMonthlyRent(house.getRent());
+        c.setDeposit(house.getRent());
+        c.setStatus(ST_TENANT_CONFIRM);
+        c.setClauses(buildClauses(house, tenant, landlord, start, end));
+        contractMapper.insert(c);
+        notification.send(c.getLandlordId(), 3, "新的签约请求",
+                tenant.getNickname() + " 对「" + house.getTitle() + "」发起签约，请确认", "contract", c.getId());
+        return c;
+    }
+
+    /**
+     * 双方签署：租客 sign 后进入待房东确认；房东 sign 后合同生效并派生订单。
+     * <p>
+     * 状态跃迁写成"带前置状态的条件更新"（{@code where id=? and status=?} 再校验影响行数）：
+     * 读-判-写之间没有锁，房东双击"签署"或双方同时操作时两个请求都会通过内存里的状态判断，
+     * 于是重复派生订单并撞 {@code uk_contract} 抛 DuplicateKeyException（对用户表现为 500）。
+     * 条件更新后只有一次跃迁能成功，失败方统一拿到 3003。
+     */
+    @Transactional
+    public TradeDto.ContractActionResult act(long id, String action, long uid, int role) {
+        Contract c = contractMapper.selectById(id);
+        if (c == null) {
+            throw new BizException(ErrorCode.ORDER_NOT_FOUND);
+        }
+        boolean isTenant = c.getTenantId() == uid;
+        boolean isLandlord = c.getLandlordId() == uid;
+        int from = c.getStatus();
+        int to;
+        switch (action) {
+            case "sign" -> {
+                if (isTenant && from == ST_TENANT_CONFIRM) {
+                    to = ST_LANDLORD_CONFIRM;
+                } else if (isLandlord && from == ST_LANDLORD_CONFIRM) {
+                    to = ST_EFFECTIVE;
+                } else {
+                    throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID);
+                }
+            }
+            case "reject" -> {
+                require(isTenant || isLandlord, ErrorCode.FORBIDDEN);
+                if (from != ST_TENANT_CONFIRM && from != ST_LANDLORD_CONFIRM) {
+                    throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID);
+                }
+                to = ST_VOIDED;
+            }
+            case "terminate" -> {
+                require(isTenant || isLandlord, ErrorCode.FORBIDDEN);
+                if (from != ST_EFFECTIVE) {
+                    throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID);
+                }
+                to = ST_TERMINATED;
+            }
+            default -> throw new BizException(ErrorCode.PARAM_INVALID);
+        }
+
+        LambdaUpdateWrapper<Contract> move = new LambdaUpdateWrapper<Contract>()
+                .eq(Contract::getId, c.getId()).eq(Contract::getStatus, from)
+                .set(Contract::getStatus, to);
+        // 时间戳同时写内存对象与 SQL：内存对象供调用方继续使用，SQL 才是权威落库值
+        if (to == ST_LANDLORD_CONFIRM) {
+            c.setSignedTenantAt(LocalDateTime.now());
+            move.set(Contract::getSignedTenantAt, c.getSignedTenantAt());
+        } else if (to == ST_EFFECTIVE) {
+            c.setSignedLandlordAt(LocalDateTime.now());
+            move.set(Contract::getSignedLandlordAt, c.getSignedLandlordAt());
+        }
+        if (contractMapper.update(null, move) == 0) {
+            throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID);
+        }
+        c.setStatus(to);
+
+        // 副作用只在跃迁成功之后执行：通知、派生订单、房源重新上架
+        Long orderId = null;
+        switch (to) {
+            case ST_LANDLORD_CONFIRM -> notification.send(c.getLandlordId(), 3, "租客已确认合同",
+                    "「" + houseTitle(c) + "」合同待您确认签署", "contract", c.getId());
+            case ST_EFFECTIVE -> orderId = createOrder(c).getId();
+            case ST_TERMINATED -> {
+                LeaseOrder order = orderByContract(c.getId());
+                if (order != null) {
+                    order.setStatus(1);
+                    orderMapper.updateById(order);
+                    orderId = order.getId();
+                }
+                House house = houseMapper.selectById(c.getHouseId());
+                if (house != null) {
+                    house.setStatus(HouseService.ST_ONLINE);
+                    houseMapper.updateById(house);
+                }
+                long other = isTenant ? c.getLandlordId() : c.getTenantId();
+                notification.send(other, 3, "合同已退租", "「" + houseTitle(c) + "」合同已退租，房源重新上架", "contract", c.getId());
+            }
+            default -> {
+                // 拒签（作废）无派生副作用
+            }
+        }
+        return new TradeDto.ContractActionResult(c.getId(), c.getStatus(), orderId);
+    }
+
+    /** 生效订单 + 按月生成租金账单计划（FR-19） */
+    private LeaseOrder createOrder(Contract c) {
+        LeaseOrder order = new LeaseOrder();
+        order.setContractId(c.getId());
+        order.setHouseId(c.getHouseId());
+        order.setTenantId(c.getTenantId());
+        order.setLandlordId(c.getLandlordId());
+        order.setStartDate(c.getStartDate());
+        order.setEndDate(c.getEndDate());
+        order.setMonthlyRent(c.getMonthlyRent());
+        order.setDeposit(c.getDeposit());
+        order.setStatus(0);
+        orderMapper.insert(order);
+
+        long months = Math.max(1, ChronoUnit.MONTHS.between(c.getStartDate(), c.getEndDate()));
+        for (int i = 0; i < months; i++) {
+            RentBill bill = new RentBill();
+            bill.setLeaseOrderId(order.getId());
+            bill.setPeriodNo(i + 1);
+            bill.setDueDate(c.getStartDate().plusMonths(i));
+            bill.setAmount(c.getMonthlyRent());
+            bill.setStatus(0);
+            billMapper.insert(bill);
+        }
+        House house = houseMapper.selectById(c.getHouseId());
+        if (house == null || house.getStatus() != HouseService.ST_ONLINE) {
+            throw new BizException(ErrorCode.CONTRACT_STATUS_INVALID.getCode(), "房源已被出租或当前状态不允许签约");
+        }
+        house.setStatus(HouseService.ST_RENTED);
+        houseMapper.updateById(house);
+        notification.send(c.getTenantId(), 3, "合同已生效",
+                "「" + houseTitle(c) + "」签约完成，共生成 " + months + " 期租金账单", "order", order.getId());
+        return order;
+    }
+
+    /**
+     * 合同详情：仅合同双方与管理员可见。开放给任意登录用户会形成越权读取
+     * （合同正文含双方姓名、房屋地址与租金，遍历 id 即可批量拉取）。
+     */
+    public Contract detail(long id, long uid, int role) {
+        Contract c = contractMapper.selectById(id);
+        if (c == null) {
+            throw new BizException(ErrorCode.ORDER_NOT_FOUND);
+        }
+        if (c.getTenantId() != uid && c.getLandlordId() != uid && role != 3) {
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
+        return c;
+    }
+
+    /**
+     * 我的合同。列表直接带房源标题：前端由此不再需要按 houseId 逐个请求 /houses/{id}
+     * （那既有 N+1 次往返，也会因详情接口的浏览计数副作用把房东自己的浏览量刷高）。
+     */
+    public PageVO<TradeDto.ContractVO> mine(long uid, long page, long size) {
+        Page<Contract> p = contractMapper.selectPage(new Page<>(page, size), new LambdaQueryWrapper<Contract>()
+                .eq(Contract::getTenantId, uid).or().eq(Contract::getLandlordId, uid)
+                .orderByDesc(Contract::getId));
+        List<Long> houseIds = p.getRecords().stream().map(Contract::getHouseId).distinct().toList();
+        Map<Long, House> houseMap = houseIds.isEmpty() ? Map.of()
+                : houseMapper.selectBatchIds(houseIds).stream().collect(Collectors.toMap(House::getId, h -> h));
+        return PageVO.map(p, c -> {
+            House h = houseMap.get(c.getHouseId());
+            return new TradeDto.ContractVO(c, h == null ? "房源" : h.getTitle());
+        });
+    }
+
+    public LeaseOrder orderByContract(long contractId) {
+        return orderMapper.selectOne(new LambdaQueryWrapper<LeaseOrder>()
+                .eq(LeaseOrder::getContractId, contractId));
+    }
+
+    public PageVO<TradeDto.OrderVO> orders(long uid, int role, long page, long size) {
+        LambdaQueryWrapper<LeaseOrder> w = new LambdaQueryWrapper<LeaseOrder>();
+        if (role == 1) {
+            w.eq(LeaseOrder::getTenantId, uid);
+        } else if (role == 2) {
+            w.eq(LeaseOrder::getLandlordId, uid);
+        }
+        w.orderByDesc(LeaseOrder::getId);
+        Page<LeaseOrder> p = orderMapper.selectPage(new Page<>(page, size), w);
+        List<Long> pageOrderIds = p.getRecords().stream().map(LeaseOrder::getId).toList();
+        List<Long> contractIds = p.getRecords().stream().map(LeaseOrder::getContractId).distinct().toList();
+        List<Long> houseIds = p.getRecords().stream().map(LeaseOrder::getHouseId).distinct().toList();
+
+        Map<Long, Contract> contractMap = contractIds.isEmpty() ? Map.of()
+                : contractMapper.selectBatchIds(contractIds).stream().collect(Collectors.toMap(Contract::getId, c -> c));
+        Map<Long, House> houseMap = houseIds.isEmpty() ? Map.of()
+                : houseMapper.selectBatchIds(houseIds).stream().collect(Collectors.toMap(House::getId, h -> h));
+
+        // 本页订单的已评价集合一次查齐（IN 查询），避免逐行回查 review 表
+        Set<Long> reviewedIds = pageOrderIds.isEmpty() ? Set.of()
+                : reviewMapper.selectList(new LambdaQueryWrapper<Review>()
+                        .in(Review::getLeaseOrderId, pageOrderIds))
+                        .stream().map(Review::getLeaseOrderId).collect(Collectors.toSet());
+
+        // 账单批量查齐，在内存中按 leaseOrderId 聚合统计总期数与未支付期数
+        List<RentBill> pageBills = pageOrderIds.isEmpty() ? List.of()
+                : billMapper.selectList(new LambdaQueryWrapper<RentBill>()
+                        .in(RentBill::getLeaseOrderId, pageOrderIds));
+        Map<Long, Long> totalBillCount = pageBills.stream()
+                .collect(Collectors.groupingBy(RentBill::getLeaseOrderId, Collectors.counting()));
+        Map<Long, Long> unpaidBillCount = pageBills.stream()
+                .filter(b -> b.getStatus() != null && b.getStatus() == 0)
+                .collect(Collectors.groupingBy(RentBill::getLeaseOrderId, Collectors.counting()));
+
+        return PageVO.map(p, o -> {
+            Contract c = contractMap.get(o.getContractId());
+            House h = houseMap.get(o.getHouseId());
+            String title = h == null ? "房源" : h.getTitle();
+            long totalBills = totalBillCount.getOrDefault(o.getId(), 0L);
+            long unpaidBills = unpaidBillCount.getOrDefault(o.getId(), 0L);
+            return new TradeDto.OrderVO(o, c == null ? null : c.getStatus(), title,
+                    totalBills, unpaidBills, reviewedIds.contains(o.getId()));
+        });
+    }
+
+    public List<RentBill> bills(long orderId, long uid) {
+        LeaseOrder order = orderMapper.selectById(orderId);
+        if (order == null || (order.getTenantId() != uid && order.getLandlordId() != uid && !isAdmin())) {
+            throw new BizException(ErrorCode.ORDER_NOT_FOUND);
+        }
+        return billMapper.selectList(new LambdaQueryWrapper<RentBill>()
+                .eq(RentBill::getLeaseOrderId, orderId).orderByAsc(RentBill::getPeriodNo));
+    }
+
+    /** 标记账单支付（仅记录，FR-19 范围不含真实支付渠道） */
+    @Transactional
+    public void payBill(long billId, long uid) {
+        RentBill bill = billMapper.selectById(billId);
+        if (bill == null) {
+            throw new BizException(ErrorCode.ORDER_NOT_FOUND);
+        }
+        LeaseOrder order = orderMapper.selectById(bill.getLeaseOrderId());
+        if (order == null || order.getTenantId() != uid) {
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
+        if (bill.getStatus() != 0) {
+            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "账单状态不允许支付");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int rows = billMapper.update(null, new LambdaUpdateWrapper<RentBill>()
+                .eq(RentBill::getId, billId)
+                .eq(RentBill::getStatus, 0)
+                .set(RentBill::getStatus, 1)
+                .set(RentBill::getPaidAt, now));
+        if (rows == 0) {
+            throw new BizException(ErrorCode.PARAM_INVALID.getCode(), "账单状态不允许支付");
+        }
+        bill.setStatus(1);
+        bill.setPaidAt(now);
+        notification.send(order.getLandlordId(), 4, "租金已支付",
+                "第 " + bill.getPeriodNo() + " 期租金 ¥" + bill.getAmount() + " 已确认支付", "order", order.getId());
+    }
+
+    /** 当前登录用户是否为管理员（未登录时为 false） */
+    private boolean isAdmin() {
+        return Integer.valueOf(3).equals(UserContext.role());
+    }
+
+    private String houseTitle(Contract c) {
+        return houseTitleById(c.getHouseId());
+    }
+
+    private String houseTitleById(Long houseId) {
+        House h = houseMapper.selectById(houseId);
+        return h == null ? "房源" : h.getTitle();
+    }
+
+    private void require(boolean ok, ErrorCode code) {
+        if (!ok) {
+            throw new BizException(code);
+        }
+    }
+
+    /** 合同模板渲染：条款集合 JSON（演示模板，条款含风险示例由 AI 解读标红） */
+    private String buildClauses(House house, SysUser tenant, SysUser landlord, LocalDate start, LocalDate end) {
+        long months = Math.max(1, ChronoUnit.MONTHS.between(start, end));
+        List<Map<String, String>> clauses = new ArrayList<>();
+        clauses.add(Map.of("title", "租赁标的", "text", "甲方（房东）" + landlord.getNickname() + "将位于" +
+                house.getCity() + house.getDistrict() + house.getCommunity() + "的房屋（" + house.getLayout() +
+                "，" + house.getArea() + "㎡）出租给乙方（租客）" + tenant.getNickname() + "居住使用。"));
+        clauses.add(Map.of("title", "租期", "text", "租赁期自 " + start + " 至 " + end + "，共 " +
+                months + " 个月。"));
+        clauses.add(Map.of("title", "租金与押金", "text", "月租金人民币 " + house.getRent() + " 元，押付方式：" +
+                house.getDepositType() + "，押金人民币 " + house.getRent() + " 元，合同期满无违约无损坏全额退还。"));
+        clauses.add(Map.of("title", "费用承担", "text", "租赁期内水费、电费、燃气费、物业费、网络费由乙方承担；房屋主体结构自然损坏的维修由甲方承担。"));
+        clauses.add(Map.of("title", "维修责任", "text", "房屋及附属设施非因乙方原因损坏的，甲方应在接到通知后 7 日内维修。"));
+        clauses.add(Map.of("title", "违约责任", "text", "任何一方提前解约的，应提前 30 日书面通知对方；乙方提前退租的押金不予退还，甲方提前收房的应向乙方支付相当于两个月租金的违约金。"));
+        clauses.add(Map.of("title", "合同解除", "text", "租赁期满乙方享有优先续租权；单方涨租或单方收房视为甲方违约。"));
+        return jsonColumns.write(clauses);
+    }
+}

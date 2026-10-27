@@ -1,0 +1,5 @@
+# 构建上下文只保留源码与 pom：target/ 动辄上百 MB，uploads/ 是运行时数据
+target/
+uploads/
+*.log
+run-dev.sh

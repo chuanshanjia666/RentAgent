@@ -1,0 +1,112 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: rentagent
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/rentagent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:rentagent}
+    password: ${MYSQL_PASSWORD:rentagent123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 30MB
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+
+mybatis-plus:
+  global-config:
+    banner: false
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.rentagent: info
+
+rentagent:
+  # 生产环境务必通过环境变量覆盖 JWT 密钥（>= 64 字符）
+  jwt-secret: ${JWT_SECRET:rentagent-dev-secret-key-please-change-in-production-0123456789abcdef}
+  jwt-expire-hours: 72
+  upload-dir: ${UPLOAD_DIR:./uploads}
+  # 演示期验证码固定值（dev 模式下任意手机号都用它），生产接入短信服务商后置空
+  captcha-dev-code: "246810"
+  # 身份证号加密密钥（Base64 的 16/24/32 字节），生产由环境变量注入
+  aes-key: ${AES_KEY:cmVudGFnZW50LWRldi1rZXktMzItYnl0ZXMtYWJjZCE=}
+  # 允许的跨域来源（开发期为本机前端：Vite 开发服务器 5173 / 预览服务器 4173）。
+  # 环回地址的 localhost 与 127.0.0.1 在浏览器里是两个来源，POST 会带 Origin 头，
+  # 只写 localhost 时用 127.0.0.1 打开前端会被 CORS 拒绝，故两者都列出。
+  # 桌面端（Electron）以 file:// 加载，不发 Origin 头，无需在此放行。
+  cors-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:4173,http://127.0.0.1:5173,http://127.0.0.1:4173}
+
+ai:
+  # ── LLM 网关：协议适配层，系统不绑定任何模型厂商 ─────────────────────
+  # 只要端点兼容下列任一协议即可接入，模型由配置指定（换模型＝改配置，不改代码）：
+  #   openai-chat-completions  OpenAI Chat Completions（最通用：自建/厂商/聚合网关多兼容此协议）
+  #   anthropic-messages       Anthropic Messages 原生协议
+  #   openai-responses         OpenAI Responses API 新接口（内置适配器）
+  # 生效顺序：数据库中已激活的供应商配置优先 → 配置文件中 AI_BACKEND 指定的命名后端 → 快捷单后端 → 均未配置则返回 4001（硬报错无兜底）
+  active: ${AI_BACKEND:dlut-deepseek}
+  protocol: ${AI_PROTOCOL:openai-chat-completions}
+  base-url: ${AI_BASE_URL:http://aigw.dlut.edu.cn/v1}
+  api-key: ${AI_API_KEY:}
+  model: ${AI_MODEL:DeepSeek-V4-Flash-0731-W8A8}
+  temperature: 0.7
+  # 单轮回复的 token 上限。推理类模型的思维链也计入本预算：实测一轮对话
+  # （系统提示 + 工具定义 + 知识库片段 + 思维链 + 正文）约 1.6k~2.0k tokens，
+  # 取值过紧时会被 finish_reason=length 截断成"既无正文也无工具调用"，
+  # 表现为客服场景回答为空，故留出约 2 倍余量。
+  max-tokens: ${AI_MAX_TOKENS:4096}
+  timeout-seconds: 60
+  # ── RAG 知识库词嵌入模型配置 ─────────────────────────
+  # 生效顺序：环境变量 AI_EMBEDDING_* 显式配置优先 → 数据库激活的 AI 供应商配置 → 配置文件生效后端
+  embedding:
+    base-url: ${AI_EMBEDDING_BASE_URL:}
+    api-key: ${AI_EMBEDDING_API_KEY:}
+    model: ${AI_EMBEDDING_MODEL:bge-m3}
+    similarity-threshold: ${AI_EMBEDDING_THRESHOLD:0.58}
+    timeout-seconds: 30
+  # 命名多后端：配好 Key 后用 AI_BACKEND=<name> 一键切换（一个名字＝一套"协议+端点+模型"组合）：
+  #   AI_BACKEND=dlut-deepseek AGGREGATOR_API_KEY=<key> mvn spring-boot:run
+  backends:
+    dlut-deepseek: # 大工 AI 网关通道（DeepSeek-V4-Flash-0731-W8A8）
+      protocol: openai-chat-completions
+      base-url: ${AGGREGATOR_BASE_URL:http://aigw.dlut.edu.cn/v1}
+      api-key: ${AGGREGATOR_API_KEY:}
+      model: ${AGGREGATOR_MODEL:DeepSeek-V4-Flash-0731-W8A8}
+      user-agent: ${AGGREGATOR_USER_AGENT:RentAgent-Platform/1.0}
+    opencode-go: # OpenCode GO 端点（OpenAI 兼容协议，模型 deepseek-v4.1-flash）
+      protocol: openai-chat-completions
+      base-url: ${OPENCODE_BASE_URL:https://opencode.ai/zen/go/v1}
+      api-key: ${OPENCODE_API_KEY:}
+      model: ${OPENCODE_MODEL:deepseek-v4.1-flash}
+      user-agent: ${OPENCODE_USER_AGENT:RentAgent-Platform/1.0}
+      headers:
+        x-opencode-session: ${OPENCODE_SESSION:rentagent-session-default}
+    commandcode-chat: # 聚合网关通道：同一端点下可指定任意模型（模型名形如 <厂商>/<模型>）
+      protocol: openai-chat-completions
+      base-url: ${COMMANDCODE_BASE_URL:https://api.commandcode.ai/provider/v1}
+      api-key: ${COMMANDCODE_API_KEY:}
+      model: ${COMMANDCODE_MODEL:inclusionai/ling-3.1-flash:free}
+      # 该网关的边缘按 UA 放行，默认客户端 UA（okhttp/java）会被限流或截断流式响应，故显式覆盖
+      user-agent: ${COMMANDCODE_USER_AGENT:curl/8.5.0}
+    claude-messages: # Claude 官方端点（Anthropic Messages 原生协议）
+      protocol: anthropic-messages
+      base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
+      api-key: ${ANTHROPIC_API_KEY:}
+      model: ${ANTHROPIC_MODEL:claude-sonnet-4-5}

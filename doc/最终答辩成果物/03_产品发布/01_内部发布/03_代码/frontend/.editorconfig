@@ -1,0 +1,18 @@
+# 编辑器统一基线，与 prettier.config.js / eslint.config.js 对齐
+# 目的：即便有人不用 Prettier（如在 IDEA 里手写），缩进、换行符与文件末尾也保持一致
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+# Markdown 行尾双空格是换行语法，不能被裁掉
+trim_trailing_whitespace = false
+
+[*.{yml,yaml}]
+indent_size = 2

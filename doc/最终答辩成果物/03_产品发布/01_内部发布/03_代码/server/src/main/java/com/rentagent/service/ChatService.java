@@ -1,0 +1,291 @@
+package com.rentagent.service;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rentagent.agent.AgentEngine;
+import com.rentagent.agent.HousingToolProvider;
+import com.rentagent.agent.LlmAgent;
+import com.rentagent.agent.LlmGateway;
+import com.rentagent.agent.ToolCallLimitExceededException;
+import com.rentagent.common.BizException;
+import com.rentagent.common.ErrorCode;
+import com.rentagent.common.JsonColumns;
+import com.rentagent.config.AiProps;
+import com.rentagent.dto.AiDto;
+import com.rentagent.entity.AiChatMessage;
+import com.rentagent.entity.AiChatSession;
+import com.rentagent.mapper.AiChatMessageMapper;
+import com.rentagent.mapper.AiChatSessionMapper;
+import com.rentagent.security.UserContext;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * AI 会话服务（FR-12/13）：SSE 流式对话编排，消息全量落库（NFR-05 可追溯）。
+ * <p>
+ * 引擎为真实大模型（{@link LlmAgent}）；未配置模型或模型不可用时**直接报错 4001**，
+ * 不提供规则引擎/模拟回答兜底（2026-09-17 口径）。
+ */
+@Slf4j
+@Service
+public class ChatService {
+
+    /** 未配置模型时的统一提示（指引运维/开发者注入凭据） */
+    static final String MODEL_MISSING_MSG =
+            "未配置大模型服务：请注入模型凭据（AI_API_KEY / AGGREGATOR_API_KEY 等环境变量）后重试";
+
+    /** 拿不到后端配置时的单次上游超时默认值（与 application.yml 的 ai.timeout-seconds 默认一致） */
+    private static final int DEFAULT_UPSTREAM_TIMEOUT_SECONDS = 60;
+
+    /** 预算余量：建连、解析、落库与网络抖动的额外开销 */
+    private static final long SSE_MARGIN_MILLIS = 30_000L;
+
+    /** 本轮未收敛（工具调用打不住）时给用户的提示：与"稍后重试"区分开，换个问法才有用 */
+    private static final String TOOL_LOOP_ABORTED_MSG =
+            "这轮问得太复杂，工具调用过于频繁，已中止；请换一种问法或缩小查询范围后再试";
+
+    /** 本轮 SSE 最长等待时长，按配置推导，见 {@link #sseTimeoutMillis} */
+    private final long sseTimeoutMs;
+
+    private final AiChatSessionMapper sessionMapper;
+    private final AiChatMessageMapper messageMapper;
+    private final LlmAgent llmAgent;
+    private final HousingToolProvider housingToolProvider;
+    private final ObjectMapper objectMapper;
+    private final JsonColumns jsonColumns;
+
+    private final LlmGateway llmGateway;
+
+    public ChatService(AiChatSessionMapper sessionMapper, AiChatMessageMapper messageMapper,
+                       LlmAgent llmAgent, HousingToolProvider housingToolProvider,
+                       ObjectMapper objectMapper, JsonColumns jsonColumns, AiProps aiProps,
+                       LlmGateway llmGateway) {
+        this.sessionMapper = sessionMapper;
+        this.messageMapper = messageMapper;
+        this.llmAgent = llmAgent;
+        this.housingToolProvider = housingToolProvider;
+        this.objectMapper = objectMapper;
+        this.jsonColumns = jsonColumns;
+        this.sseTimeoutMs = sseTimeoutMillis(aiProps);
+        this.llmGateway = llmGateway;
+    }
+
+    /**
+     * SSE 超时预算：必须**不短于一轮合法对话的最坏耗时**，故按配置推导而不是写死。
+     * <p>
+     * 一轮由两个阶段组成，各自都受 {@code ai.timeout-seconds}（默认 60s）约束：流式阶段最多
+     * {@code 工具上限 + 2} 次上游调用（上限次工具轮次 + 一次"提示后作答" + 一次收尾作答），
+     * 非流式兜底重跑最多同样多次；两段相加即最坏值。曾写死 5 分钟：慢一点但完全正常的一轮会在
+     * 回答中途被切断，用户一个字都收不到（模型还在继续跑），换模型或调大超时后预算也不会跟着变。
+     */
+    static long sseTimeoutMillis(AiProps props) {
+        AiProps.Backend backend = props.activeBackend();
+        int perCall = backend == null || backend.getTimeoutSeconds() == null
+                ? DEFAULT_UPSTREAM_TIMEOUT_SECONDS : backend.getTimeoutSeconds();
+        long worstUpstreamCalls = (HousingToolProvider.MAX_TOOL_CALLS_PER_ROUND + 2) * 2L;
+        return perCall * worstUpstreamCalls * 1000L + SSE_MARGIN_MILLIS;
+    }
+
+    /** 运行时动态推导 SSE 超时预算，使管理员在后台切换超时时间后本轮能立即生效 */
+    public long currentSseTimeoutMs() {
+        if (llmGateway != null) {
+            AiProps.Backend backend = llmGateway.resolvedBackend();
+            if (backend != null && backend.getTimeoutSeconds() != null) {
+                long worstUpstreamCalls = (HousingToolProvider.MAX_TOOL_CALLS_PER_ROUND + 2) * 2L;
+                return backend.getTimeoutSeconds() * worstUpstreamCalls * 1000L + SSE_MARGIN_MILLIS;
+            }
+        }
+        return this.sseTimeoutMs;
+    }
+
+    /** 当前引擎标识（<协议>:<模型>）；未配置模型时报 4001，便于调用方与前端明确感知 */
+    public String engineName() {
+        requireModel();
+        return llmAgent.describe();
+    }
+
+    /**
+     * 当前引擎标识，**不因模型不可用而报错**（未配置时返回"未配置模型"）。
+     * 供后台对话审计展示：审计是只读的合规功能，不能因为没配 Key 就整页打不开。
+     */
+    public String describeEngine() {
+        return llmAgent.available() ? llmAgent.describe() : "未配置模型";
+    }
+
+    public AiChatSession createSession(long uid, int scene, String title) {
+        AiChatSession s = new AiChatSession();
+        s.setUserId(uid);
+        s.setScene(scene);
+        s.setTitle(title == null || title.isBlank() ? defaultTitle(scene) : title);
+        s.setIsTransferred(0);
+        sessionMapper.insert(s);
+        return s;
+    }
+
+    public Page<AiChatSession> sessions(long uid, long page, long size) {
+        return sessionMapper.selectPage(new Page<>(page, size), new LambdaQueryWrapper<AiChatSession>()
+                .eq(AiChatSession::getUserId, uid).orderByDesc(AiChatSession::getUpdatedAt));
+    }
+
+    public List<AiDto.MessageVO> history(long sessionId, long uid) {
+        AiChatSession s = owned(sessionId, uid);
+        List<AiDto.MessageVO> list = new ArrayList<>();
+        for (AiChatMessage m : messageMapper.selectList(new LambdaQueryWrapper<AiChatMessage>()
+                .eq(AiChatMessage::getSessionId, s.getId()).orderByAsc(AiChatMessage::getId))) {
+            list.add(new AiDto.MessageVO(m.getId(), m.getRole(), m.getContent(), citationsOf(m), ts(m)));
+        }
+        return list;
+    }
+
+    /** 发送消息：SSE 流式返回（delta* + done），异步回调中落库（NFR-02 首字流式） */
+    public SseEmitter send(long sessionId, String content, long uid) {
+        requireModel();
+        AiChatSession s = owned(sessionId, uid);
+        saveMessage(s.getId(), 1, content, null, null, 0);
+
+        // 绑定本轮身份：工具在模型回调线程上执行，那里没有 UserContext（ThreadLocal），
+        // 只能在这里（Servlet 线程）取一次交给工具，避免 AI 查详情把自己当匿名访客而刷高浏览量
+        housingToolProvider.openRound(s.getId(), UserContext.get());
+
+        long timeoutMs = currentSseTimeoutMs();
+        SseEmitter emitter = new SseEmitter(timeoutMs);
+        // 三种"这一轮没人要了"的信号都置取消位：客户端断开导致 send 失败、SSE 超时、连接异常。
+        // 置位后工具轮次立刻停止、兜底重跑被跳过（在途的那次上游调用无法中断，见 HousingToolProvider）
+        emitter.onTimeout(() -> {
+            log.info("SSE 超时（{}ms），取消本轮工具轮次与兜底重跑", timeoutMs);
+            housingToolProvider.cancelRound(s.getId());
+        });
+        emitter.onError(e -> housingToolProvider.cancelRound(s.getId()));
+        emitter.onCompletion(() -> housingToolProvider.cancelRound(s.getId()));
+        long start = System.currentTimeMillis();
+        StringBuilder full = new StringBuilder();
+        // token 用量：找房重试时模型会多次上报，累加计为本轮总消耗（NFR-05 留痕）
+        int[] tokens = {0};
+
+        llmAgent.stream(s.getId(), uid, s.getScene(), content, new AgentEngine.Callback() {
+            @Override
+            public void onToken(String token) {
+                full.append(token);
+                try {
+                    emitter.send(SseEmitter.event().name("delta")
+                            .data(objectMapper.writeValueAsString(Map.of("delta", token))));
+                } catch (Exception e) {
+                    // 发送失败基本等价于"客户端已经走了"：立刻取消，别再让模型继续跑完整轮
+                    log.debug("SSE 发送失败（客户端可能已断开）: {}", e.getMessage());
+                    housingToolProvider.cancelRound(s.getId());
+                }
+            }
+
+            @Override
+            public void onUsage(Integer totalTokens) {
+                if (totalTokens != null) {
+                    tokens[0] += totalTokens;
+                }
+            }
+
+            @Override
+            public void onComplete(String text, String citations, boolean isTransferred) {
+                long latency = System.currentTimeMillis() - start;
+                // full 是实际推给前端的增量；部分协议只在终止事件里带正文（delta 全程为空），
+                // 此时若仍按 full 落库，会存下一条空的助手消息
+                String answer = full.length() == 0 && text != null ? text : full.toString();
+                AiChatMessage saved = saveMessage(s.getId(), 2, answer, citations, null, (int) latency,
+                        tokens[0] == 0 ? null : tokens[0]);
+                if (isTransferred) {
+                    s.setIsTransferred(1);
+                }
+                if ((s.getTitle() == null || s.getTitle().isBlank() || s.getTitle().startsWith("新会话"))
+                        && content.length() >= 4) {
+                    s.setTitle(content.substring(0, Math.min(20, content.length())));
+                }
+                sessionMapper.updateById(s);
+                try {
+                    emitter.send(SseEmitter.event().name("done").data(objectMapper.writeValueAsString(
+                            Map.of("messageId", saved.getId(), "citations", citationsOf(saved),
+                                    "transferred", isTransferred, "latencyMs", latency))));
+                    emitter.complete();
+                } catch (Exception e) {
+                    emitter.completeWithError(e);
+                }
+                // 本轮到此为止：整体移除会话态（身份/计数/工具集/引用），别让 rounds 随用过的会话数一直涨
+                housingToolProvider.closeRound(s.getId());
+            }
+
+            @Override
+            public void onError(Throwable t) {
+                // 不伪造任何回答：把失败如实通知前端（SSE error 载荷），由界面提示用户重试
+                log.warn("AI 引擎调用失败：{}", t == null ? "unknown" : t.getMessage());
+                String hint = t instanceof ToolCallLimitExceededException
+                        ? TOOL_LOOP_ABORTED_MSG : "智能助手调用失败，请稍后重试";
+                try {
+                    emitter.send(SseEmitter.event().name("error").data(
+                            objectMapper.writeValueAsString(Map.of("error", hint))));
+                    emitter.complete();
+                } catch (Exception e) {
+                    emitter.completeWithError(t);
+                }
+                housingToolProvider.closeRound(s.getId());
+            }
+        });
+        return emitter;
+    }
+
+    /** 无模型可用即报错（4001）；本系统不提供本地兜底回答 */
+    private void requireModel() {
+        if (!llmAgent.available()) {
+            throw new BizException(ErrorCode.AI_UNAVAILABLE.getCode(), MODEL_MISSING_MSG);
+        }
+    }
+
+    private AiChatSession owned(long sessionId, long uid) {
+        AiChatSession s = sessionMapper.selectById(sessionId);
+        if (s == null || s.getUserId() != uid) {
+            throw new BizException(ErrorCode.AI_SESSION_NOT_FOUND);
+        }
+        return s;
+    }
+
+    private AiChatMessage saveMessage(long sessionId, int role, String content, String citations,
+                                      String toolName, int latencyMs) {
+        return saveMessage(sessionId, role, content, citations, toolName, latencyMs, null);
+    }
+
+    private AiChatMessage saveMessage(long sessionId, int role, String content, String citations,
+                                      String toolName, int latencyMs, Integer tokenCount) {
+        AiChatMessage m = new AiChatMessage();
+        m.setSessionId(sessionId);
+        m.setRole(role);
+        m.setContent(content);
+        m.setCitations(citations);
+        m.setToolName(toolName);
+        m.setLatencyMs(latencyMs);
+        m.setTokenCount(tokenCount);
+        messageMapper.insert(m);
+        return m;
+    }
+
+    private List<Map<String, Object>> citationsOf(AiChatMessage m) {
+        return jsonColumns.readMapList(m.getCitations());
+    }
+
+    private Long ts(AiChatMessage m) {
+        return m.getCreatedAt() == null ? null : m.getCreatedAt()
+                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
+
+    private String defaultTitle(int scene) {
+        return switch (scene) {
+            case 2 -> "智能客服咨询";
+            case 3 -> "合同解读";
+            default -> "新会话";
+        };
+    }
+}
